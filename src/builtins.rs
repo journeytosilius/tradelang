@@ -1,3 +1,8 @@
+//! Builtin function identifiers shared by the compiler and VM.
+//!
+//! Builtins are lowered to stable numeric ids during compilation so the runtime
+//! can dispatch deterministically without name lookups in the hot path.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]

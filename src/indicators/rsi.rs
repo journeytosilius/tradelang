@@ -1,3 +1,8 @@
+//! Relative strength index indicator state and update logic.
+//!
+//! RSI tracks bounded rolling gain and loss averages without heap growth in the
+//! VM hot path.
+
 use crate::types::Value;
 
 #[derive(Clone, Debug)]

@@ -1,3 +1,8 @@
+//! Token kinds emitted by the lexer.
+//!
+//! Tokens retain source spans and represent the stable boundary between source
+//! text and the parser.
+
 use crate::span::Span;
 use serde::{Deserialize, Serialize};
 

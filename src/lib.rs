@@ -1,3 +1,10 @@
+//! TradeLang is a deterministic DSL and bytecode VM for financial time-series
+//! programs.
+//!
+//! The crate exposes the end-to-end compilation pipeline, runtime entrypoints,
+//! and the typed data structures shared across lexer, parser, compiler, and VM
+//! layers.
+
 pub mod ast;
 pub mod builtins;
 pub mod bytecode;

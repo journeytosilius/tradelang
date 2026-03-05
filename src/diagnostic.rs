@@ -1,3 +1,9 @@
+//! Compile-time and runtime error types used across the crate.
+//!
+//! Diagnostics preserve spans for source-level failures, while runtime errors
+//! report VM faults such as stack underflow, type mismatches, and invalid
+//! program state.
+
 use crate::bytecode::OpCode;
 use crate::span::Span;
 use thiserror::Error;

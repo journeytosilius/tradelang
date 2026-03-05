@@ -1,3 +1,8 @@
+//! Parsing from tokens into the TradeLang AST.
+//!
+//! The parser builds typed source-level nodes, preserves spans, and accumulates
+//! parse diagnostics instead of emitting bytecode directly.
+
 use crate::ast::{Ast, BinaryOp, Block, Expr, ExprKind, NodeId, Stmt, StmtKind, UnaryOp};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;

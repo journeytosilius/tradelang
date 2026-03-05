@@ -1,3 +1,8 @@
+//! Typed abstract syntax tree nodes produced by the parser.
+//!
+//! This module defines the source-level statement and expression forms used
+//! between parsing and compilation.
+
 use crate::span::Span;
 use serde::{Deserialize, Serialize};
 

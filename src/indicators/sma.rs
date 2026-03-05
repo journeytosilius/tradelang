@@ -1,3 +1,8 @@
+//! Simple moving average indicator logic.
+//!
+//! SMA is computed from a bounded recent window over a series buffer and
+//! returns `na` until enough history is available.
+
 use crate::diagnostic::RuntimeError;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;

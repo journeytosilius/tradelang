@@ -1,3 +1,8 @@
+//! Lexical analysis for TradeLang source text.
+//!
+//! The lexer converts source text into a token stream with spans, preserving
+//! statement separators and reporting lexical diagnostics on invalid input.
+
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::{Position, Span};
 use crate::token::{Token, TokenKind};

@@ -1,3 +1,8 @@
+//! Source-to-bytecode compilation for TradeLang programs.
+//!
+//! This module drives lexing and parsing, performs semantic analysis and type
+//! inference, resolves locals and builtins, and emits deterministic bytecode.
+
 use std::collections::HashMap;
 
 use crate::ast::{Ast, BinaryOp, Block, Expr, ExprKind, NodeId, Stmt, StmtKind, UnaryOp};

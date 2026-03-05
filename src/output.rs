@@ -1,3 +1,8 @@
+//! Runtime output structures produced while executing scripts.
+//!
+//! Outputs are grouped into per-step values and accumulated series so callers
+//! can inspect plot data and alerts after VM execution.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

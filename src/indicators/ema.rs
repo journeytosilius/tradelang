@@ -1,3 +1,8 @@
+//! Exponential moving average indicator state and update logic.
+//!
+//! EMA seeds from an initial SMA window and then updates incrementally with a
+//! stable smoothing factor on each new bar.
+
 use crate::diagnostic::RuntimeError;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;

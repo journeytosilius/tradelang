@@ -1,3 +1,8 @@
+//! Bytecode program representation for compiled TradeLang scripts.
+//!
+//! The compiler emits a [`Program`] made of typed locals, constants, and
+//! fixed-layout instructions. The VM executes this representation directly.
+
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
 use serde::{Deserialize, Serialize};

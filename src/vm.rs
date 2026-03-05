@@ -1,3 +1,8 @@
+//! Low-level TradeLang bytecode interpreter.
+//!
+//! This module contains the bounded series buffer, the per-bar VM execution
+//! engine, and builtin dispatch used by the runtime hot path.
+
 use std::collections::{HashMap, VecDeque};
 
 use crate::builtins::BuiltinId;

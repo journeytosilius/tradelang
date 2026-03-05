@@ -1,3 +1,8 @@
+//! Source positions and spans used throughout lexing, parsing, and diagnostics.
+//!
+//! Spans are carried from tokens through compiled instructions so failures can
+//! be traced back to the original source text.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

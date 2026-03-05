@@ -1,3 +1,8 @@
+//! Core value and type definitions shared by the compiler and runtime.
+//!
+//! These enums define the typed boundary for scalar values, series references,
+//! and local slot kinds used throughout the VM.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
