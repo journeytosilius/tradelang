@@ -236,6 +236,26 @@ impl<'a> Analyzer<'a> {
         let left_ty = self.analyze_expr(left);
         let right_ty = self.analyze_expr(right);
         match op {
+            BinaryOp::And | BinaryOp::Or => {
+                if !(left_ty.allow_bool() && right_ty.allow_bool()) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "logical operators require bool, series<bool>, or na operands",
+                        left.span.merge(right.span),
+                    ));
+                }
+                if matches!(
+                    (left_ty, right_ty),
+                    (InferredType::Concrete(Type::SeriesBool), _)
+                        | (_, InferredType::Concrete(Type::SeriesBool))
+                ) {
+                    InferredType::Concrete(Type::SeriesBool)
+                } else if matches!((left_ty, right_ty), (InferredType::Na, InferredType::Na)) {
+                    InferredType::Na
+                } else {
+                    InferredType::Concrete(Type::Bool)
+                }
+            }
             BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul | BinaryOp::Div => {
                 if !(left_ty.is_numeric_like() && right_ty.is_numeric_like()) {
                     self.diagnostics.push(Diagnostic::new(
@@ -582,6 +602,8 @@ impl<'a> Compiler<'a> {
                 self.emit_expr(left);
                 self.emit_expr(right);
                 let opcode = match op {
+                    BinaryOp::And => OpCode::And,
+                    BinaryOp::Or => OpCode::Or,
                     BinaryOp::Add => OpCode::Add,
                     BinaryOp::Sub => OpCode::Sub,
                     BinaryOp::Mul => OpCode::Mul,

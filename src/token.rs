@@ -11,6 +11,8 @@ pub enum TokenKind {
     Let,
     If,
     Else,
+    And,
+    Or,
     True,
     False,
     Na,

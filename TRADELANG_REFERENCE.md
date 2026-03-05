@@ -16,7 +16,8 @@ The implemented language supports:
 
 - numeric, boolean, and `na` literals
 - `let` bindings
-- `if { ... } else { ... }` statements
+- `if`, `else if`, and `else` statements
+- logical `and` and `or` expressions
 - arithmetic and comparison expressions
 - unary negation and boolean negation
 - series indexing with literal lookback offsets
@@ -50,7 +51,7 @@ A program is a sequence of statements.
 Supported statement forms:
 
 - `let name = expr`
-- `if condition { ... } else { ... }`
+- `if condition { ... } else if other_condition { ... } else { ... }`
 - expression statements such as `plot(close)`
 
 Example:
@@ -117,6 +118,8 @@ Reserved keywords:
 - `let`
 - `if`
 - `else`
+- `and`
+- `or`
 - `true`
 - `false`
 - `na`
@@ -145,11 +148,14 @@ This is a practical sketch of the implemented grammar, not a formal grammar.
 program      := stmt*
 stmt         := let_stmt | if_stmt | expr_stmt
 let_stmt     := "let" ident "=" expr
-if_stmt      := "if" expr block "else" block
+if_stmt      := "if" expr block ("else" "if" expr block)* "else" block
 expr_stmt    := expr
 block        := "{" stmt* "}"
 
-expr         := prefix (postfix | infix expr)*
+expr         := or_expr
+or_expr      := and_expr ("or" and_expr)*
+and_expr     := cmp_expr ("and" cmp_expr)*
+cmp_expr     := prefix (postfix | infix expr)*
 prefix       := number
              | "true"
              | "false"
@@ -169,11 +175,13 @@ args         := expr ("," expr)*
 
 From lowest to highest:
 
-1. equality and comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
-2. addition and subtraction: `+`, `-`
-3. multiplication: `*`
-4. unary operators: `-`, `!`
-5. postfix call and indexing: `f(...)`, `x[...]`
+1. logical `or`
+2. logical `and`
+3. equality and comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`
+4. addition and subtraction: `+`, `-`
+5. multiplication: `*`
+6. unary operators: `-`, `!`
+7. postfix call and indexing: `f(...)`, `x[...]`
 
 Associativity:
 
@@ -183,6 +191,7 @@ Examples:
 
 ```tradelang
 1 + 2 * 3
+true or false and false
 close > sma(close, 14)
 !(close > close[1])
 ```
@@ -317,19 +326,40 @@ Type rules:
 
 Supported binary operators:
 
+- logical: `and`, `or`
 - arithmetic: `+`, `-`, `*`
 - equality: `==`, `!=`
 - comparisons: `<`, `<=`, `>`, `>=`
 
 Type rules:
 
+- logical operators require boolean, series boolean, or `na` operands
 - arithmetic requires numeric operands
 - comparisons require numeric operands
 - equality works on currently materialized runtime values
 
 `na` propagation:
 
+- logical operators use explicit three-valued truth tables
 - if either operand is `na`, arithmetic and comparisons yield `na`
+
+Logical truth tables:
+
+### `and`
+
+| lhs \\ rhs | true | false | na |
+| --- | --- | --- | --- |
+| true | true | false | na |
+| false | false | false | false |
+| na | na | false | na |
+
+### `or`
+
+| lhs \\ rhs | true | false | na |
+| --- | --- | --- | --- |
+| true | true | true | true |
+| false | true | false | na |
+| na | true | na | na |
 
 ### Division
 
@@ -350,6 +380,8 @@ The only conditional form currently supported is:
 ```tradelang
 if condition {
     ...
+} else if other_condition {
+    ...
 } else {
     ...
 }
@@ -357,11 +389,12 @@ if condition {
 
 Important rules:
 
+- `else if` chains are supported
 - `else` is mandatory
 - the condition must type-check as `bool`, `series<bool>`, or `na`
 - at runtime, `false` and `na` are both treated as falsey
 
-There is no `else if` syntax yet. Use nested `if` statements instead.
+`else if` is syntax sugar for a nested `if` in the false branch.
 
 ## Function Calls and Builtins
 
@@ -531,6 +564,10 @@ Current runtime behavior:
 
 - unary `-na` yields `na`
 - unary `!na` yields `na`
+- `true and na` yields `na`
+- `false and na` yields `false`
+- `true or na` yields `true`
+- `false or na` yields `na`
 - `na` in arithmetic yields `na`
 - `na` in comparisons yields `na`
 - `if na { ... } else { ... }` takes the `else` branch
@@ -635,7 +672,6 @@ The following are not part of the language yet:
 - user-defined functions
 - loops
 - reassignment
-- logical `and` / `or`
 - alert-producing builtins
 - imports or modules
 - multi-plot output materialization

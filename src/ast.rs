@@ -80,6 +80,8 @@ pub enum UnaryOp {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinaryOp {
+    And,
+    Or,
     Add,
     Sub,
     Mul,

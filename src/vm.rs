@@ -106,6 +106,8 @@ impl<'a> Vm<'a> {
                 | OpCode::Sub
                 | OpCode::Mul
                 | OpCode::Div
+                | OpCode::And
+                | OpCode::Or
                 | OpCode::Eq
                 | OpCode::Ne
                 | OpCode::Lt
@@ -289,11 +291,13 @@ impl<'a> VmEngine<'a> {
         right: Value,
         pc: usize,
     ) -> Result<Value, RuntimeError> {
-        if left.is_na() || right.is_na() {
-            return Ok(Value::NA);
-        }
         match opcode {
+            OpCode::And => logical_and(left, right, pc),
+            OpCode::Or => logical_or(left, right, pc),
             OpCode::Add | OpCode::Sub | OpCode::Mul | OpCode::Div => {
+                if left.is_na() || right.is_na() {
+                    return Ok(Value::NA);
+                }
                 let left = expect_f64(left, pc)?;
                 let right = expect_f64(right, pc)?;
                 let value = match opcode {
@@ -305,9 +309,22 @@ impl<'a> VmEngine<'a> {
                 };
                 Ok(Value::F64(value))
             }
-            OpCode::Eq => Ok(Value::Bool(eq_values(&left, &right))),
-            OpCode::Ne => Ok(Value::Bool(!eq_values(&left, &right))),
+            OpCode::Eq => {
+                if left.is_na() || right.is_na() {
+                    return Ok(Value::NA);
+                }
+                Ok(Value::Bool(eq_values(&left, &right)))
+            }
+            OpCode::Ne => {
+                if left.is_na() || right.is_na() {
+                    return Ok(Value::NA);
+                }
+                Ok(Value::Bool(!eq_values(&left, &right)))
+            }
             OpCode::Lt | OpCode::Le | OpCode::Gt | OpCode::Ge => {
+                if left.is_na() || right.is_na() {
+                    return Ok(Value::NA);
+                }
                 let left = expect_f64(left, pc)?;
                 let right = expect_f64(right, pc)?;
                 let value = match opcode {
@@ -492,6 +509,78 @@ fn expect_f64(value: Value, pc: usize) -> Result<f64, RuntimeError> {
 fn expect_window(value: Value, pc: usize) -> Result<usize, RuntimeError> {
     let value = expect_f64(value, pc)?;
     Ok(value as usize)
+}
+
+fn logical_and(left: Value, right: Value, pc: usize) -> Result<Value, RuntimeError> {
+    match left {
+        Value::Bool(false) => match right {
+            Value::Bool(_) | Value::NA => Ok(Value::Bool(false)),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        Value::Bool(true) => match right {
+            Value::Bool(value) => Ok(Value::Bool(value)),
+            Value::NA => Ok(Value::NA),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        Value::NA => match right {
+            Value::Bool(false) => Ok(Value::Bool(false)),
+            Value::Bool(true) | Value::NA => Ok(Value::NA),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "bool",
+            found: other.type_name(),
+        }),
+    }
+}
+
+fn logical_or(left: Value, right: Value, pc: usize) -> Result<Value, RuntimeError> {
+    match left {
+        Value::Bool(true) => match right {
+            Value::Bool(_) | Value::NA => Ok(Value::Bool(true)),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        Value::Bool(false) => match right {
+            Value::Bool(value) => Ok(Value::Bool(value)),
+            Value::NA => Ok(Value::NA),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        Value::NA => match right {
+            Value::Bool(true) => Ok(Value::Bool(true)),
+            Value::Bool(false) | Value::NA => Ok(Value::NA),
+            other => Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "bool",
+                found: other.type_name(),
+            }),
+        },
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "bool",
+            found: other.type_name(),
+        }),
+    }
 }
 
 fn eq_values(left: &Value, right: &Value) -> bool {

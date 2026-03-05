@@ -16,6 +16,8 @@ pub enum OpCode {
     SeriesGet,
     Neg,
     Not,
+    And,
+    Or,
     Add,
     Sub,
     Mul,

@@ -178,6 +178,8 @@ impl<'a> LexerState<'a> {
             "let" => TokenKind::Let,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
+            "and" => TokenKind::And,
+            "or" => TokenKind::Or,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "na" => TokenKind::Na,

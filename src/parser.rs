@@ -91,7 +91,7 @@ impl<'a> Parser<'a> {
             self.push_diagnostic("expected `else` after `if` block", then_block.span);
             return None;
         }
-        let else_block = self.parse_block()?;
+        let else_block = self.parse_else_block()?;
         let span = start.merge(else_block.span);
         Some(Stmt {
             id: self.alloc_id(),
@@ -102,6 +102,18 @@ impl<'a> Parser<'a> {
                 else_block,
             },
         })
+    }
+
+    fn parse_else_block(&mut self) -> Option<Block> {
+        self.skip_separators();
+        if self.matches_keyword(&TokenKind::If) {
+            let nested_if = self.parse_if_stmt()?;
+            return Some(Block {
+                span: nested_if.span,
+                statements: vec![nested_if],
+            });
+        }
+        self.parse_block()
     }
 
     fn parse_block(&mut self) -> Option<Block> {
@@ -283,6 +295,8 @@ impl<'a> Parser<'a> {
 
     fn infix_binding_power(&self) -> Option<(u8, u8, BinaryOp)> {
         match self.peek_kind() {
+            TokenKind::Or => Some((5, 6, BinaryOp::Or)),
+            TokenKind::And => Some((7, 8, BinaryOp::And)),
             TokenKind::EqualEqual => Some((10, 11, BinaryOp::Eq)),
             TokenKind::BangEqual => Some((10, 11, BinaryOp::Ne)),
             TokenKind::Less => Some((10, 11, BinaryOp::Lt)),
