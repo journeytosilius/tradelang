@@ -1,0 +1,12 @@
+// Single-interval breakout example with explicit trigger output.
+let breakout = close > high[1]
+let rising_volume = volume > volume[1]
+
+export momentum = breakout and rising_volume
+trigger long_entry = momentum and close > open
+
+if long_entry {
+    plot(1)
+} else {
+    plot(0)
+}

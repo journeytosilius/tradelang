@@ -25,6 +25,10 @@ fn tradelang_cmd() -> std::process::Command {
     std::process::Command::new(assert_cmd::cargo::cargo_bin!("tradelang"))
 }
 
+fn repo_path(relative: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative)
+}
+
 #[test]
 fn help_prints_usage() {
     let mut cmd = tradelang_cmd();
@@ -377,4 +381,54 @@ fn dump_bytecode_supports_compile_environment_files() {
         json["program"]["external_inputs"][0]["name"],
         Value::from("trend")
     );
+}
+
+#[test]
+fn checked_in_single_interval_example_runs_via_cli() {
+    let output = tradelang_cmd()
+        .args([
+            "run",
+            repo_path("examples/strategies/sma_cross.trl")
+                .to_str()
+                .unwrap(),
+            "--bars",
+            repo_path("examples/data/minute_bars.csv").to_str().unwrap(),
+            "--base-interval",
+            "1m",
+        ])
+        .output()
+        .expect("run command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["exports"][0]["name"], Value::from("bullish"));
+    assert_eq!(json["triggers"][0]["name"], Value::from("cross_up"));
+}
+
+#[test]
+fn checked_in_multi_interval_example_runs_via_cli() {
+    let output = tradelang_cmd()
+        .args([
+            "run",
+            repo_path("examples/strategies/weekly_bias.trl")
+                .to_str()
+                .unwrap(),
+            "--bars",
+            repo_path("examples/data/daily_bars.csv").to_str().unwrap(),
+            "--base-interval",
+            "1d",
+            "--feed",
+            &format!(
+                "1w={}",
+                repo_path("examples/data/weekly_bars.csv").display()
+            ),
+        ])
+        .output()
+        .expect("run command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(
+        json["exports"][0]["name"],
+        Value::from("above_weekly_basis")
+    );
+    assert_eq!(json["triggers"][0]["name"], Value::from("continuation"));
 }

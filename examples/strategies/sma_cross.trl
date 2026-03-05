@@ -1,0 +1,14 @@
+// Single-interval example with exported state and a trigger.
+let fast = ema(close, 3)
+let slow = sma(close, 5)
+
+export bullish = fast > slow
+trigger cross_up = bullish and fast[1] <= slow[1]
+
+if cross_up {
+    plot(1)
+} else if bullish {
+    plot(0.5)
+} else {
+    plot(0)
+}

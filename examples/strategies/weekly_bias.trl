@@ -1,0 +1,13 @@
+// Multi-interval example using weekly context on a daily execution feed.
+let weekly_basis = ema(1w.close, 2)
+
+export above_weekly_basis = close > weekly_basis
+trigger continuation = above_weekly_basis and close > close[1]
+
+if continuation {
+    plot(1)
+} else if above_weekly_basis {
+    plot(0.5)
+} else {
+    plot(0)
+}
