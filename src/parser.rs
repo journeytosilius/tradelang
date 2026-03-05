@@ -10,6 +10,7 @@ use crate::ast::{
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
+use crate::MarketField;
 
 pub fn parse(tokens: &[Token]) -> Result<Ast, CompileError> {
     Parser::new(tokens).parse()
@@ -282,6 +283,7 @@ impl<'a> Parser<'a> {
                 span: token.span,
                 kind: ExprKind::Ident(name),
             }),
+            TokenKind::Interval(interval) => self.parse_qualified_series(interval, token.span),
             TokenKind::Minus => {
                 let expr = self.parse_expr(50)?;
                 let span = token.span.merge(expr.span);
@@ -348,6 +350,29 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span: left.span.merge(right.span),
             kind: ExprKind::Call { callee: name, args },
+        })
+    }
+
+    fn parse_qualified_series(&mut self, interval: crate::Interval, start: Span) -> Option<Expr> {
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Dot),
+            "expected `.` after interval literal",
+        )?;
+        let token = self.expect_kind(
+            |kind| matches!(kind, TokenKind::Ident(_)),
+            "expected market field after `.`",
+        )?;
+        let TokenKind::Ident(name) = token.kind else {
+            unreachable!();
+        };
+        let Some(field) = MarketField::parse(&name) else {
+            self.push_diagnostic("expected market field after `.`", token.span);
+            return None;
+        };
+        Some(Expr {
+            id: self.alloc_id(),
+            span: start.merge(token.span),
+            kind: ExprKind::QualifiedSeries { interval, field },
         })
     }
 

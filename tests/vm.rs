@@ -1,47 +1,74 @@
 use tradelang::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
 use tradelang::compiler::CompiledProgram;
 use tradelang::diagnostic::RuntimeError;
-use tradelang::runtime::{run, Bar, VmLimits};
-use tradelang::types::{SlotKind, Type, Value};
+use tradelang::runtime::{
+    run, run_multi_interval, Bar, IntervalFeed, MultiIntervalConfig, VmLimits,
+};
+use tradelang::types::Value;
+use tradelang::{Interval, MarketBinding, MarketField, MarketSource, Type};
 
 fn empty_locals() -> Vec<LocalInfo> {
     vec![
-        LocalInfo {
-            name: Some("open".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
-        LocalInfo {
-            name: Some("high".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
-        LocalInfo {
-            name: Some("low".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
-        LocalInfo {
-            name: Some("close".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
-        LocalInfo {
-            name: Some("volume".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
-        LocalInfo {
-            name: Some("time".into()),
-            ty: Type::SeriesF64,
-            kind: SlotKind::Series,
-            hidden: false,
-        },
+        LocalInfo::series(
+            Some("open".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::Open,
+            }),
+        ),
+        LocalInfo::series(
+            Some("high".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::High,
+            }),
+        ),
+        LocalInfo::series(
+            Some("low".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::Low,
+            }),
+        ),
+        LocalInfo::series(
+            Some("close".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::Close,
+            }),
+        ),
+        LocalInfo::series(
+            Some("volume".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::Volume,
+            }),
+        ),
+        LocalInfo::series(
+            Some("time".into()),
+            Type::SeriesF64,
+            false,
+            1,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                field: MarketField::Time,
+            }),
+        ),
     ]
 }
 
@@ -242,6 +269,29 @@ fn fixture_bars() -> Vec<Bar> {
         .collect()
 }
 
+const SECOND_MS: i64 = 1_000;
+const MINUTE_MS: i64 = 60 * SECOND_MS;
+const HOUR_MS: i64 = 60 * MINUTE_MS;
+const DAY_MS: i64 = 24 * HOUR_MS;
+const WEEK_MS: i64 = 7 * DAY_MS;
+const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
+const FEB_1_2024_UTC_MS: i64 = 1_706_745_600_000;
+
+fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar> {
+    closes
+        .iter()
+        .enumerate()
+        .map(|(index, close)| Bar {
+            open: *close - 0.5,
+            high: *close + 1.0,
+            low: *close - 1.0,
+            close: *close,
+            volume: 1_000.0 + index as f64,
+            time: (start_ms + spacing_ms * index as i64) as f64,
+        })
+        .collect()
+}
+
 #[test]
 fn user_function_inlining_matches_inline_expression() {
     let helper = tradelang::compile(
@@ -272,4 +322,188 @@ fn user_function_with_na_result_preserves_null_plot() {
         tradelang::compile("fn missing() = na\nplot(missing())").expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, None);
+}
+
+#[test]
+fn qualified_series_requires_multi_interval_config() {
+    let compiled = tradelang::compile("plot(1h.close)").expect("script should compile");
+    let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("config required");
+    assert!(matches!(err, RuntimeError::MissingIntervalConfig));
+}
+
+#[test]
+fn lower_interval_references_are_rejected() {
+    let compiled = tradelang::compile("plot(1m.close)").expect("script should compile");
+    let err = run_multi_interval(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0, 2.0]),
+        MultiIntervalConfig {
+            base_interval: Interval::Hour1,
+            supplemental: Vec::new(),
+        },
+        VmLimits::default(),
+    )
+    .expect_err("lower interval should reject");
+    assert!(matches!(
+        err,
+        RuntimeError::LowerIntervalReference {
+            base: Interval::Hour1,
+            referenced: Interval::Min1
+        }
+    ));
+}
+
+#[test]
+fn hourly_series_only_updates_on_hour_close_boundaries() {
+    let compiled = tradelang::compile("plot(1h.close)").expect("script should compile");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0; 120]);
+    let hourly = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[100.0, 200.0]);
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Min1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Hour1,
+                bars: hourly,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points[58].value, None);
+    assert_eq!(outputs.plots[0].points[59].value, Some(100.0));
+    assert_eq!(outputs.plots[0].points[118].value, Some(100.0));
+    assert_eq!(outputs.plots[0].points[119].value, Some(200.0));
+}
+
+#[test]
+fn minute_series_only_updates_on_minute_close_boundaries_from_seconds() {
+    let compiled = tradelang::compile("plot(1m.close)").expect("script should compile");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, SECOND_MS, &[1.0; 120]);
+    let minute = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 20.0]);
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Sec1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Min1,
+                bars: minute,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points[58].value, None);
+    assert_eq!(outputs.plots[0].points[59].value, Some(10.0));
+    assert_eq!(outputs.plots[0].points[119].value, Some(20.0));
+}
+
+#[test]
+fn weekly_series_only_updates_on_week_close_boundaries() {
+    let compiled = tradelang::compile("plot(1w.close)").expect("script should compile");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[1.0; 14]);
+    let weekly = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[10.0, 20.0]);
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Day1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Week1,
+                bars: weekly,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points[5].value, None);
+    assert_eq!(outputs.plots[0].points[6].value, Some(10.0));
+    assert_eq!(outputs.plots[0].points[12].value, Some(10.0));
+    assert_eq!(outputs.plots[0].points[13].value, Some(20.0));
+}
+
+#[test]
+fn monthly_series_uses_calendar_close_boundaries() {
+    let compiled = tradelang::compile("plot(1M.close)").expect("script should compile");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
+    let monthly = bars_with_spacing(
+        JAN_1_2024_UTC_MS,
+        FEB_1_2024_UTC_MS - JAN_1_2024_UTC_MS,
+        &[300.0, 400.0],
+    );
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Week1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Month1,
+                bars: monthly,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points[3].value, None);
+    assert_eq!(outputs.plots[0].points[4].value, Some(300.0));
+}
+
+#[test]
+fn missing_interval_bars_become_na_steps() {
+    let compiled = tradelang::compile("plot(1d.close)").expect("script should compile");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0; 72]);
+    let daily = vec![
+        bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[10.0])[0],
+        Bar {
+            time: (JAN_1_2024_UTC_MS + 2 * DAY_MS) as f64,
+            ..bars_with_spacing(JAN_1_2024_UTC_MS + 2 * DAY_MS, DAY_MS, &[30.0])[0]
+        },
+    ];
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Hour1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Day1,
+                bars: daily,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points[23].value, Some(10.0));
+    assert_eq!(outputs.plots[0].points[47].value, None);
+    assert_eq!(outputs.plots[0].points[71].value, Some(30.0));
+}
+
+#[test]
+fn insufficient_history_capacity_rejects_at_engine_construction() {
+    let compiled = tradelang::compile("plot(1w.close[3])").expect("script should compile");
+    let err = run_multi_interval(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[1.0; 28]),
+        MultiIntervalConfig {
+            base_interval: Interval::Day1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Week1,
+                bars: bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[1.0, 2.0, 3.0, 4.0]),
+            }],
+        },
+        VmLimits {
+            max_instructions_per_bar: 10_000,
+            max_history_capacity: 2,
+        },
+    )
+    .expect_err("history cap should reject");
+    assert!(matches!(
+        err,
+        RuntimeError::HistoryCapacityExceeded {
+            required: 4,
+            limit: 2,
+            ..
+        }
+    ));
 }

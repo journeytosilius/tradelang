@@ -4,6 +4,7 @@
 //! VM hot path.
 
 use crate::types::Value;
+use crate::vm::SeriesBuffer;
 
 #[derive(Clone, Debug)]
 pub(crate) struct RsiState {
@@ -15,6 +16,8 @@ pub(crate) struct RsiState {
     seed_loss_sum: f64,
     seed_count: usize,
     len: usize,
+    last_seen_version: u64,
+    cached_output: Value,
 }
 
 impl RsiState {
@@ -28,6 +31,8 @@ impl RsiState {
             seed_loss_sum: 0.0,
             seed_count: 0,
             len,
+            last_seen_version: 0,
+            cached_output: Value::NA,
         }
     }
 
@@ -35,9 +40,32 @@ impl RsiState {
         !self.seeded && self.last_price.is_some()
     }
 
-    pub(crate) fn update(&mut self, current_price: f64) -> Value {
+    pub(crate) const fn last_seen_version(&self) -> u64 {
+        self.last_seen_version
+    }
+
+    pub(crate) fn update(&mut self, buffer: &SeriesBuffer) -> Value {
+        let version = buffer.version();
+        if version == self.last_seen_version {
+            return self.cached_output.clone();
+        }
+        self.last_seen_version = version;
+
+        let current_price = match buffer.get(0) {
+            Value::F64(value) => value,
+            Value::NA => {
+                self.cached_output = Value::NA;
+                return Value::NA;
+            }
+            _ => {
+                self.cached_output = Value::NA;
+                return Value::NA;
+            }
+        };
+
         let Some(prev_price) = self.last_price else {
             self.last_price = Some(current_price);
+            self.cached_output = Value::NA;
             return Value::NA;
         };
 
@@ -52,6 +80,7 @@ impl RsiState {
             self.seed_count += 1;
 
             if self.seed_count < self.len {
+                self.cached_output = Value::NA;
                 return Value::NA;
             }
 
@@ -64,10 +93,12 @@ impl RsiState {
         }
 
         if self.avg_loss == 0.0 {
-            Value::F64(100.0)
+            self.cached_output = Value::F64(100.0);
+            self.cached_output.clone()
         } else {
             let rs = self.avg_gain / self.avg_loss;
-            Value::F64(100.0 - (100.0 / (1.0 + rs)))
+            self.cached_output = Value::F64(100.0 - (100.0 / (1.0 + rs)));
+            self.cached_output.clone()
         }
     }
 }
@@ -76,6 +107,7 @@ impl RsiState {
 mod tests {
     use super::RsiState;
     use crate::types::Value;
+    use crate::vm::SeriesBuffer;
 
     fn assert_f64_eq(value: Value, expected: f64) {
         match value {
@@ -87,31 +119,42 @@ mod tests {
     #[test]
     fn seeds_after_enough_deltas_and_returns_hundred_for_rising_prices() {
         let mut state = RsiState::new(3);
+        let mut buffer = SeriesBuffer::new(8);
 
         assert!(!state.requires_seed_step());
-        assert_eq!(state.update(1.0), Value::NA);
+        buffer.push(Value::F64(1.0));
+        assert_eq!(state.update(&buffer), Value::NA);
         assert!(state.requires_seed_step());
 
-        assert_eq!(state.update(2.0), Value::NA);
+        buffer.push(Value::F64(2.0));
+        assert_eq!(state.update(&buffer), Value::NA);
         assert!(state.requires_seed_step());
 
-        assert_eq!(state.update(3.0), Value::NA);
+        buffer.push(Value::F64(3.0));
+        assert_eq!(state.update(&buffer), Value::NA);
         assert!(state.requires_seed_step());
 
-        let seeded = state.update(4.0);
+        buffer.push(Value::F64(4.0));
+        let seeded = state.update(&buffer);
         assert_f64_eq(seeded, 100.0);
     }
 
     #[test]
     fn smooths_gain_and_loss_after_seed() {
         let mut state = RsiState::new(3);
+        let mut buffer = SeriesBuffer::new(8);
 
-        assert_eq!(state.update(1.0), Value::NA);
-        assert_eq!(state.update(2.0), Value::NA);
-        assert_eq!(state.update(3.0), Value::NA);
-        assert_f64_eq(state.update(4.0), 100.0);
+        buffer.push(Value::F64(1.0));
+        assert_eq!(state.update(&buffer), Value::NA);
+        buffer.push(Value::F64(2.0));
+        assert_eq!(state.update(&buffer), Value::NA);
+        buffer.push(Value::F64(3.0));
+        assert_eq!(state.update(&buffer), Value::NA);
+        buffer.push(Value::F64(4.0));
+        assert_f64_eq(state.update(&buffer), 100.0);
 
-        let next = state.update(3.0);
+        buffer.push(Value::F64(3.0));
+        let next = state.update(&buffer);
         assert_f64_eq(next, 66.66666666666666);
     }
 }

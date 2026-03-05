@@ -7,6 +7,42 @@ use crate::diagnostic::RuntimeError;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;
 
+#[derive(Clone, Debug)]
+pub(crate) struct SmaState {
+    window: usize,
+    last_seen_version: u64,
+    cached_output: Value,
+}
+
+impl SmaState {
+    pub(crate) fn new(window: usize) -> Self {
+        Self {
+            window,
+            last_seen_version: 0,
+            cached_output: Value::NA,
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        buffer: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Option<Value>, RuntimeError> {
+        let version = buffer.version();
+        if version == self.last_seen_version {
+            return Ok(None);
+        }
+        self.last_seen_version = version;
+        let value = calculate(buffer, self.window, pc)?;
+        self.cached_output = value.clone();
+        Ok(Some(value))
+    }
+
+    pub(crate) fn cached_output(&self) -> Value {
+        self.cached_output.clone()
+    }
+}
+
 pub(crate) fn calculate(
     buffer: &SeriesBuffer,
     window: usize,

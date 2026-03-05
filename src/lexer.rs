@@ -6,6 +6,7 @@
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::{Position, Span};
 use crate::token::{Token, TokenKind};
+use crate::Interval;
 
 pub trait Lexer {
     fn lex(&self, source: &str) -> Result<Vec<Token>, CompileError>;
@@ -84,7 +85,7 @@ impl<'a> LexerState<'a> {
                         self.bump_char();
                     }
                 }
-                '0'..='9' => self.lex_number(),
+                '0'..='9' => self.lex_number_or_interval(),
                 'a'..='z' | 'A'..='Z' | '_' => self.lex_ident(),
                 '(' => self.push_single(TokenKind::LeftParen, true, false),
                 ')' => self.push_single(TokenKind::RightParen, false, false),
@@ -93,6 +94,7 @@ impl<'a> LexerState<'a> {
                 '[' => self.push_single(TokenKind::LeftBracket, false, true),
                 ']' => self.push_single(TokenKind::RightBracket, false, false),
                 ',' => self.push_single(TokenKind::Comma, false, false),
+                '.' => self.push_single(TokenKind::Dot, false, false),
                 '+' => self.push_single(TokenKind::Plus, false, false),
                 '-' => self.push_single(TokenKind::Minus, false, false),
                 '*' => self.push_single(TokenKind::Star, false, false),
@@ -147,11 +149,28 @@ impl<'a> LexerState<'a> {
         }
     }
 
-    fn lex_number(&mut self) {
+    fn lex_number_or_interval(&mut self) {
         let start = self.position();
         let mut text = String::new();
         while matches!(self.peek_char(), Some('0'..='9')) {
             text.push(self.bump_char().unwrap());
+        }
+        if matches!(self.peek_char(), Some('a'..='z' | 'A'..='Z')) {
+            while matches!(self.peek_char(), Some('a'..='z' | 'A'..='Z')) {
+                text.push(self.bump_char().unwrap());
+            }
+            match Interval::parse(&text) {
+                Some(interval) => self.tokens.push(Token::new(
+                    TokenKind::Interval(interval),
+                    Span::new(start, self.position()),
+                )),
+                None => self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Lex,
+                    format!("unknown interval literal `{text}`"),
+                    Span::new(start, self.position()),
+                )),
+            }
+            return;
         }
         if self.peek_char() == Some('.') && matches!(self.peek_next_char(), Some('0'..='9')) {
             text.push(self.bump_char().unwrap());

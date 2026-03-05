@@ -4,6 +4,7 @@
 //! between parsing and compilation.
 
 use crate::span::Span;
+use crate::{Interval, MarketField};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -69,6 +70,10 @@ pub enum ExprKind {
     Bool(bool),
     Na,
     Ident(String),
+    QualifiedSeries {
+        interval: Interval,
+        field: MarketField,
+    },
     Unary {
         op: UnaryOp,
         expr: Box<Expr>,

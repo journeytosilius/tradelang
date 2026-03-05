@@ -172,3 +172,37 @@ fn supports_multiple_function_specializations() {
     )
     .expect("function specializations should compile");
 }
+
+#[test]
+fn parses_interval_qualified_series() {
+    compile("plot(1w.close)").expect("qualified series should compile");
+}
+
+#[test]
+fn parses_interval_series_in_calls_and_indexing() {
+    compile("plot(ema(4h.high, 5)[1])").expect("qualified series should compose");
+}
+
+#[test]
+fn supports_qualified_series_in_user_functions() {
+    compile("fn rising(x) = x > x[1]\nif rising(1d.close) { plot(1) } else { plot(0) }")
+        .expect("qualified series should specialize");
+}
+
+#[test]
+fn rejects_bare_interval_literals() {
+    let message = compile_err("plot(1w)");
+    assert!(message.contains("expected `.` after interval literal"));
+}
+
+#[test]
+fn rejects_invalid_qualified_market_fields() {
+    let message = compile_err("plot(1w.foo)");
+    assert!(message.contains("expected market field after `.`"));
+}
+
+#[test]
+fn rejects_calling_interval_qualified_series() {
+    let message = compile_err("plot(1w.close())");
+    assert!(message.contains("only identifiers can be called in v0.1"));
+}

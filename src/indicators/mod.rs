@@ -9,9 +9,11 @@ pub(crate) mod sma;
 
 pub(crate) use ema::EmaState;
 pub(crate) use rsi::RsiState;
+pub(crate) use sma::SmaState;
 
 #[derive(Clone, Debug)]
 pub(crate) enum IndicatorState {
+    Sma(SmaState),
     Ema(EmaState),
     Rsi(RsiState),
 }

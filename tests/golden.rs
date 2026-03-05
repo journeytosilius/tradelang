@@ -1,5 +1,7 @@
 use serde_json::json;
-use tradelang::{compile, run, Bar, VmLimits};
+use tradelang::{
+    compile, run, run_multi_interval, Bar, Interval, IntervalFeed, MultiIntervalConfig, VmLimits,
+};
 
 fn fixture_bars() -> Vec<Bar> {
     (0..20)
@@ -13,6 +15,29 @@ fn fixture_bars() -> Vec<Bar> {
                 volume: 1_000.0 + index as f64,
                 time: 1_700_000_000_000.0 + index as f64 * 60_000.0,
             }
+        })
+        .collect()
+}
+
+const MINUTE_MS: i64 = 60_000;
+const HOUR_MS: i64 = 60 * MINUTE_MS;
+const DAY_MS: i64 = 24 * HOUR_MS;
+const WEEK_MS: i64 = 7 * DAY_MS;
+const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
+const FEB_1_2024_UTC_MS: i64 = 1_706_745_600_000;
+const MAR_1_2024_UTC_MS: i64 = 1_709_251_200_000;
+
+fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar> {
+    closes
+        .iter()
+        .enumerate()
+        .map(|(index, close)| Bar {
+            open: *close - 0.5,
+            high: *close + 1.0,
+            low: *close - 1.0,
+            close: *close,
+            volume: 1_000.0 + index as f64,
+            time: (start_ms + spacing_ms * index as i64) as f64,
         })
         .collect()
 }
@@ -192,4 +217,76 @@ fn golden_indicator_helper_shape_matches() {
         serde_json::json!(0.0)
     );
     assert_eq!(json["plots"][0]["points"].as_array().unwrap().len(), 20);
+}
+
+#[test]
+fn golden_minute_execution_with_weekly_signal_shape_matches() {
+    let compiled =
+        compile("if close > ema(1w.close, 2) { plot(1) } else { plot(0) }").expect("compiles");
+    let base = bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[100.0; 21]);
+    let weekly = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[90.0, 95.0, 105.0]);
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Day1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Week1,
+                bars: weekly,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][5]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][6]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][13]["value"],
+        serde_json::json!(1.0)
+    );
+}
+
+#[test]
+fn golden_monthly_reference_shape_matches() {
+    let compiled =
+        compile("if 1M.close > 1M.close[1] { plot(1) } else { plot(0) }").expect("compiles");
+    let base = bars_with_spacing(
+        JAN_1_2024_UTC_MS,
+        WEEK_MS,
+        &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+    );
+    let monthly = vec![
+        bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[100.0])[0],
+        bars_with_spacing(FEB_1_2024_UTC_MS, DAY_MS, &[120.0])[0],
+        bars_with_spacing(MAR_1_2024_UTC_MS, DAY_MS, &[110.0])[0],
+    ];
+    let outputs = run_multi_interval(
+        &compiled,
+        &base,
+        MultiIntervalConfig {
+            base_interval: Interval::Week1,
+            supplemental: vec![IntervalFeed {
+                interval: Interval::Month1,
+                bars: monthly,
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][3]["value"],
+        serde_json::json!(0.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][4]["value"],
+        serde_json::json!(0.0)
+    );
 }

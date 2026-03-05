@@ -13,6 +13,8 @@ pub(crate) struct EmaState {
     alpha: f64,
     value: f64,
     seed_window: usize,
+    last_seen_version: u64,
+    cached_output: Value,
 }
 
 impl EmaState {
@@ -22,6 +24,8 @@ impl EmaState {
             alpha: 2.0 / (window as f64 + 1.0),
             value: 0.0,
             seed_window: window,
+            last_seen_version: 0,
+            cached_output: Value::NA,
         }
     }
 
@@ -33,14 +37,40 @@ impl EmaState {
         self.seed_window
     }
 
+    pub(crate) const fn last_seen_version(&self) -> u64 {
+        self.last_seen_version
+    }
+
     pub(crate) fn update(
         &mut self,
-        current_price: f64,
         buffer: &SeriesBuffer,
         pc: usize,
     ) -> Result<Value, RuntimeError> {
+        let version = buffer.version();
+        if version == self.last_seen_version {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_seen_version = version;
+
+        let current_price = buffer.get(0);
+        if current_price.is_na() {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        }
+        let current_price = match current_price {
+            Value::F64(value) => value,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+
         if !self.seeded {
             if buffer.len() < self.seed_window {
+                self.cached_output = Value::NA;
                 return Ok(Value::NA);
             }
 
@@ -48,7 +78,10 @@ impl EmaState {
             for sample in buffer.iter_recent(self.seed_window) {
                 match sample {
                     Value::F64(sample) => sum += sample,
-                    Value::NA => return Ok(Value::NA),
+                    Value::NA => {
+                        self.cached_output = Value::NA;
+                        return Ok(Value::NA);
+                    }
                     other => {
                         return Err(RuntimeError::TypeMismatch {
                             pc,
@@ -61,11 +94,13 @@ impl EmaState {
 
             self.value = sum / self.seed_window as f64;
             self.seeded = true;
-            return Ok(Value::F64(self.value));
+            self.cached_output = Value::F64(self.value);
+            return Ok(self.cached_output.clone());
         }
 
         self.value = self.alpha * current_price + (1.0 - self.alpha) * self.value;
-        Ok(Value::F64(self.value))
+        self.cached_output = Value::F64(self.value);
+        Ok(self.cached_output.clone())
     }
 }
 
@@ -90,16 +125,12 @@ mod tests {
         buffer.push(Value::F64(2.0));
         buffer.push(Value::F64(3.0));
 
-        let seeded = state
-            .update(3.0, &buffer, 0)
-            .expect("ema seed should succeed");
+        let seeded = state.update(&buffer, 0).expect("ema seed should succeed");
         assert_f64_eq(seeded, 2.0);
         assert!(state.is_seeded());
 
         buffer.push(Value::F64(4.0));
-        let next = state
-            .update(4.0, &buffer, 0)
-            .expect("ema update should succeed");
+        let next = state.update(&buffer, 0).expect("ema update should succeed");
         assert_f64_eq(next, 3.0);
     }
 
@@ -111,7 +142,7 @@ mod tests {
         buffer.push(Value::F64(2.0));
 
         let value = state
-            .update(2.0, &buffer, 0)
+            .update(&buffer, 0)
             .expect("ema should succeed with short history");
 
         assert_eq!(value, Value::NA);
@@ -127,7 +158,7 @@ mod tests {
         buffer.push(Value::F64(3.0));
 
         let value = state
-            .update(3.0, &buffer, 0)
+            .update(&buffer, 0)
             .expect("ema should succeed when seed window contains na");
 
         assert_eq!(value, Value::NA);

@@ -5,6 +5,7 @@
 
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
+use crate::{MarketBinding, MarketSource};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,6 +88,9 @@ pub struct LocalInfo {
     pub ty: Type,
     pub kind: SlotKind,
     pub hidden: bool,
+    pub history_capacity: usize,
+    pub update_mask: u32,
+    pub market_binding: Option<MarketBinding>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -96,4 +100,46 @@ pub struct Program {
     pub locals: Vec<LocalInfo>,
     pub history_capacity: usize,
     pub plot_count: usize,
+}
+
+impl LocalInfo {
+    pub fn scalar(name: Option<String>, ty: Type, hidden: bool) -> Self {
+        Self {
+            name,
+            ty,
+            kind: SlotKind::Scalar,
+            hidden,
+            history_capacity: 1,
+            update_mask: 0,
+            market_binding: None,
+        }
+    }
+
+    pub fn series(
+        name: Option<String>,
+        ty: Type,
+        hidden: bool,
+        update_mask: u32,
+        market_binding: Option<MarketBinding>,
+    ) -> Self {
+        Self {
+            name,
+            ty,
+            kind: SlotKind::Series,
+            hidden,
+            history_capacity: 2,
+            update_mask,
+            market_binding,
+        }
+    }
+
+    pub const fn is_base_market(&self) -> bool {
+        matches!(
+            self.market_binding,
+            Some(MarketBinding {
+                source: MarketSource::Base,
+                ..
+            })
+        )
+    }
 }

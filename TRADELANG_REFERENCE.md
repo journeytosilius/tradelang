@@ -25,17 +25,29 @@ The implemented language supports:
 - builtins: `sma`, `ema`, `rsi`, `plot`
 - predefined market data series: `open`, `high`, `low`, `close`, `volume`,
   `time`
+- interval-qualified market series such as `1w.close` and `4h.volume`
 
 ## Execution Model
 
-TradeLang scripts are compiled once and then executed once per bar.
+TradeLang scripts are compiled once and then executed once per base-interval
+bar.
 
 At each bar:
 
-1. market data values are loaded into predefined series
-2. the compiled bytecode runs
-3. current values may be stored into bounded series buffers
-4. `plot(...)` outputs are emitted for the current bar
+1. base-interval market data values are loaded into predefined series
+2. referenced higher/equal interval feeds are advanced up to the current
+   fully closed base-bar boundary
+3. the compiled bytecode runs
+4. current values may be stored into bounded series buffers
+5. `plot(...)` outputs are emitted for the current bar
+
+For multi-interval scripts:
+
+- `Bar.time` is interpreted as candle open time in Unix milliseconds UTC
+- interval-qualified series expose the last fully closed candle for that
+  interval
+- no partial higher-timeframe candle is ever visible
+- lower-than-base interval references are rejected when the runtime binds feeds
 
 TradeLang is deterministic:
 
@@ -148,6 +160,36 @@ Current constraints:
 - no leading-dot form like `.5`
 - negative numbers are written with unary `-`, not as signed literals
 
+### Interval Literals
+
+TradeLang supports Binance interval literals for interval-qualified market
+series.
+
+Supported literals are case-sensitive:
+
+- `1s`
+- `1m`
+- `3m`
+- `5m`
+- `15m`
+- `30m`
+- `1h`
+- `2h`
+- `4h`
+- `6h`
+- `8h`
+- `12h`
+- `1d`
+- `3d`
+- `1w`
+- `1M`
+
+Important cases:
+
+- weekly is `1w`
+- monthly is `1M`
+- `1W` is invalid
+
 ## Grammar Sketch
 
 This is a practical sketch of the implemented grammar, not a formal grammar.
@@ -172,6 +214,7 @@ prefix       := number
              | "false"
              | "na"
              | ident
+             | interval "." market_field
              | "-" expr
              | "!" expr
              | "(" expr ")"
@@ -180,6 +223,10 @@ postfix      := "(" args? ")"
              | "[" expr "]"
 
 args         := expr ("," expr)*
+interval     := "1s" | "1m" | "3m" | "5m" | "15m" | "30m"
+             | "1h" | "2h" | "4h" | "6h" | "8h" | "12h"
+             | "1d" | "3d" | "1w" | "1M"
+market_field := "open" | "high" | "low" | "close" | "volume" | "time"
 ```
 
 ## Operator Precedence
@@ -247,7 +294,7 @@ Example:
 plot(na)
 ```
 
-## Predefined Series
+## Market Series Access
 
 The following identifiers are predefined and available in every script:
 
@@ -259,6 +306,20 @@ The following identifiers are predefined and available in every script:
 - `time`
 
 These are series values, not ordinary functions.
+
+TradeLang also supports interval-qualified market series:
+
+- `1s.close`
+- `4h.high`
+- `1w.volume`
+- `1M.time`
+
+Rules:
+
+- interval-qualified market series are `series<f64>`
+- the visible value is the last fully closed candle for that interval
+- if no candle for that interval has closed yet, the value is `na`
+- lower-than-base interval references are rejected when the runtime binds feeds
 
 This is valid:
 
@@ -300,6 +361,7 @@ User-defined functions are intentionally restricted in v1:
 - functions are expression-bodied
 - functions may reference parameters, predefined series, builtins, and other
   user-defined functions
+- functions may reference interval-qualified market series
 - functions may not capture `let` bindings from the program or from blocks
 - duplicate function names are rejected
 - duplicate parameter names are rejected
@@ -482,6 +544,7 @@ if crossover(fast, slow) {
 Rules:
 
 - functions are analyzed per call signature and inlined at compile time
+- call signatures distinguish both argument types and source update clocks
 - arguments are evaluated left-to-right exactly once
 - valid return categories are the existing non-`void` value kinds plus `na`
 - `plot(...)` is not allowed inside function bodies
@@ -618,6 +681,13 @@ Indexing rules:
 - the index must be a non-negative integer literal
 - if there is insufficient history, the result is `na`
 
+For interval-qualified market series, indexing composes on that interval's own
+closed-candle clock. For example:
+
+- `1w.close[0]` is the latest fully closed weekly close
+- `1w.close[1]` is the previous fully closed weekly close
+- `ema(1w.close, 5)[1]` is the previous committed weekly EMA value
+
 Examples:
 
 ```tradelang
@@ -657,6 +727,12 @@ function behaves as though its body expression were inserted at the call site.
 This means `na` propagation is exactly the propagation already defined for the
 operators, indexing, and builtins used inside the function body.
 
+Multi-interval feeds also introduce these runtime `na` cases:
+
+- before the first fully closed candle exists for a referenced interval
+- when a referenced feed has a missing interior candle and the runtime
+  synthesizes an `na` step for that closed interval boundary
+
 ### Equality
 
 Equality compares the current runtime values being operated on.
@@ -685,6 +761,9 @@ if close > sma(close, 14) {
 }
 ```
 
+For interval-qualified series, history advances only when that interval closes.
+Derived series advance when one of their source interval clocks advances.
+
 ## Runtime Limits
 
 The runtime enforces limits through `VmLimits`.
@@ -699,7 +778,8 @@ The compiler computes required history from:
 - series indexing offsets
 - indicator window lengths
 
-At runtime, requested history is capped by `max_history_capacity`.
+History is tracked per series slot. If any slot requires more than
+`max_history_capacity`, engine construction fails.
 
 ## Outputs
 
@@ -740,6 +820,8 @@ Examples of current compile errors:
 - illegal function-body captures
 - recursive function definitions
 - `plot(...)` inside a function body
+- invalid interval literals such as `1W`
+- invalid interval-qualified market fields such as `1w.foo`
 
 The runtime reports errors for:
 
@@ -748,6 +830,10 @@ The runtime reports errors for:
 - invalid jump targets
 - invalid local or series slots
 - instruction budget exhaustion
+- missing or unexpected interval feeds
+- lower-than-base interval references
+- misaligned or unsorted interval feeds
+- history requirements that exceed `VmLimits.max_history_capacity`
 
 ## Unsupported or Not Yet Implemented
 
@@ -765,6 +851,7 @@ The following are not part of the language yet:
 - block-bodied functions
 - recursion
 - closures or captured local bindings
+- lower-than-base interval references
 
 ## Examples
 
@@ -785,6 +872,18 @@ if pullback_to(basis, close) {
     plot(1)
 } else {
     plot(na)
+}
+```
+
+Multi-interval examples:
+
+```tradelang
+let weekly_basis = ema(1w.close, 8)
+
+if close > weekly_basis and 1d.volume > 1d.volume[1] {
+    plot(1)
+} else {
+    plot(0)
 }
 ```
 

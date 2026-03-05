@@ -6,6 +6,7 @@
 
 use crate::bytecode::OpCode;
 use crate::span::Span;
+use crate::Interval;
 use thiserror::Error;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,4 +77,29 @@ pub enum RuntimeError {
     InvalidLocalSlot { slot: usize },
     #[error("invalid series slot {slot}")]
     InvalidSeriesSlot { slot: usize },
+    #[error("script requires multi-interval runtime configuration")]
+    MissingIntervalConfig,
+    #[error("missing interval feed for {interval:?}")]
+    MissingIntervalFeed { interval: Interval },
+    #[error("duplicate interval feed for {interval:?}")]
+    DuplicateIntervalFeed { interval: Interval },
+    #[error("unexpected interval feed for {interval:?}")]
+    UnexpectedIntervalFeed { interval: Interval },
+    #[error("lower interval reference {referenced:?} is not allowed with base interval {base:?}")]
+    LowerIntervalReference {
+        base: Interval,
+        referenced: Interval,
+    },
+    #[error("bar open time {open_time} is not aligned to interval {interval:?}")]
+    InvalidIntervalAlignment { interval: Interval, open_time: i64 },
+    #[error("interval feed {interval:?} is not strictly increasing at open time {open_time}")]
+    UnsortedIntervalFeed { interval: Interval, open_time: i64 },
+    #[error("interval feed {interval:?} contains a duplicate bar at open time {open_time}")]
+    DuplicateIntervalBar { interval: Interval, open_time: i64 },
+    #[error("required history {required} for slot {slot} exceeds max_history_capacity {limit}")]
+    HistoryCapacityExceeded {
+        slot: usize,
+        required: usize,
+        limit: usize,
+    },
 }

@@ -3,7 +3,7 @@
 //! This module drives lexing and parsing, performs semantic analysis and type
 //! inference, resolves locals and builtins, and emits deterministic bytecode.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
@@ -11,18 +11,20 @@ use crate::ast::{
 use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
+use crate::interval::{Interval, MarketBinding, MarketField, MarketSource};
 use crate::lexer;
 use crate::parser;
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
 
-const PREDEFINED_SERIES: [(&str, Type); 6] = [
-    ("open", Type::SeriesF64),
-    ("high", Type::SeriesF64),
-    ("low", Type::SeriesF64),
-    ("close", Type::SeriesF64),
-    ("volume", Type::SeriesF64),
-    ("time", Type::SeriesF64),
+const BASE_UPDATE_MASK: u32 = 1;
+const PREDEFINED_SERIES: [(&str, MarketField); 6] = [
+    ("open", MarketField::Open),
+    ("high", MarketField::High),
+    ("low", MarketField::Low),
+    ("close", MarketField::Close),
+    ("volume", MarketField::Volume),
+    ("time", MarketField::Time),
 ];
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -63,9 +65,35 @@ impl InferredType {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct ExprInfo {
+    ty: InferredType,
+    update_mask: u32,
+}
+
+impl ExprInfo {
+    const fn scalar(ty: Type) -> Self {
+        Self {
+            ty: InferredType::Concrete(ty),
+            update_mask: 0,
+        }
+    }
+
+    const fn series(mask: u32) -> Self {
+        Self {
+            ty: InferredType::Concrete(Type::SeriesF64),
+            update_mask: mask,
+        }
+    }
+
+    fn concrete(self) -> Option<Type> {
+        self.ty.concrete()
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 struct AnalyzerSymbol {
-    ty: InferredType,
+    info: ExprInfo,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -74,34 +102,40 @@ struct CompilerSymbol {
     ty: Type,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct FunctionArgShape {
+    ty: InferredType,
+    update_mask: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct FunctionSpecializationKey {
     function_id: NodeId,
-    arg_types: Vec<InferredType>,
+    arg_shapes: Vec<FunctionArgShape>,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct FunctionParamBinding {
     ty: Type,
     kind: SlotKind,
+    update_mask: u32,
 }
 
 #[derive(Clone, Debug)]
 struct FunctionSpecialization {
-    expr_types: HashMap<NodeId, InferredType>,
+    expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
-    return_type: InferredType,
-    history_capacity: usize,
+    return_info: ExprInfo,
     param_bindings: Vec<FunctionParamBinding>,
 }
 
 #[derive(Default)]
 struct Analysis {
-    expr_types: HashMap<NodeId, InferredType>,
+    expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
     resolved_let_slots: HashMap<NodeId, u16>,
     locals: Vec<LocalInfo>,
-    history_capacity: usize,
+    qualified_slots: HashMap<(Interval, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
 
@@ -119,19 +153,25 @@ impl<'a> Analyzer<'a> {
         let mut analyzer = Self {
             diagnostics: Vec::new(),
             scopes: vec![HashMap::new()],
-            analysis: Analysis {
-                history_capacity: 2,
-                ..Analysis::default()
-            },
+            analysis: Analysis::default(),
             functions_by_name: HashMap::new(),
             functions_by_id: HashMap::new(),
             active_specializations: HashSet::new(),
         };
 
-        for (name, ty) in PREDEFINED_SERIES {
-            analyzer.define_symbol(name.to_string(), InferredType::Concrete(ty), true);
+        for (name, field) in PREDEFINED_SERIES {
+            analyzer.define_symbol(
+                name.to_string(),
+                ExprInfo::series(BASE_UPDATE_MASK),
+                true,
+                Some(MarketBinding {
+                    source: MarketSource::Base,
+                    field,
+                }),
+            );
         }
         analyzer.collect_functions(ast);
+        analyzer.collect_qualified_series(ast);
         analyzer.validate_function_bodies();
         analyzer.validate_function_cycles();
         analyzer
@@ -187,6 +227,33 @@ impl<'a> Analyzer<'a> {
         }
     }
 
+    fn collect_qualified_series(&mut self, ast: &Ast) {
+        let mut refs = BTreeSet::new();
+        for function in &ast.functions {
+            collect_qualified_series_refs(&function.body, &mut refs);
+        }
+        for stmt in &ast.statements {
+            collect_qualified_series_stmt(stmt, &mut refs);
+        }
+
+        for (interval, field) in refs {
+            let slot = self.analysis.locals.len() as u16;
+            self.analysis.locals.push(LocalInfo::series(
+                None,
+                Type::SeriesF64,
+                true,
+                interval.mask(),
+                Some(MarketBinding {
+                    source: MarketSource::Qualified(interval),
+                    field,
+                }),
+            ));
+            self.analysis
+                .qualified_slots
+                .insert((interval, field), slot);
+        }
+    }
+
     fn validate_function_cycles(&mut self) {
         let mut visiting = HashSet::new();
         let mut visited = HashSet::new();
@@ -222,6 +289,7 @@ impl<'a> Analyzer<'a> {
                     ));
                 }
             }
+            ExprKind::QualifiedSeries { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
@@ -335,11 +403,8 @@ impl<'a> Analyzer<'a> {
     fn analyze_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
             StmtKind::Let { name, expr } => {
-                let expr_ty = self.analyze_expr(expr);
-                let concrete = match expr_ty {
-                    InferredType::Concrete(ty) => ty,
-                    InferredType::Na => Type::F64,
-                };
+                let expr_info = self.analyze_expr(expr);
+                let concrete = expr_info.ty.concrete().unwrap_or(Type::F64);
                 if self.scopes.last().unwrap().contains_key(name) {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
@@ -348,8 +413,15 @@ impl<'a> Analyzer<'a> {
                     ));
                     return;
                 }
-                let slot =
-                    self.define_symbol(name.clone(), InferredType::Concrete(concrete), false);
+                let slot = self.define_symbol(
+                    name.clone(),
+                    ExprInfo {
+                        ty: InferredType::Concrete(concrete),
+                        update_mask: expr_info.update_mask,
+                    },
+                    false,
+                    None,
+                );
                 self.analysis.resolved_let_slots.insert(stmt.id, slot);
             }
             StmtKind::If {
@@ -357,8 +429,8 @@ impl<'a> Analyzer<'a> {
                 then_block,
                 else_block,
             } => {
-                let ty = self.analyze_expr(condition);
-                if !ty.allow_bool() {
+                let info = self.analyze_expr(condition);
+                if !info.ty.allow_bool() {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         "if condition must be bool, series<bool>, or na",
@@ -384,11 +456,14 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    fn analyze_expr(&mut self, expr: &Expr) -> InferredType {
-        let inferred = match &expr.kind {
-            ExprKind::Number(_) => InferredType::Concrete(Type::F64),
-            ExprKind::Bool(_) => InferredType::Concrete(Type::Bool),
-            ExprKind::Na => InferredType::Na,
+    fn analyze_expr(&mut self, expr: &Expr) -> ExprInfo {
+        let info = match &expr.kind {
+            ExprKind::Number(_) => ExprInfo::scalar(Type::F64),
+            ExprKind::Bool(_) => ExprInfo::scalar(Type::Bool),
+            ExprKind::Na => ExprInfo {
+                ty: InferredType::Na,
+                update_mask: 0,
+            },
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
                     self.diagnostics.push(Diagnostic::new(
@@ -396,49 +471,58 @@ impl<'a> Analyzer<'a> {
                         format!("unknown identifier `{name}`"),
                         expr.span,
                     ));
-                    return InferredType::Concrete(Type::F64);
+                    return ExprInfo::scalar(Type::F64);
                 };
-                symbol.ty
+                symbol.info
             }
+            ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
             ExprKind::Unary { op, expr: inner } => self.analyze_unary(*op, inner),
             ExprKind::Binary { op, left, right } => self.analyze_binary(*op, left, right),
             ExprKind::Call { callee, args } => self.analyze_call(expr, callee, args),
             ExprKind::Index { target, index } => self.analyze_index(target, index, expr.span),
         };
-        self.analysis.expr_types.insert(expr.id, inferred);
-        inferred
+        self.analysis.expr_info.insert(expr.id, info);
+        info
     }
 
-    fn analyze_unary(&mut self, op: UnaryOp, inner: &Expr) -> InferredType {
-        let inner_ty = self.analyze_expr(inner);
-        infer_unary(op, inner_ty, inner.span, &mut self.diagnostics)
+    fn analyze_unary(&mut self, op: UnaryOp, inner: &Expr) -> ExprInfo {
+        let inner_info = self.analyze_expr(inner);
+        let ty = infer_unary(op, inner_info.ty, inner.span, &mut self.diagnostics);
+        ExprInfo {
+            ty,
+            update_mask: inner_info.update_mask,
+        }
     }
 
-    fn analyze_binary(&mut self, op: BinaryOp, left: &Expr, right: &Expr) -> InferredType {
-        let left_ty = self.analyze_expr(left);
-        let right_ty = self.analyze_expr(right);
-        infer_binary(
+    fn analyze_binary(&mut self, op: BinaryOp, left: &Expr, right: &Expr) -> ExprInfo {
+        let left_info = self.analyze_expr(left);
+        let right_info = self.analyze_expr(right);
+        let ty = infer_binary(
             op,
-            left_ty,
-            right_ty,
+            left_info.ty,
+            right_info.ty,
             left.span.merge(right.span),
             &mut self.diagnostics,
-        )
+        );
+        ExprInfo {
+            ty,
+            update_mask: left_info.update_mask | right_info.update_mask,
+        }
     }
 
-    fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> InferredType {
+    fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> ExprInfo {
         if let Some(builtin) = BuiltinId::from_name(callee) {
             return self.analyze_builtin_call(builtin, callee, args, expr.span, false);
         }
 
-        let arg_types: Vec<InferredType> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
+        let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
         let Some(function) = self.functions_by_name.get(callee).copied() else {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!("unknown function `{callee}`"),
                 expr.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         };
 
         if args.len() != function.params.len() {
@@ -451,22 +535,23 @@ impl<'a> Analyzer<'a> {
                 ),
                 expr.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         }
 
         let key = FunctionSpecializationKey {
             function_id: function.id,
-            arg_types,
+            arg_shapes: arg_info
+                .iter()
+                .map(|info| FunctionArgShape {
+                    ty: info.ty,
+                    update_mask: info.update_mask,
+                })
+                .collect(),
         };
         self.analysis
             .user_function_calls
             .insert(expr.id, key.clone());
-        let return_type = self.ensure_function_specialization(&key, expr.span);
-        if let Some(spec) = self.analysis.function_specializations.get(&key) {
-            self.analysis.history_capacity =
-                self.analysis.history_capacity.max(spec.history_capacity);
-        }
-        return_type
+        self.ensure_function_specialization(&key, expr.span)
     }
 
     fn analyze_builtin_call(
@@ -476,7 +561,7 @@ impl<'a> Analyzer<'a> {
         args: &[Expr],
         span: Span,
         in_function_body: bool,
-    ) -> InferredType {
+    ) -> ExprInfo {
         match builtin {
             BuiltinId::Plot => {
                 if in_function_body {
@@ -492,11 +577,11 @@ impl<'a> Analyzer<'a> {
                         "plot expects exactly one argument",
                         span,
                     ));
-                    return InferredType::Concrete(Type::Void);
+                    return ExprInfo::scalar(Type::Void);
                 }
-                let arg_ty = self.analyze_expr(&args[0]);
+                let arg_info = self.analyze_expr(&args[0]);
                 if !matches!(
-                    arg_ty,
+                    arg_info.ty,
                     InferredType::Concrete(Type::F64 | Type::SeriesF64) | InferredType::Na
                 ) {
                     self.diagnostics.push(Diagnostic::new(
@@ -505,7 +590,7 @@ impl<'a> Analyzer<'a> {
                         args[0].span,
                     ));
                 }
-                InferredType::Concrete(Type::Void)
+                ExprInfo::scalar(Type::Void)
             }
             BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
                 if args.len() != 2 {
@@ -514,10 +599,10 @@ impl<'a> Analyzer<'a> {
                         format!("{callee} expects exactly two arguments"),
                         span,
                     ));
-                    return InferredType::Concrete(Type::SeriesF64);
+                    return ExprInfo::series(0);
                 }
-                let series_ty = self.analyze_expr(&args[0]);
-                if !matches!(series_ty, InferredType::Concrete(Type::SeriesF64)) {
+                let series_info = self.analyze_expr(&args[0]);
+                if !matches!(series_info.ty, InferredType::Concrete(Type::SeriesF64)) {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!("{callee} requires series<float> as the first argument"),
@@ -525,10 +610,7 @@ impl<'a> Analyzer<'a> {
                     ));
                 }
                 match literal_window(&args[1]) {
-                    Some(window) if window > 0 => {
-                        self.analysis.history_capacity =
-                            self.analysis.history_capacity.max(window + 1);
-                    }
+                    Some(window) if window > 0 => {}
                     Some(_) => self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!("{callee} length must be greater than zero"),
@@ -540,7 +622,10 @@ impl<'a> Analyzer<'a> {
                         args[1].span,
                     )),
                 }
-                InferredType::Concrete(Type::SeriesF64)
+                ExprInfo {
+                    ty: InferredType::Concrete(Type::SeriesF64),
+                    update_mask: series_info.update_mask,
+                }
             }
             BuiltinId::Open
             | BuiltinId::High
@@ -556,23 +641,22 @@ impl<'a> Analyzer<'a> {
                 for arg in args {
                     self.analyze_expr(arg);
                 }
-                InferredType::Concrete(Type::SeriesF64)
+                ExprInfo::series(0)
             }
         }
     }
 
-    fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> InferredType {
-        let target_ty = self.analyze_expr(target);
-        let Some(offset) = literal_window(index) else {
+    fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> ExprInfo {
+        let target_info = self.analyze_expr(target);
+        let Some(_) = literal_window(index) else {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 "series indexing requires a non-negative integer literal",
                 index.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         };
-        self.analysis.history_capacity = self.analysis.history_capacity.max(offset + 1);
-        match target_ty {
+        let ty = match target_info.ty {
             InferredType::Concrete(Type::SeriesF64) => InferredType::Concrete(Type::F64),
             InferredType::Concrete(Type::SeriesBool) => InferredType::Concrete(Type::Bool),
             InferredType::Na => InferredType::Na,
@@ -584,6 +668,10 @@ impl<'a> Analyzer<'a> {
                 ));
                 InferredType::Concrete(Type::F64)
             }
+        };
+        ExprInfo {
+            ty,
+            update_mask: target_info.update_mask,
         }
     }
 
@@ -591,9 +679,9 @@ impl<'a> Analyzer<'a> {
         &mut self,
         key: &FunctionSpecializationKey,
         span: Span,
-    ) -> InferredType {
+    ) -> ExprInfo {
         if let Some(spec) = self.analysis.function_specializations.get(key) {
-            return spec.return_type;
+            return spec.return_info;
         }
         if !self.active_specializations.insert(key.clone()) {
             self.diagnostics.push(Diagnostic::new(
@@ -601,17 +689,17 @@ impl<'a> Analyzer<'a> {
                 "recursive and cyclic function definitions are not allowed",
                 span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         }
 
-        let return_type = match self.functions_by_id.get(&key.function_id).copied() {
+        let return_info = match self.functions_by_id.get(&key.function_id).copied() {
             Some(function) => {
-                let spec = FunctionAnalyzer::new(self, function, key.arg_types.clone()).analyze();
-                let return_type = spec.return_type;
+                let spec = FunctionAnalyzer::new(self, function, key.arg_shapes.clone()).analyze();
+                let return_info = spec.return_info;
                 self.analysis
                     .function_specializations
                     .insert(key.clone(), spec);
-                return_type
+                return_info
             }
             None => {
                 self.diagnostics.push(Diagnostic::new(
@@ -619,12 +707,12 @@ impl<'a> Analyzer<'a> {
                     "unknown function specialization target",
                     span,
                 ));
-                InferredType::Concrete(Type::F64)
+                ExprInfo::scalar(Type::F64)
             }
         };
 
         self.active_specializations.remove(key);
-        return_type
+        return_info
     }
 
     fn push_scope(&mut self) {
@@ -635,27 +723,35 @@ impl<'a> Analyzer<'a> {
         self.scopes.pop();
     }
 
-    fn define_symbol(&mut self, name: String, ty: InferredType, hidden: bool) -> u16 {
+    fn define_symbol(
+        &mut self,
+        name: String,
+        info: ExprInfo,
+        hidden: bool,
+        market_binding: Option<MarketBinding>,
+    ) -> u16 {
         let slot = self.analysis.locals.len() as u16;
-        let concrete = match ty {
-            InferredType::Concrete(ty) => ty,
-            InferredType::Na => Type::SeriesF64,
-        };
-        let kind = if concrete.is_series() {
-            SlotKind::Series
+        let concrete = info.ty.concrete().unwrap_or(Type::F64);
+        let local = if concrete.is_series() {
+            LocalInfo::series(
+                if hidden { None } else { Some(name.clone()) },
+                concrete,
+                hidden,
+                info.update_mask,
+                market_binding,
+            )
         } else {
-            SlotKind::Scalar
+            LocalInfo::scalar(
+                if hidden { None } else { Some(name.clone()) },
+                concrete,
+                hidden,
+            )
         };
-        self.analysis.locals.push(LocalInfo {
-            name: if hidden { None } else { Some(name.clone()) },
-            ty: concrete,
-            kind,
-            hidden,
-        });
+        self.analysis.locals.push(local);
         self.scopes
             .last_mut()
             .unwrap()
-            .insert(name, AnalyzerSymbol { ty });
+            .insert(name, AnalyzerSymbol { info });
         slot
     }
 
@@ -671,9 +767,8 @@ struct FunctionAnalyzer<'a, 'b> {
     parent: &'b mut Analyzer<'a>,
     function: &'a FunctionDecl,
     scopes: Vec<HashMap<String, AnalyzerSymbol>>,
-    expr_types: HashMap<NodeId, InferredType>,
+    expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
-    history_capacity: usize,
     param_bindings: Vec<FunctionParamBinding>,
 }
 
@@ -681,38 +776,41 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
     fn new(
         parent: &'b mut Analyzer<'a>,
         function: &'a FunctionDecl,
-        arg_types: Vec<InferredType>,
+        arg_shapes: Vec<FunctionArgShape>,
     ) -> Self {
         let mut root = HashMap::new();
-        for (name, ty) in PREDEFINED_SERIES {
+        for (name, _) in PREDEFINED_SERIES {
             root.insert(
                 name.to_string(),
                 AnalyzerSymbol {
-                    ty: InferredType::Concrete(ty),
+                    info: ExprInfo::series(BASE_UPDATE_MASK),
                 },
             );
         }
 
         let mut param_bindings = Vec::with_capacity(function.params.len());
-        for (param, arg_ty) in function.params.iter().zip(arg_types) {
-            root.insert(param.name.clone(), AnalyzerSymbol { ty: arg_ty });
-            param_bindings.push(param_binding(arg_ty));
+        for (param, arg_shape) in function.params.iter().zip(arg_shapes) {
+            let info = ExprInfo {
+                ty: arg_shape.ty,
+                update_mask: arg_shape.update_mask,
+            };
+            root.insert(param.name.clone(), AnalyzerSymbol { info });
+            param_bindings.push(param_binding(arg_shape));
         }
 
         Self {
             parent,
             function,
             scopes: vec![root],
-            expr_types: HashMap::new(),
+            expr_info: HashMap::new(),
             user_function_calls: HashMap::new(),
-            history_capacity: 2,
             param_bindings,
         }
     }
 
     fn analyze(mut self) -> FunctionSpecialization {
-        let return_type = self.analyze_expr(&self.function.body);
-        if matches!(return_type, InferredType::Concrete(Type::Void)) {
+        let return_info = self.analyze_expr(&self.function.body);
+        if matches!(return_info.ty, InferredType::Concrete(Type::Void)) {
             self.parent.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!("function `{}` must not return void", self.function.name),
@@ -720,21 +818,23 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
             ));
         }
         FunctionSpecialization {
-            expr_types: self.expr_types,
+            expr_info: self.expr_info,
             user_function_calls: self.user_function_calls,
-            return_type,
-            history_capacity: self.history_capacity,
+            return_info,
             param_bindings: self.param_bindings,
         }
     }
 
-    fn analyze_expr(&mut self, expr: &Expr) -> InferredType {
-        let inferred = match &expr.kind {
-            ExprKind::Number(_) => InferredType::Concrete(Type::F64),
-            ExprKind::Bool(_) => InferredType::Concrete(Type::Bool),
-            ExprKind::Na => InferredType::Na,
+    fn analyze_expr(&mut self, expr: &Expr) -> ExprInfo {
+        let info = match &expr.kind {
+            ExprKind::Number(_) => ExprInfo::scalar(Type::F64),
+            ExprKind::Bool(_) => ExprInfo::scalar(Type::Bool),
+            ExprKind::Na => ExprInfo {
+                ty: InferredType::Na,
+                update_mask: 0,
+            },
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
-                Some(symbol) => symbol.ty,
+                Some(symbol) => symbol.info,
                 None => {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
@@ -743,44 +843,51 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                         ),
                         expr.span,
                     ));
-                    InferredType::Concrete(Type::F64)
+                    ExprInfo::scalar(Type::F64)
                 }
             },
+            ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
             ExprKind::Unary { op, expr: inner } => {
-                let inner_ty = self.analyze_expr(inner);
-                infer_unary(*op, inner_ty, inner.span, &mut self.parent.diagnostics)
+                let inner_info = self.analyze_expr(inner);
+                ExprInfo {
+                    ty: infer_unary(*op, inner_info.ty, inner.span, &mut self.parent.diagnostics),
+                    update_mask: inner_info.update_mask,
+                }
             }
             ExprKind::Binary { op, left, right } => {
-                let left_ty = self.analyze_expr(left);
-                let right_ty = self.analyze_expr(right);
-                infer_binary(
-                    *op,
-                    left_ty,
-                    right_ty,
-                    left.span.merge(right.span),
-                    &mut self.parent.diagnostics,
-                )
+                let left_info = self.analyze_expr(left);
+                let right_info = self.analyze_expr(right);
+                ExprInfo {
+                    ty: infer_binary(
+                        *op,
+                        left_info.ty,
+                        right_info.ty,
+                        left.span.merge(right.span),
+                        &mut self.parent.diagnostics,
+                    ),
+                    update_mask: left_info.update_mask | right_info.update_mask,
+                }
             }
             ExprKind::Call { callee, args } => self.analyze_call(expr, callee, args),
             ExprKind::Index { target, index } => self.analyze_index(target, index, expr.span),
         };
-        self.expr_types.insert(expr.id, inferred);
-        inferred
+        self.expr_info.insert(expr.id, info);
+        info
     }
 
-    fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> InferredType {
+    fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> ExprInfo {
         if let Some(builtin) = BuiltinId::from_name(callee) {
             return self.analyze_builtin_call(builtin, callee, args, expr.span);
         }
 
-        let arg_types: Vec<InferredType> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
+        let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
         let Some(function) = self.parent.functions_by_name.get(callee).copied() else {
             self.parent.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!("unknown function `{callee}`"),
                 expr.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         };
 
         if args.len() != function.params.len() {
@@ -793,19 +900,21 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ),
                 expr.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         }
 
         let key = FunctionSpecializationKey {
             function_id: function.id,
-            arg_types,
+            arg_shapes: arg_info
+                .iter()
+                .map(|info| FunctionArgShape {
+                    ty: info.ty,
+                    update_mask: info.update_mask,
+                })
+                .collect(),
         };
         self.user_function_calls.insert(expr.id, key.clone());
-        let return_type = self.parent.ensure_function_specialization(&key, expr.span);
-        if let Some(spec) = self.parent.analysis.function_specializations.get(&key) {
-            self.history_capacity = self.history_capacity.max(spec.history_capacity);
-        }
-        return_type
+        self.parent.ensure_function_specialization(&key, expr.span)
     }
 
     fn analyze_builtin_call(
@@ -814,7 +923,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
         callee: &str,
         args: &[Expr],
         span: Span,
-    ) -> InferredType {
+    ) -> ExprInfo {
         match builtin {
             BuiltinId::Plot => {
                 self.parent.diagnostics.push(Diagnostic::new(
@@ -828,11 +937,11 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                         "plot expects exactly one argument",
                         span,
                     ));
-                    return InferredType::Concrete(Type::Void);
+                    return ExprInfo::scalar(Type::Void);
                 }
-                let arg_ty = self.analyze_expr(&args[0]);
+                let arg_info = self.analyze_expr(&args[0]);
                 if !matches!(
-                    arg_ty,
+                    arg_info.ty,
                     InferredType::Concrete(Type::F64 | Type::SeriesF64) | InferredType::Na
                 ) {
                     self.parent.diagnostics.push(Diagnostic::new(
@@ -841,7 +950,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                         args[0].span,
                     ));
                 }
-                InferredType::Concrete(Type::Void)
+                ExprInfo::scalar(Type::Void)
             }
             BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
                 if args.len() != 2 {
@@ -850,10 +959,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                         format!("{callee} expects exactly two arguments"),
                         span,
                     ));
-                    return InferredType::Concrete(Type::SeriesF64);
+                    return ExprInfo::series(0);
                 }
-                let series_ty = self.analyze_expr(&args[0]);
-                if !matches!(series_ty, InferredType::Concrete(Type::SeriesF64)) {
+                let series_info = self.analyze_expr(&args[0]);
+                if !matches!(series_info.ty, InferredType::Concrete(Type::SeriesF64)) {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!("{callee} requires series<float> as the first argument"),
@@ -861,9 +970,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     ));
                 }
                 match literal_window(&args[1]) {
-                    Some(window) if window > 0 => {
-                        self.history_capacity = self.history_capacity.max(window + 1);
-                    }
+                    Some(window) if window > 0 => {}
                     Some(_) => self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!("{callee} length must be greater than zero"),
@@ -875,7 +982,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                         args[1].span,
                     )),
                 }
-                InferredType::Concrete(Type::SeriesF64)
+                ExprInfo {
+                    ty: InferredType::Concrete(Type::SeriesF64),
+                    update_mask: series_info.update_mask,
+                }
             }
             BuiltinId::Open
             | BuiltinId::High
@@ -891,23 +1001,22 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 for arg in args {
                     self.analyze_expr(arg);
                 }
-                InferredType::Concrete(Type::SeriesF64)
+                ExprInfo::series(0)
             }
         }
     }
 
-    fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> InferredType {
-        let target_ty = self.analyze_expr(target);
-        let Some(offset) = literal_window(index) else {
+    fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> ExprInfo {
+        let target_info = self.analyze_expr(target);
+        let Some(_) = literal_window(index) else {
             self.parent.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 "series indexing requires a non-negative integer literal",
                 index.span,
             ));
-            return InferredType::Concrete(Type::F64);
+            return ExprInfo::scalar(Type::F64);
         };
-        self.history_capacity = self.history_capacity.max(offset + 1);
-        match target_ty {
+        let ty = match target_info.ty {
             InferredType::Concrete(Type::SeriesF64) => InferredType::Concrete(Type::F64),
             InferredType::Concrete(Type::SeriesBool) => InferredType::Concrete(Type::Bool),
             InferredType::Na => InferredType::Na,
@@ -919,6 +1028,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 ));
                 InferredType::Concrete(Type::F64)
             }
+        };
+        ExprInfo {
+            ty,
+            update_mask: target_info.update_mask,
         }
     }
 
@@ -927,6 +1040,50 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+}
+
+fn collect_qualified_series_stmt(stmt: &Stmt, refs: &mut BTreeSet<(Interval, MarketField)>) {
+    match &stmt.kind {
+        StmtKind::Let { expr, .. } | StmtKind::Expr(expr) => {
+            collect_qualified_series_refs(expr, refs)
+        }
+        StmtKind::If {
+            condition,
+            then_block,
+            else_block,
+        } => {
+            collect_qualified_series_refs(condition, refs);
+            for stmt in &then_block.statements {
+                collect_qualified_series_stmt(stmt, refs);
+            }
+            for stmt in &else_block.statements {
+                collect_qualified_series_stmt(stmt, refs);
+            }
+        }
+    }
+}
+
+fn collect_qualified_series_refs(expr: &Expr, refs: &mut BTreeSet<(Interval, MarketField)>) {
+    match &expr.kind {
+        ExprKind::QualifiedSeries { interval, field } => {
+            refs.insert((*interval, *field));
+        }
+        ExprKind::Unary { expr, .. } => collect_qualified_series_refs(expr, refs),
+        ExprKind::Binary { left, right, .. } => {
+            collect_qualified_series_refs(left, refs);
+            collect_qualified_series_refs(right, refs);
+        }
+        ExprKind::Call { args, .. } => {
+            for arg in args {
+                collect_qualified_series_refs(arg, refs);
+            }
+        }
+        ExprKind::Index { target, index } => {
+            collect_qualified_series_refs(target, refs);
+            collect_qualified_series_refs(index, refs);
+        }
+        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::Ident(_) => {}
     }
 }
 
@@ -964,7 +1121,11 @@ fn collect_called_user_functions<'a>(
             collect_called_user_functions(target, functions_by_name, calls);
             collect_called_user_functions(index, functions_by_name, calls);
         }
-        ExprKind::Number(_) | ExprKind::Bool(_) | ExprKind::Na | ExprKind::Ident(_) => {}
+        ExprKind::Number(_)
+        | ExprKind::Bool(_)
+        | ExprKind::Na
+        | ExprKind::Ident(_)
+        | ExprKind::QualifiedSeries { .. } => {}
     }
 }
 
@@ -1102,8 +1263,8 @@ fn literal_window(expr: &Expr) -> Option<usize> {
     }
 }
 
-fn param_binding(arg_ty: InferredType) -> FunctionParamBinding {
-    match arg_ty {
+fn param_binding(arg_shape: FunctionArgShape) -> FunctionParamBinding {
+    match arg_shape.ty {
         InferredType::Concrete(ty) => FunctionParamBinding {
             ty,
             kind: if ty.is_series() {
@@ -1111,10 +1272,12 @@ fn param_binding(arg_ty: InferredType) -> FunctionParamBinding {
             } else {
                 SlotKind::Scalar
             },
+            update_mask: arg_shape.update_mask,
         },
         InferredType::Na => FunctionParamBinding {
             ty: Type::SeriesF64,
             kind: SlotKind::Series,
+            update_mask: arg_shape.update_mask,
         },
     }
 }
@@ -1158,16 +1321,23 @@ impl<'a> Compiler<'a> {
     fn compile(mut self) -> Result<CompiledProgram, CompileError> {
         self.analysis = Analyzer::new(self.ast).analyze(self.ast)?;
         self.program.locals = self.analysis.locals.clone();
-        self.program.history_capacity = self.analysis.history_capacity.max(2);
         self.rebuild_scopes();
-        let expr_types = self.analysis.expr_types.clone();
+        let expr_info = self.analysis.expr_info.clone();
         let user_calls = self.analysis.user_function_calls.clone();
         for stmt in &self.ast.statements {
-            self.emit_stmt(stmt, &expr_types, &user_calls);
+            self.emit_stmt(stmt, &expr_info, &user_calls);
         }
         self.program
             .instructions
             .push(Instruction::new(OpCode::Return));
+        self.program.history_capacity = self
+            .program
+            .locals
+            .iter()
+            .map(|local| local.history_capacity)
+            .max()
+            .unwrap_or(2)
+            .max(2);
         if self.diagnostics.is_empty() {
             Ok(CompiledProgram {
                 program: self.program,
@@ -1181,12 +1351,12 @@ impl<'a> Compiler<'a> {
     fn emit_stmt(
         &mut self,
         stmt: &Stmt,
-        expr_types: &HashMap<NodeId, InferredType>,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         match &stmt.kind {
             StmtKind::Let { name, expr } => {
-                self.emit_expr(expr, expr_types, user_calls);
+                self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_let_slots[&stmt.id];
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
@@ -1204,21 +1374,21 @@ impl<'a> Compiler<'a> {
                 then_block,
                 else_block,
             } => {
-                self.emit_expr(condition, expr_types, user_calls);
+                self.emit_expr(condition, expr_info, user_calls);
                 let jump_if_false = self.emit_placeholder(OpCode::JumpIfFalse, condition.span);
                 self.push_scope();
-                self.emit_block(then_block, expr_types, user_calls);
+                self.emit_block(then_block, expr_info, user_calls);
                 self.pop_scope();
                 let jump_over_else = self.emit_placeholder(OpCode::Jump, stmt.span);
                 self.patch_jump(jump_if_false, self.program.instructions.len());
                 self.push_scope();
-                self.emit_block(else_block, expr_types, user_calls);
+                self.emit_block(else_block, expr_info, user_calls);
                 self.pop_scope();
                 self.patch_jump(jump_over_else, self.program.instructions.len());
             }
             StmtKind::Expr(expr) => {
-                self.emit_expr(expr, expr_types, user_calls);
-                if expr_types.get(&expr.id).and_then(|ty| ty.concrete()) != Some(Type::Void) {
+                self.emit_expr(expr, expr_info, user_calls);
+                if expr_info.get(&expr.id).and_then(|info| info.concrete()) != Some(Type::Void) {
                     self.emit(Instruction::new(OpCode::Pop).with_span(stmt.span));
                 }
             }
@@ -1228,18 +1398,18 @@ impl<'a> Compiler<'a> {
     fn emit_block(
         &mut self,
         block: &Block,
-        expr_types: &HashMap<NodeId, InferredType>,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         for stmt in &block.statements {
-            self.emit_stmt(stmt, expr_types, user_calls);
+            self.emit_stmt(stmt, expr_info, user_calls);
         }
     }
 
     fn emit_expr(
         &mut self,
         expr: &Expr,
-        expr_types: &HashMap<NodeId, InferredType>,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         match &expr.kind {
@@ -1279,8 +1449,16 @@ impl<'a> Compiler<'a> {
                     expr.span,
                 )),
             },
+            ExprKind::QualifiedSeries { interval, field } => {
+                let slot = self.qualified_slot(*interval, *field);
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             ExprKind::Unary { op, expr: inner } => {
-                self.emit_expr(inner, expr_types, user_calls);
+                self.emit_expr(inner, expr_info, user_calls);
                 let opcode = match op {
                     UnaryOp::Neg => OpCode::Neg,
                     UnaryOp::Not => OpCode::Not,
@@ -1288,8 +1466,8 @@ impl<'a> Compiler<'a> {
                 self.emit(Instruction::new(opcode).with_span(expr.span));
             }
             ExprKind::Binary { op, left, right } => {
-                self.emit_expr(left, expr_types, user_calls);
-                self.emit_expr(right, expr_types, user_calls);
+                self.emit_expr(left, expr_info, user_calls);
+                self.emit_expr(right, expr_info, user_calls);
                 let opcode = match op {
                     BinaryOp::And => OpCode::And,
                     BinaryOp::Or => OpCode::Or,
@@ -1307,10 +1485,11 @@ impl<'a> Compiler<'a> {
                 self.emit(Instruction::new(opcode).with_span(expr.span));
             }
             ExprKind::Call { callee, args } => {
-                self.emit_call(expr, callee, args, expr_types, user_calls);
+                self.emit_call(expr, callee, args, expr_info, user_calls);
             }
             ExprKind::Index { target, index } => {
-                self.emit_series_ref(target, expr_types, user_calls);
+                let required_history = literal_window(index).unwrap_or_default() + 1;
+                self.emit_series_ref(target, required_history.max(2), expr_info, user_calls);
                 let offset = literal_window(index).unwrap_or_default() as u16;
                 self.emit(
                     Instruction::new(OpCode::SeriesGet)
@@ -1326,7 +1505,7 @@ impl<'a> Compiler<'a> {
         expr: &Expr,
         callee: &str,
         args: &[Expr],
-        expr_types: &HashMap<NodeId, InferredType>,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         if let Some(key) = user_calls.get(&expr.id) {
@@ -1354,8 +1533,9 @@ impl<'a> Compiler<'a> {
                 .zip(args.iter())
                 .zip(spec.param_bindings.iter())
             {
-                self.emit_expr(arg, expr_types, user_calls);
-                let slot = self.allocate_hidden_slot(binding.ty, binding.kind);
+                self.emit_expr(arg, expr_info, user_calls);
+                let slot =
+                    self.allocate_hidden_slot(binding.ty, binding.kind, binding.update_mask, 2);
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
@@ -1370,7 +1550,7 @@ impl<'a> Compiler<'a> {
                 );
             }
             self.scopes.push(scope);
-            self.emit_expr(&function.body, &spec.expr_types, &spec.user_function_calls);
+            self.emit_expr(&function.body, &spec.expr_info, &spec.user_function_calls);
             self.pop_scope();
             return;
         }
@@ -1387,7 +1567,7 @@ impl<'a> Compiler<'a> {
         let callsite = self.next_callsite();
         match builtin {
             BuiltinId::Plot => {
-                self.emit_expr(&args[0], expr_types, user_calls);
+                self.emit_expr(&args[0], expr_info, user_calls);
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
@@ -1395,11 +1575,14 @@ impl<'a> Compiler<'a> {
                         .with_c(0)
                         .with_span(expr.span),
                 );
-                self.program.plot_count = 1;
+                self.program.plot_count = self.program.plot_count.max(1);
             }
             BuiltinId::Sma | BuiltinId::Ema | BuiltinId::Rsi => {
-                self.emit_series_ref(&args[0], expr_types, user_calls);
-                self.emit_expr(&args[1], expr_types, user_calls);
+                let required_history = literal_window(&args[1])
+                    .map(|window| window + 1)
+                    .unwrap_or(2);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
@@ -1421,36 +1604,55 @@ impl<'a> Compiler<'a> {
     fn emit_series_ref(
         &mut self,
         expr: &Expr,
-        expr_types: &HashMap<NodeId, InferredType>,
+        required_history: usize,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         match &expr.kind {
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) if symbol.ty.is_series() => {
+                    self.bump_slot_history(symbol.slot, required_history);
                     self.emit(
                         Instruction::new(OpCode::LoadSeries)
                             .with_a(symbol.slot)
                             .with_span(expr.span),
                     );
                 }
-                _ => self.emit_materialized_series_ref(expr, expr_types, user_calls),
+                _ => {
+                    self.emit_materialized_series_ref(expr, required_history, expr_info, user_calls)
+                }
             },
-            _ => self.emit_materialized_series_ref(expr, expr_types, user_calls),
+            ExprKind::QualifiedSeries { interval, field } => {
+                let slot = self.qualified_slot(*interval, *field);
+                self.bump_slot_history(slot, required_history);
+                self.emit(
+                    Instruction::new(OpCode::LoadSeries)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
+            _ => self.emit_materialized_series_ref(expr, required_history, expr_info, user_calls),
         }
     }
 
     fn emit_materialized_series_ref(
         &mut self,
         expr: &Expr,
-        expr_types: &HashMap<NodeId, InferredType>,
+        required_history: usize,
+        expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
-        let ty = match expr_types.get(&expr.id).copied() {
-            Some(InferredType::Concrete(Type::Bool | Type::SeriesBool)) => Type::SeriesBool,
+        let info = expr_info
+            .get(&expr.id)
+            .copied()
+            .unwrap_or(ExprInfo::series(0));
+        let ty = match info.ty {
+            InferredType::Concrete(Type::Bool | Type::SeriesBool) => Type::SeriesBool,
             _ => Type::SeriesF64,
         };
-        let temp_slot = self.allocate_hidden_slot(ty, SlotKind::Series);
-        self.emit_expr(expr, expr_types, user_calls);
+        let temp_slot =
+            self.allocate_hidden_slot(ty, SlotKind::Series, info.update_mask, required_history);
+        self.emit_expr(expr, expr_info, user_calls);
         self.emit(
             Instruction::new(OpCode::StoreLocal)
                 .with_a(temp_slot)
@@ -1485,15 +1687,38 @@ impl<'a> Compiler<'a> {
         index
     }
 
-    fn allocate_hidden_slot(&mut self, ty: Type, kind: SlotKind) -> u16 {
+    fn allocate_hidden_slot(
+        &mut self,
+        ty: Type,
+        kind: SlotKind,
+        update_mask: u32,
+        history_capacity: usize,
+    ) -> u16 {
         let slot = self.program.locals.len() as u16;
-        self.program.locals.push(LocalInfo {
-            name: None,
-            ty,
-            kind,
-            hidden: true,
-        });
+        let mut local = if matches!(kind, SlotKind::Series) {
+            LocalInfo::series(None, ty, true, update_mask, None)
+        } else {
+            LocalInfo::scalar(None, ty, true)
+        };
+        local.history_capacity = if matches!(kind, SlotKind::Series) {
+            history_capacity.max(2)
+        } else {
+            1
+        };
+        self.program.locals.push(local);
         slot
+    }
+
+    fn bump_slot_history(&mut self, slot: u16, required_history: usize) {
+        if let Some(local) = self.program.locals.get_mut(slot as usize) {
+            if matches!(local.kind, SlotKind::Series) {
+                local.history_capacity = local.history_capacity.max(required_history.max(2));
+            }
+        }
+    }
+
+    fn qualified_slot(&self, interval: Interval, field: MarketField) -> u16 {
+        self.analysis.qualified_slots[&(interval, field)]
     }
 
     fn next_callsite(&mut self) -> u16 {
@@ -1504,12 +1729,12 @@ impl<'a> Compiler<'a> {
 
     fn rebuild_scopes(&mut self) {
         let mut root = HashMap::new();
-        for (slot, (name, ty)) in PREDEFINED_SERIES.into_iter().enumerate() {
+        for (slot, (name, _field)) in PREDEFINED_SERIES.into_iter().enumerate() {
             root.insert(
                 name.to_string(),
                 CompilerSymbol {
                     slot: slot as u16,
-                    ty,
+                    ty: Type::SeriesF64,
                 },
             );
         }

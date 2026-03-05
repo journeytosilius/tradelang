@@ -4,6 +4,7 @@
 //! text and the parser.
 
 use crate::span::Span;
+use crate::Interval;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ pub enum TokenKind {
     False,
     Na,
     Ident(String),
+    Interval(Interval),
     Number(String),
     LeftParen,
     RightParen,
@@ -26,6 +28,7 @@ pub enum TokenKind {
     LeftBracket,
     RightBracket,
     Comma,
+    Dot,
     Assign,
     Plus,
     Minus,

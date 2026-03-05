@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
-use crate::indicators::{sma, EmaState, IndicatorState, RsiState};
+use crate::indicators::{EmaState, IndicatorState, RsiState, SmaState};
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
 use crate::types::{SlotKind, Value};
@@ -17,6 +17,7 @@ use crate::types::{SlotKind, Value};
 pub struct SeriesBuffer {
     capacity: usize,
     values: VecDeque<Value>,
+    version: u64,
 }
 
 impl SeriesBuffer {
@@ -24,6 +25,7 @@ impl SeriesBuffer {
         Self {
             capacity,
             values: VecDeque::with_capacity(capacity),
+            version: 0,
         }
     }
 
@@ -32,6 +34,7 @@ impl SeriesBuffer {
             self.values.pop_front();
         }
         self.values.push_back(value);
+        self.version += 1;
     }
 
     pub fn get(&self, offset: usize) -> Value {
@@ -52,6 +55,10 @@ impl SeriesBuffer {
 
     pub fn iter_recent(&self, count: usize) -> impl Iterator<Item = &Value> {
         self.values.iter().rev().take(count)
+    }
+
+    pub const fn version(&self) -> u64 {
+        self.version
     }
 }
 
@@ -200,6 +207,7 @@ pub(crate) struct VmEngine<'a> {
     pub series_values: &'a mut [SeriesBuffer],
     pub remaining_steps: &'a mut usize,
     pub indicator_state: &'a mut HashMap<(BuiltinId, u16), IndicatorState>,
+    pub advanced_mask: u32,
 }
 
 impl<'a> VmEngine<'a> {
@@ -235,7 +243,9 @@ impl<'a> VmEngine<'a> {
             .get(slot)
             .ok_or(RuntimeError::InvalidLocalSlot { slot })?;
         self.current_values[slot] = value.clone();
-        if matches!(local.kind, SlotKind::Series) {
+        if matches!(local.kind, SlotKind::Series)
+            && (local.update_mask == 0 || (local.update_mask & self.advanced_mask) != 0)
+        {
             self.series_values
                 .get_mut(slot)
                 .ok_or(RuntimeError::InvalidSeriesSlot { slot })?
@@ -390,7 +400,7 @@ impl<'a> VmEngine<'a> {
 
     fn call_sma(
         &mut self,
-        _callsite: u16,
+        callsite: u16,
         arity: usize,
         args: Vec<Value>,
         pc: usize,
@@ -409,7 +419,23 @@ impl<'a> VmEngine<'a> {
             .series_values
             .get(series_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
-        sma::calculate(buffer, window, pc)
+        let key = (BuiltinId::Sma, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Sma(SmaState::new(window)));
+        let result = match &mut state {
+            IndicatorState::Sma(state) => match state.update(buffer, pc)? {
+                Some(value) => {
+                    self.consume_steps(window, pc)?;
+                    value
+                }
+                None => state.cached_output(),
+            },
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
     }
 
     fn call_ema(
@@ -428,11 +454,6 @@ impl<'a> VmEngine<'a> {
         }
         let series_slot = series_ref(args[0].clone(), pc)?;
         let window = expect_window(args[1].clone(), pc)?;
-        let current_price = self.load_series_value(series_slot, 0)?;
-        if current_price.is_na() {
-            return Ok(Value::NA);
-        }
-        let current_price = expect_f64(current_price, pc)?;
         let key = (BuiltinId::Ema, callsite);
         let mut state = self
             .indicator_state
@@ -440,14 +461,19 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Ema(EmaState::new(window)));
         let result = match &mut state {
             IndicatorState::Ema(state) => {
-                if !state.is_seeded() {
+                let buffer_version = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?
+                    .version();
+                if buffer_version != state.last_seen_version() && !state.is_seeded() {
                     self.consume_steps(state.seed_window(), pc)?;
                 }
                 let buffer = self
                     .series_values
                     .get(series_slot)
                     .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
-                state.update(current_price, buffer, pc)?
+                state.update(buffer, pc)?
             }
             _ => unreachable!(),
         };
@@ -471,11 +497,6 @@ impl<'a> VmEngine<'a> {
         }
         let series_slot = series_ref(args[0].clone(), pc)?;
         let window = expect_window(args[1].clone(), pc)?;
-        let current_price = self.load_series_value(series_slot, 0)?;
-        if current_price.is_na() {
-            return Ok(Value::NA);
-        }
-        let current_price = expect_f64(current_price, pc)?;
         let key = (BuiltinId::Rsi, callsite);
         let mut state = self
             .indicator_state
@@ -483,10 +504,19 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Rsi(RsiState::new(window)));
         let result = match &mut state {
             IndicatorState::Rsi(state) => {
-                if state.requires_seed_step() {
+                let buffer_version = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?
+                    .version();
+                if buffer_version != state.last_seen_version() && state.requires_seed_step() {
                     self.consume_steps(1, pc)?;
                 }
-                state.update(current_price)
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer)
             }
             _ => unreachable!(),
         };
