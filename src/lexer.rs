@@ -196,6 +196,8 @@ impl<'a> LexerState<'a> {
         let kind = match text.as_str() {
             "fn" => TokenKind::Fn,
             "let" => TokenKind::Let,
+            "export" => TokenKind::Export,
+            "trigger" => TokenKind::Trigger,
             "if" => TokenKind::If,
             "else" => TokenKind::Else,
             "and" => TokenKind::And,

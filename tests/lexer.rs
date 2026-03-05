@@ -14,6 +14,13 @@ fn reserves_fn_as_keyword() {
 }
 
 #[test]
+fn reserves_export_and_trigger_as_keywords() {
+    let tokens = lex("let export = 1\nlet trigger = 2").expect("source should lex");
+    assert!(matches!(tokens[1].kind, TokenKind::Export));
+    assert!(matches!(tokens[6].kind, TokenKind::Trigger));
+}
+
+#[test]
 fn lexes_all_binance_intervals() {
     let source = "1s.close 1m.close 3m.close 5m.close 15m.close 30m.close 1h.close 2h.close 4h.close 6h.close 8h.close 12h.close 1d.close 3d.close 1w.close 1M.close";
     let tokens = lex(source).expect("intervals should lex");

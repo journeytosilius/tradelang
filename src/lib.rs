@@ -15,18 +15,30 @@ pub mod interval;
 pub mod lexer;
 pub mod output;
 pub mod parser;
+pub mod pipeline;
 pub mod runtime;
 pub mod span;
 pub mod token;
 pub mod types;
 pub mod vm;
 
-pub use compiler::{compile, CompiledProgram};
+pub use bytecode::{ExternalInputKind, OutputDecl, OutputKind};
+pub use compiler::{
+    compile, compile_with_env, CompileEnvironment, CompiledProgram, ExternalInputDecl,
+};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use interval::{Interval, MarketBinding, MarketField, MarketSource, INTERVAL_SPECS};
-pub use output::{Alert, Outputs, PlotPoint, PlotSeries, StepOutput};
+pub use output::{
+    Alert, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,
+    TriggerEvent,
+};
+pub use pipeline::{
+    PipelineEdge, PipelineEngine, PipelineNodeOutput, PipelineNodeSpec, PipelineOutputs,
+    PipelineSpec,
+};
 pub use runtime::{
-    run, run_multi_interval, Bar, Engine, IntervalFeed, MultiIntervalConfig, VmLimits,
+    run, run_multi_interval, Bar, Engine, ExternalInputFrame, IntervalFeed, MultiIntervalConfig,
+    VmLimits,
 };
 pub use span::{Position, Span};
 pub use token::{Token, TokenKind};

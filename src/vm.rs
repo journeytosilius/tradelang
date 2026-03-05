@@ -165,7 +165,13 @@ impl<'a> Vm<'a> {
             pc += 1;
         }
 
-        Ok(StepOutput { plots, alerts })
+        Ok(StepOutput {
+            plots,
+            exports: Vec::new(),
+            triggers: Vec::new(),
+            trigger_events: Vec::new(),
+            alerts,
+        })
     }
 }
 

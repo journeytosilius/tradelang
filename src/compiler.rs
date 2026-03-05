@@ -9,7 +9,10 @@ use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
 };
 use crate::builtins::BuiltinId;
-use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
+use crate::bytecode::{
+    Constant, ExternalInputInfo, ExternalInputKind, Instruction, LocalInfo, OpCode, OutputDecl,
+    OutputKind, Program,
+};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{Interval, MarketBinding, MarketField, MarketSource};
 use crate::lexer;
@@ -33,10 +36,29 @@ pub struct CompiledProgram {
     pub source: String,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CompileEnvironment {
+    pub external_inputs: Vec<ExternalInputDecl>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExternalInputDecl {
+    pub name: String,
+    pub ty: Type,
+    pub kind: ExternalInputKind,
+}
+
 pub fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
+    compile_with_env(source, &CompileEnvironment::default())
+}
+
+pub fn compile_with_env(
+    source: &str,
+    env: &CompileEnvironment,
+) -> Result<CompiledProgram, CompileError> {
     let tokens = lexer::lex(source)?;
     let ast = parser::parse(&tokens)?;
-    Compiler::new(source, &ast).compile()
+    Compiler::new(source, &ast, env).compile()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -134,7 +156,10 @@ struct Analysis {
     expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
     resolved_let_slots: HashMap<NodeId, u16>,
+    resolved_output_slots: HashMap<NodeId, u16>,
     locals: Vec<LocalInfo>,
+    external_inputs: Vec<ExternalInputInfo>,
+    outputs: Vec<OutputDecl>,
     qualified_slots: HashMap<(Interval, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
@@ -143,20 +168,24 @@ struct Analyzer<'a> {
     diagnostics: Vec<Diagnostic>,
     scopes: Vec<HashMap<String, AnalyzerSymbol>>,
     analysis: Analysis,
+    env: &'a CompileEnvironment,
     functions_by_name: HashMap<String, &'a FunctionDecl>,
     functions_by_id: HashMap<NodeId, &'a FunctionDecl>,
     active_specializations: HashSet<FunctionSpecializationKey>,
+    external_input_names: HashSet<String>,
 }
 
 impl<'a> Analyzer<'a> {
-    fn new(ast: &'a Ast) -> Self {
+    fn new(ast: &'a Ast, env: &'a CompileEnvironment) -> Self {
         let mut analyzer = Self {
             diagnostics: Vec::new(),
             scopes: vec![HashMap::new()],
             analysis: Analysis::default(),
+            env,
             functions_by_name: HashMap::new(),
             functions_by_id: HashMap::new(),
             active_specializations: HashSet::new(),
+            external_input_names: HashSet::new(),
         };
 
         for (name, field) in PREDEFINED_SERIES {
@@ -170,6 +199,7 @@ impl<'a> Analyzer<'a> {
                 }),
             );
         }
+        analyzer.collect_external_inputs();
         analyzer.collect_functions(ast);
         analyzer.collect_qualified_series(ast);
         analyzer.validate_function_bodies();
@@ -194,6 +224,17 @@ impl<'a> Analyzer<'a> {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!("function name `{}` collides with a builtin", function.name),
+                    function.span,
+                ));
+                continue;
+            }
+            if self.lookup_symbol(&function.name).is_some() {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "function name `{}` collides with a predefined binding",
+                        function.name
+                    ),
                     function.span,
                 ));
                 continue;
@@ -224,6 +265,56 @@ impl<'a> Analyzer<'a> {
             self.functions_by_name
                 .insert(function.name.clone(), function);
             self.functions_by_id.insert(function.id, function);
+        }
+    }
+
+    fn collect_external_inputs(&mut self) {
+        for decl in &self.env.external_inputs {
+            if BuiltinId::from_name(&decl.name).is_some() {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("external input `{}` collides with a builtin", decl.name),
+                    Span::default(),
+                ));
+                continue;
+            }
+            if !matches!(decl.ty, Type::SeriesF64 | Type::SeriesBool) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "external input `{}` must be series<float> or series<bool>",
+                        decl.name
+                    ),
+                    Span::default(),
+                ));
+                continue;
+            }
+            if self.external_input_names.contains(&decl.name)
+                || self.lookup_symbol(&decl.name).is_some()
+            {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("duplicate external input `{}`", decl.name),
+                    Span::default(),
+                ));
+                continue;
+            }
+            let info = match decl.ty {
+                Type::SeriesF64 => ExprInfo::series(BASE_UPDATE_MASK),
+                Type::SeriesBool => ExprInfo {
+                    ty: InferredType::Concrete(Type::SeriesBool),
+                    update_mask: BASE_UPDATE_MASK,
+                },
+                _ => unreachable!(),
+            };
+            let slot = self.define_symbol(decl.name.clone(), info, false, None);
+            self.analysis.external_inputs.push(ExternalInputInfo {
+                name: decl.name.clone(),
+                ty: decl.ty,
+                kind: decl.kind,
+                slot,
+            });
+            self.external_input_names.insert(decl.name.clone());
         }
     }
 
@@ -279,11 +370,11 @@ impl<'a> Analyzer<'a> {
     fn validate_function_expr(&mut self, expr: &Expr, params: &HashSet<&str>) {
         match &expr.kind {
             ExprKind::Ident(name) => {
-                if !params.contains(name.as_str()) && !is_predefined_series_name(name) {
+                if !params.contains(name.as_str()) && !self.is_function_visible_name(name) {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!(
-                            "function bodies may only reference parameters or predefined series; found `{name}`"
+                            "function bodies may only reference parameters, predefined series, or external inputs; found `{name}`"
                         ),
                         expr.span,
                     ));
@@ -424,6 +515,12 @@ impl<'a> Analyzer<'a> {
                 );
                 self.analysis.resolved_let_slots.insert(stmt.id, slot);
             }
+            StmtKind::Export { name, expr } => {
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries);
+            }
+            StmtKind::Trigger { name, expr } => {
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -448,6 +545,59 @@ impl<'a> Analyzer<'a> {
                 self.analyze_expr(expr);
             }
         }
+    }
+
+    fn analyze_output_stmt(&mut self, stmt: &Stmt, name: &str, expr: &Expr, kind: OutputKind) {
+        let expr_info = self.analyze_expr(expr);
+        match kind {
+            OutputKind::ExportSeries => {
+                if matches!(expr_info.ty, InferredType::Concrete(Type::Void)) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "export requires a numeric, bool, series numeric, series bool, or na value",
+                        expr.span,
+                    ));
+                    return;
+                }
+            }
+            OutputKind::Trigger => {
+                if !expr_info.ty.allow_bool() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "trigger requires bool, series<bool>, or na",
+                        expr.span,
+                    ));
+                    return;
+                }
+            }
+        }
+
+        if self.scopes.last().unwrap().contains_key(name) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("duplicate binding `{name}` in the same scope"),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let ty = output_series_type(expr_info.ty, kind, expr.span, &mut self.diagnostics);
+        let slot = self.define_symbol(
+            name.to_string(),
+            ExprInfo {
+                ty: InferredType::Concrete(ty),
+                update_mask: BASE_UPDATE_MASK,
+            },
+            false,
+            None,
+        );
+        self.analysis.resolved_output_slots.insert(stmt.id, slot);
+        self.analysis.outputs.push(OutputDecl {
+            name: name.to_string(),
+            kind,
+            ty,
+            slot,
+        });
     }
 
     fn analyze_block(&mut self, block: &Block) {
@@ -761,6 +911,10 @@ impl<'a> Analyzer<'a> {
             .rev()
             .find_map(|scope| scope.get(name).copied())
     }
+
+    fn is_function_visible_name(&self, name: &str) -> bool {
+        is_predefined_series_name(name) || self.external_input_names.contains(name)
+    }
 }
 
 struct FunctionAnalyzer<'a, 'b> {
@@ -784,6 +938,17 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 name.to_string(),
                 AnalyzerSymbol {
                     info: ExprInfo::series(BASE_UPDATE_MASK),
+                },
+            );
+        }
+        for external in &parent.analysis.external_inputs {
+            root.insert(
+                external.name.clone(),
+                AnalyzerSymbol {
+                    info: ExprInfo {
+                        ty: InferredType::Concrete(external.ty),
+                        update_mask: BASE_UPDATE_MASK,
+                    },
                 },
             );
         }
@@ -839,7 +1004,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     self.parent.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!(
-                            "function bodies may only reference parameters or predefined series; found `{name}`"
+                            "function bodies may only reference parameters, predefined series, or external inputs; found `{name}`"
                         ),
                         expr.span,
                     ));
@@ -1045,9 +1210,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
 
 fn collect_qualified_series_stmt(stmt: &Stmt, refs: &mut BTreeSet<(Interval, MarketField)>) {
     match &stmt.kind {
-        StmtKind::Let { expr, .. } | StmtKind::Expr(expr) => {
-            collect_qualified_series_refs(expr, refs)
-        }
+        StmtKind::Let { expr, .. }
+        | StmtKind::Export { expr, .. }
+        | StmtKind::Trigger { expr, .. }
+        | StmtKind::Expr(expr) => collect_qualified_series_refs(expr, refs),
         StmtKind::If {
             condition,
             then_block,
@@ -1282,6 +1448,31 @@ fn param_binding(arg_shape: FunctionArgShape) -> FunctionParamBinding {
     }
 }
 
+fn output_series_type(
+    ty: InferredType,
+    kind: OutputKind,
+    span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Type {
+    match kind {
+        OutputKind::ExportSeries => match ty {
+            InferredType::Concrete(Type::F64 | Type::SeriesF64) | InferredType::Na => {
+                Type::SeriesF64
+            }
+            InferredType::Concrete(Type::Bool | Type::SeriesBool) => Type::SeriesBool,
+            InferredType::Concrete(Type::Void) => {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "export requires a numeric, bool, series numeric, series bool, or na value",
+                    span,
+                ));
+                Type::SeriesF64
+            }
+        },
+        OutputKind::Trigger => Type::SeriesBool,
+    }
+}
+
 fn is_predefined_series_name(name: &str) -> bool {
     PREDEFINED_SERIES
         .iter()
@@ -1291,6 +1482,7 @@ fn is_predefined_series_name(name: &str) -> bool {
 struct Compiler<'a> {
     source: &'a str,
     ast: &'a Ast,
+    env: &'a CompileEnvironment,
     analysis: Analysis,
     program: Program,
     diagnostics: Vec<Diagnostic>,
@@ -1300,7 +1492,7 @@ struct Compiler<'a> {
 }
 
 impl<'a> Compiler<'a> {
-    fn new(source: &'a str, ast: &'a Ast) -> Self {
+    fn new(source: &'a str, ast: &'a Ast, env: &'a CompileEnvironment) -> Self {
         let functions_by_id = ast
             .functions
             .iter()
@@ -1309,6 +1501,7 @@ impl<'a> Compiler<'a> {
         Self {
             source,
             ast,
+            env,
             analysis: Analysis::default(),
             program: Program::default(),
             diagnostics: Vec::new(),
@@ -1319,8 +1512,10 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile(mut self) -> Result<CompiledProgram, CompileError> {
-        self.analysis = Analyzer::new(self.ast).analyze(self.ast)?;
+        self.analysis = Analyzer::new(self.ast, self.env).analyze(self.ast)?;
         self.program.locals = self.analysis.locals.clone();
+        self.program.external_inputs = self.analysis.external_inputs.clone();
+        self.program.outputs = self.analysis.outputs.clone();
         self.rebuild_scopes();
         let expr_info = self.analysis.expr_info.clone();
         let user_calls = self.analysis.user_function_calls.clone();
@@ -1358,6 +1553,20 @@ impl<'a> Compiler<'a> {
             StmtKind::Let { name, expr } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_let_slots[&stmt.id];
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(slot)
+                        .with_span(stmt.span),
+                );
+                let local = &self.program.locals[slot as usize];
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+            }
+            StmtKind::Export { name, expr } | StmtKind::Trigger { name, expr } => {
+                self.emit_expr(expr, expr_info, user_calls);
+                let slot = self.analysis.resolved_output_slots[&stmt.id];
                 self.emit(
                     Instruction::new(OpCode::StoreLocal)
                         .with_a(slot)
@@ -1735,6 +1944,15 @@ impl<'a> Compiler<'a> {
                 CompilerSymbol {
                     slot: slot as u16,
                     ty: Type::SeriesF64,
+                },
+            );
+        }
+        for external in &self.program.external_inputs {
+            root.insert(
+                external.name.clone(),
+                CompilerSymbol {
+                    slot: external.slot,
+                    ty: external.ty,
                 },
             );
         }

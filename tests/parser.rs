@@ -1,4 +1,6 @@
-use tradelang::compile;
+use tradelang::{
+    compile, compile_with_env, CompileEnvironment, ExternalInputDecl, ExternalInputKind, Type,
+};
 
 fn compile_err(source: &str) -> String {
     let err = compile(source).expect_err("expected compile error");
@@ -144,7 +146,9 @@ fn rejects_wrong_user_function_arity() {
 #[test]
 fn rejects_function_body_captures() {
     let message = compile_err("let basis = close\nfn helper() = basis\nplot(1)");
-    assert!(message.contains("function bodies may only reference parameters or predefined series"));
+    assert!(message.contains(
+        "function bodies may only reference parameters, predefined series, or external inputs"
+    ));
 }
 
 #[test]
@@ -205,4 +209,66 @@ fn rejects_invalid_qualified_market_fields() {
 fn rejects_calling_interval_qualified_series() {
     let message = compile_err("plot(1w.close())");
     assert!(message.contains("only identifiers can be called in v0.1"));
+}
+
+#[test]
+fn parses_export_statements() {
+    compile("export trend = close > ema(close, 20)\nplot(1)")
+        .expect("export statements should compile");
+}
+
+#[test]
+fn parses_trigger_statements() {
+    compile("trigger long_entry = close > high[1]\nplot(1)")
+        .expect("trigger statements should compile");
+}
+
+#[test]
+fn reserves_export_and_trigger_keywords() {
+    let message = compile_err("let export = true\nlet trigger = false\nplot(1)");
+    assert!(message.contains("expected identifier after `let`"));
+}
+
+#[test]
+fn rejects_export_inside_blocks() {
+    let message = compile_err("if true { export trend = close } else { plot(0) }");
+    assert!(message.contains("export statements are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_trigger_inside_blocks() {
+    let message = compile_err("if true { trigger long = close > open } else { plot(0) }");
+    assert!(message.contains("trigger statements are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_void_exports() {
+    let message = compile_err("export x = plot(close)\nplot(1)");
+    assert!(message
+        .contains("export requires a numeric, bool, series numeric, series bool, or na value"));
+}
+
+#[test]
+fn rejects_numeric_triggers() {
+    let message = compile_err("trigger x = 1\nplot(1)");
+    assert!(message.contains("trigger requires bool, series<bool>, or na"));
+}
+
+#[test]
+fn compile_with_env_resolves_external_inputs() {
+    let env = CompileEnvironment {
+        external_inputs: vec![ExternalInputDecl {
+            name: "trend".into(),
+            ty: Type::SeriesBool,
+            kind: ExternalInputKind::ExportSeries,
+        }],
+    };
+    compile_with_env("if trend { plot(1) } else { plot(0) }", &env)
+        .expect("external inputs should compile");
+}
+
+#[test]
+fn compile_without_env_rejects_external_inputs() {
+    let message = compile_err("if trend { plot(1) } else { plot(0) }");
+    assert!(message.contains("unknown identifier `trend`"));
 }

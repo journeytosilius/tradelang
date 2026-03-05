@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub enum TokenKind {
     Fn,
     Let,
+    Export,
+    Trigger,
     If,
     Else,
     And,

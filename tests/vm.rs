@@ -1,11 +1,14 @@
 use tradelang::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
-use tradelang::compiler::CompiledProgram;
+use tradelang::compiler::{CompileEnvironment, CompiledProgram, ExternalInputDecl};
 use tradelang::diagnostic::RuntimeError;
 use tradelang::runtime::{
-    run, run_multi_interval, Bar, IntervalFeed, MultiIntervalConfig, VmLimits,
+    run, run_multi_interval, Bar, Engine, ExternalInputFrame, IntervalFeed, MultiIntervalConfig,
+    VmLimits,
 };
 use tradelang::types::Value;
-use tradelang::{Interval, MarketBinding, MarketField, MarketSource, Type};
+use tradelang::{
+    compile_with_env, ExternalInputKind, Interval, MarketBinding, MarketField, MarketSource, Type,
+};
 
 fn empty_locals() -> Vec<LocalInfo> {
     vec![
@@ -116,6 +119,8 @@ fn tiny_program_push_add_plot_executes() {
             Constant::Value(Value::F64(2.0)),
         ],
         locals: empty_locals(),
+        external_inputs: vec![],
+        outputs: vec![],
         history_capacity: 2,
         plot_count: 1,
     };
@@ -136,6 +141,8 @@ fn stack_underflow_is_reported() {
         ],
         constants: vec![],
         locals: empty_locals(),
+        external_inputs: vec![],
+        outputs: vec![],
         history_capacity: 2,
         plot_count: 0,
     };
@@ -156,6 +163,8 @@ fn invalid_jump_is_reported() {
         ],
         constants: vec![],
         locals: empty_locals(),
+        external_inputs: vec![],
+        outputs: vec![],
         history_capacity: 2,
         plot_count: 0,
     };
@@ -504,6 +513,97 @@ fn insufficient_history_capacity_rejects_at_engine_construction() {
             required: 4,
             limit: 2,
             ..
+        }
+    ));
+}
+
+#[test]
+fn exports_are_recorded_each_bar() {
+    let compiled =
+        tradelang::compile("export trend = close > close[1]\nplot(0)").expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+    assert_eq!(outputs.exports.len(), 1);
+    assert_eq!(outputs.exports[0].name, "trend");
+    assert_eq!(outputs.exports[0].points.len(), 3);
+    assert!(matches!(
+        outputs.exports[0].points[0].value,
+        tradelang::OutputValue::NA
+    ));
+    assert!(matches!(
+        outputs.exports[0].points[1].value,
+        tradelang::OutputValue::Bool(true)
+    ));
+    assert!(matches!(
+        outputs.exports[0].points[2].value,
+        tradelang::OutputValue::Bool(false)
+    ));
+}
+
+#[test]
+fn triggers_emit_samples_and_events() {
+    let compiled = tradelang::compile("trigger long_entry = close > close[1]\nplot(0)")
+        .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 12.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+    assert_eq!(outputs.triggers.len(), 1);
+    assert_eq!(outputs.triggers[0].points.len(), 4);
+    assert_eq!(outputs.trigger_events.len(), 2);
+    assert_eq!(outputs.trigger_events[0].bar_index, 1);
+    assert_eq!(outputs.trigger_events[1].bar_index, 3);
+}
+
+#[test]
+fn external_inputs_support_indexing_and_indicators() {
+    let env = CompileEnvironment {
+        external_inputs: vec![ExternalInputDecl {
+            name: "trend".into(),
+            ty: Type::SeriesF64,
+            kind: ExternalInputKind::ExportSeries,
+        }],
+    };
+    let compiled = compile_with_env("plot(ema(trend, 2) + trend[1])", &env).expect("compiles");
+    let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 1.0, 1.0]);
+    let mut engine = Engine::try_new(compiled, VmLimits::default()).expect("engine builds");
+    let inputs = [[Value::F64(10.0)], [Value::F64(12.0)], [Value::F64(14.0)]];
+
+    for (bar, input) in bars.into_iter().zip(inputs) {
+        engine
+            .run_step_with_inputs(bar, ExternalInputFrame::new(&input))
+            .expect("step runs");
+    }
+
+    let outputs = engine.finish();
+    assert_eq!(outputs.plots[0].points[0].value, None);
+    assert_eq!(outputs.plots[0].points[1].value, Some(21.0));
+    assert_eq!(outputs.plots[0].points[2].value, Some(25.0));
+}
+
+#[test]
+fn missing_external_inputs_reject_at_runtime() {
+    let env = CompileEnvironment {
+        external_inputs: vec![ExternalInputDecl {
+            name: "trend".into(),
+            ty: Type::SeriesBool,
+            kind: ExternalInputKind::ExportSeries,
+        }],
+    };
+    let compiled =
+        compile_with_env("if trend { plot(1) } else { plot(0) }", &env).expect("compiles");
+    let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("missing input");
+    assert!(matches!(
+        err,
+        RuntimeError::ExternalInputArityMismatch {
+            expected: 1,
+            found: 0
         }
     ));
 }

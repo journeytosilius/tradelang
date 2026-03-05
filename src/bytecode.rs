@@ -82,6 +82,36 @@ pub enum Constant {
     Value(Value),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExternalInputKind {
+    #[default]
+    ExportSeries,
+    TriggerSeries,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalInputInfo {
+    pub name: String,
+    pub ty: Type,
+    pub kind: ExternalInputKind,
+    pub slot: u16,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OutputKind {
+    #[default]
+    ExportSeries,
+    Trigger,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputDecl {
+    pub name: String,
+    pub kind: OutputKind,
+    pub ty: Type,
+    pub slot: u16,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalInfo {
     pub name: Option<String>,
@@ -98,6 +128,8 @@ pub struct Program {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Constant>,
     pub locals: Vec<LocalInfo>,
+    pub external_inputs: Vec<ExternalInputInfo>,
+    pub outputs: Vec<OutputDecl>,
     pub history_capacity: usize,
     pub plot_count: usize,
 }

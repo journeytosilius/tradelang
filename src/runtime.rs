@@ -8,15 +8,17 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
 use crate::builtins::BuiltinId;
+use crate::bytecode::OutputKind;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
 use crate::indicators::IndicatorState;
 use crate::interval::{Interval, MarketField, MarketSource};
-use crate::output::{Outputs, PlotSeries};
+use crate::output::{OutputSample, OutputSeries, OutputValue, Outputs, PlotSeries, TriggerEvent};
 use crate::types::{SlotKind, Value};
 use crate::vm::{SeriesBuffer, Vm, VmEngine};
 
 type SlotMap = [Option<u16>; 6];
+type OutputCollections = (Vec<OutputSample>, Vec<OutputSample>, Vec<TriggerEvent>);
 
 const BASE_UPDATE_MASK: u32 = 1;
 
@@ -54,6 +56,21 @@ pub struct IntervalFeed {
 pub struct MultiIntervalConfig {
     pub base_interval: Interval,
     pub supplemental: Vec<IntervalFeed>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ExternalInputFrame<'a> {
+    pub values: &'a [Value],
+}
+
+impl<'a> ExternalInputFrame<'a> {
+    pub const fn new(values: &'a [Value]) -> Self {
+        Self { values }
+    }
+
+    pub const fn empty() -> Self {
+        Self { values: &[] }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,6 +171,33 @@ impl Engine {
                     points: Vec::new(),
                 })
                 .collect(),
+            exports: compiled
+                .program
+                .outputs
+                .iter()
+                .enumerate()
+                .filter(|(_, decl)| matches!(decl.kind, OutputKind::ExportSeries))
+                .map(|(id, decl)| OutputSeries {
+                    id,
+                    name: decl.name.clone(),
+                    kind: decl.kind,
+                    points: Vec::new(),
+                })
+                .collect(),
+            triggers: compiled
+                .program
+                .outputs
+                .iter()
+                .enumerate()
+                .filter(|(_, decl)| matches!(decl.kind, OutputKind::Trigger))
+                .map(|(id, decl)| OutputSeries {
+                    id,
+                    name: decl.name.clone(),
+                    kind: decl.kind,
+                    points: Vec::new(),
+                })
+                .collect(),
+            trigger_events: Vec::new(),
             alerts: Vec::new(),
         };
 
@@ -183,7 +227,16 @@ impl Engine {
     }
 
     pub fn run_step(&mut self, bar: Bar) -> Result<crate::output::StepOutput, RuntimeError> {
+        self.run_step_with_inputs(bar, ExternalInputFrame::empty())
+    }
+
+    pub fn run_step_with_inputs(
+        &mut self,
+        bar: Bar,
+        external_inputs: ExternalInputFrame<'_>,
+    ) -> Result<crate::output::StepOutput, RuntimeError> {
         self.prepare_bar(bar)?;
+        self.commit_external_inputs(external_inputs)?;
         let mut remaining_steps = self.limits.max_instructions_per_bar;
         let program = &self.compiled.program;
         let mut vm_engine = VmEngine {
@@ -196,12 +249,37 @@ impl Engine {
             indicator_state: &mut self.indicator_state,
             advanced_mask: self.advanced_mask,
         };
-        let step = Vm::new(program).execute(&mut vm_engine)?;
+        let mut step = Vm::new(program).execute(&mut vm_engine)?;
+        let (exports, triggers, trigger_events) = self.collect_outputs(bar)?;
+        step.exports = exports;
+        step.triggers = triggers;
+        step.trigger_events = trigger_events;
         for point in &step.plots {
             if let Some(plot) = self.outputs.plots.get_mut(point.plot_id) {
                 plot.points.push(point.clone());
             }
         }
+        let mut export_index = 0usize;
+        let mut trigger_index = 0usize;
+        for decl in &self.compiled.program.outputs {
+            match decl.kind {
+                OutputKind::ExportSeries => {
+                    if let Some(sample) = step.exports.get(export_index).cloned() {
+                        self.outputs.exports[export_index].points.push(sample);
+                    }
+                    export_index += 1;
+                }
+                OutputKind::Trigger => {
+                    if let Some(sample) = step.triggers.get(trigger_index).cloned() {
+                        self.outputs.triggers[trigger_index].points.push(sample);
+                    }
+                    trigger_index += 1;
+                }
+            }
+        }
+        self.outputs
+            .trigger_events
+            .extend(step.trigger_events.clone());
         self.outputs.alerts.extend(step.alerts.clone());
         self.bar_index += 1;
         Ok(step)
@@ -246,6 +324,79 @@ impl Engine {
         }
 
         Ok(())
+    }
+
+    fn commit_external_inputs(
+        &mut self,
+        external_inputs: ExternalInputFrame<'_>,
+    ) -> Result<(), RuntimeError> {
+        if external_inputs.values.len() != self.compiled.program.external_inputs.len() {
+            return Err(RuntimeError::ExternalInputArityMismatch {
+                expected: self.compiled.program.external_inputs.len(),
+                found: external_inputs.values.len(),
+            });
+        }
+
+        for (decl, value) in self
+            .compiled
+            .program
+            .external_inputs
+            .iter()
+            .zip(external_inputs.values.iter())
+        {
+            validate_series_sample(decl.ty, value, |expected, found| {
+                RuntimeError::ExternalInputTypeMismatch {
+                    name: decl.name.clone(),
+                    expected,
+                    found,
+                }
+            })?;
+            let slot = decl.slot as usize;
+            self.current_values[slot] = value.clone();
+            self.series_values
+                .get_mut(slot)
+                .ok_or(RuntimeError::InvalidSeriesSlot { slot })?
+                .push(value.clone());
+        }
+
+        Ok(())
+    }
+
+    fn collect_outputs(&self, bar: Bar) -> Result<OutputCollections, RuntimeError> {
+        let mut exports = Vec::new();
+        let mut triggers = Vec::new();
+        let mut trigger_events = Vec::new();
+
+        for (output_id, decl) in self.compiled.program.outputs.iter().enumerate() {
+            let value = self.current_values.get(decl.slot as usize).ok_or(
+                RuntimeError::InvalidLocalSlot {
+                    slot: decl.slot as usize,
+                },
+            )?;
+            let sample = OutputSample {
+                output_id,
+                name: decl.name.clone(),
+                bar_index: self.bar_index,
+                time: Some(bar.time),
+                value: output_value_for_decl(decl.ty, value, &decl.name)?,
+            };
+            match decl.kind {
+                OutputKind::ExportSeries => exports.push(sample),
+                OutputKind::Trigger => {
+                    if matches!(sample.value, OutputValue::Bool(true)) {
+                        trigger_events.push(TriggerEvent {
+                            output_id,
+                            name: decl.name.clone(),
+                            bar_index: self.bar_index,
+                            time: Some(bar.time),
+                        });
+                    }
+                    triggers.push(sample);
+                }
+            }
+        }
+
+        Ok((exports, triggers, trigger_events))
     }
 
     fn advance_feed(&mut self, index: usize, base_close_time: i64) -> Result<(), RuntimeError> {
@@ -520,4 +671,54 @@ fn synthetic_values() -> [Value; 6] {
         Value::NA,
         Value::NA,
     ]
+}
+
+fn validate_series_sample(
+    ty: crate::types::Type,
+    value: &Value,
+    error: impl FnOnce(&'static str, &'static str) -> RuntimeError,
+) -> Result<(), RuntimeError> {
+    match ty {
+        crate::types::Type::SeriesF64 => match value {
+            Value::F64(_) | Value::NA => Ok(()),
+            other => Err(error("series<float>", other.type_name())),
+        },
+        crate::types::Type::SeriesBool => match value {
+            Value::Bool(_) | Value::NA => Ok(()),
+            other => Err(error("series<bool>", other.type_name())),
+        },
+        _ => Err(error("series", value.type_name())),
+    }
+}
+
+fn output_value_for_decl(
+    ty: crate::types::Type,
+    value: &Value,
+    name: &str,
+) -> Result<OutputValue, RuntimeError> {
+    match ty {
+        crate::types::Type::SeriesF64 => match value {
+            Value::F64(value) => Ok(OutputValue::F64(*value)),
+            Value::NA => Ok(OutputValue::NA),
+            other => Err(RuntimeError::OutputTypeMismatch {
+                name: name.to_string(),
+                expected: "series<float>",
+                found: other.type_name(),
+            }),
+        },
+        crate::types::Type::SeriesBool => match value {
+            Value::Bool(value) => Ok(OutputValue::Bool(*value)),
+            Value::NA => Ok(OutputValue::NA),
+            other => Err(RuntimeError::OutputTypeMismatch {
+                name: name.to_string(),
+                expected: "series<bool>",
+                found: other.type_name(),
+            }),
+        },
+        _ => Err(RuntimeError::OutputTypeMismatch {
+            name: name.to_string(),
+            expected: "series output",
+            found: value.type_name(),
+        }),
+    }
 }

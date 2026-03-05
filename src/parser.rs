@@ -21,6 +21,7 @@ struct Parser<'a> {
     cursor: usize,
     next_node_id: NodeId,
     diagnostics: Vec<Diagnostic>,
+    block_depth: usize,
 }
 
 impl<'a> Parser<'a> {
@@ -30,6 +31,7 @@ impl<'a> Parser<'a> {
             cursor: 0,
             next_node_id: 1,
             diagnostics: Vec::new(),
+            block_depth: 0,
         }
     }
 
@@ -70,6 +72,26 @@ impl<'a> Parser<'a> {
                 self.previous().span,
             );
             return None;
+        }
+        if self.matches_keyword(&TokenKind::Export) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "export statements are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_output_stmt(true);
+        }
+        if self.matches_keyword(&TokenKind::Trigger) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "trigger statements are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_output_stmt(false);
         }
         if self.matches_keyword(&TokenKind::Let) {
             return self.parse_let_stmt();
@@ -162,6 +184,33 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_output_stmt(&mut self, export: bool) -> Option<Stmt> {
+        let start = self.previous().span;
+        let name = match self.advance().map(|token| &token.kind) {
+            Some(TokenKind::Ident(name)) => name.clone(),
+            _ => {
+                self.error_here(if export {
+                    "expected identifier after `export`"
+                } else {
+                    "expected identifier after `trigger`"
+                });
+                return None;
+            }
+        };
+        self.expect_assign()?;
+        let expr = self.parse_expr(0)?;
+        let span = start.merge(expr.span);
+        Some(Stmt {
+            id: self.alloc_id(),
+            span,
+            kind: if export {
+                StmtKind::Export { name, expr }
+            } else {
+                StmtKind::Trigger { name, expr }
+            },
+        })
+    }
+
     fn parse_if_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
         let condition = self.parse_expr(0)?;
@@ -201,6 +250,7 @@ impl<'a> Parser<'a> {
             "expected `{` to start block",
         )?;
         let mut statements = Vec::new();
+        self.block_depth += 1;
         self.skip_separators();
         while !matches!(self.peek_kind(), TokenKind::RightBrace | TokenKind::Eof) {
             match self.parse_stmt() {
@@ -209,6 +259,7 @@ impl<'a> Parser<'a> {
             }
             self.skip_separators();
         }
+        self.block_depth -= 1;
         let right = self.expect_kind(
             |kind| matches!(kind, TokenKind::RightBrace),
             "expected `}` to end block",

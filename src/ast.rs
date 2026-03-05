@@ -49,6 +49,14 @@ pub enum StmtKind {
         name: String,
         expr: Expr,
     },
+    Export {
+        name: String,
+        expr: Expr,
+    },
+    Trigger {
+        name: String,
+        expr: Expr,
+    },
     If {
         condition: Expr,
         then_block: Block,

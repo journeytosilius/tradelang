@@ -16,6 +16,7 @@ The implemented language supports:
 
 - numeric, boolean, and `na` literals
 - `let` bindings
+- top-level `export` and `trigger` statements
 - top-level user-defined functions
 - `if`, `else if`, and `else` statements
 - logical `and` and `or` expressions
@@ -26,6 +27,7 @@ The implemented language supports:
 - predefined market data series: `open`, `high`, `low`, `close`, `volume`,
   `time`
 - interval-qualified market series such as `1w.close` and `4h.volume`
+- host-managed strategy composition through external series inputs
 
 ## Execution Model
 
@@ -37,9 +39,12 @@ At each bar:
 1. base-interval market data values are loaded into predefined series
 2. referenced higher/equal interval feeds are advanced up to the current
    fully closed base-bar boundary
-3. the compiled bytecode runs
-4. current values may be stored into bounded series buffers
-5. `plot(...)` outputs are emitted for the current bar
+3. host-provided external inputs, if any, are loaded into predefined series
+   slots
+4. the compiled bytecode runs
+5. current values may be stored into bounded series buffers
+6. `plot(...)`, `export`, and `trigger` outputs are emitted for the current
+   bar
 
 For multi-interval scripts:
 
@@ -48,6 +53,15 @@ For multi-interval scripts:
   interval
 - no partial higher-timeframe candle is ever visible
 - lower-than-base interval references are rejected when the runtime binds feeds
+
+For composed pipelines:
+
+- external inputs are injected by the host in a fixed slot order determined at
+  compile time
+- external inputs behave like base-clock predefined series
+- pipelines are DAGs and execute in topological order
+- downstream nodes may observe upstream outputs from the same bar only if the
+  upstream node already ran earlier in that topological order
 
 TradeLang is deterministic:
 
@@ -65,6 +79,8 @@ Supported top-level item forms:
 
 - `fn name(params...) = expr`
 - `let name = expr`
+- `export name = expr`
+- `trigger name = expr`
 - `if condition { ... } else if other_condition { ... } else { ... }`
 - expression statements such as `plot(close)`
 
@@ -136,6 +152,8 @@ Reserved keywords:
 
 - `fn`
 - `let`
+- `export`
+- `trigger`
 - `if`
 - `else`
 - `and`
@@ -347,11 +365,15 @@ plot(x)
 ### Scope Rules
 
 - top-level `let` bindings live for the whole program
+- top-level `export` and `trigger` bindings live for the whole program and are
+  available to later top-level statements
 - top-level `fn` declarations live in the callable namespace
 - each `if` branch introduces an inner block scope
 - inner scopes may shadow outer bindings
 - duplicate bindings in the same scope are rejected
 - function parameters shadow predefined series of the same name
+- host-provided external inputs are available in root scope as predefined
+  series identifiers
 
 ### Function Scope Rules
 
@@ -359,8 +381,8 @@ User-defined functions are intentionally restricted in v1:
 
 - functions are top-level only
 - functions are expression-bodied
-- functions may reference parameters, predefined series, builtins, and other
-  user-defined functions
+- functions may reference parameters, predefined series, external inputs,
+  builtins, and other user-defined functions
 - functions may reference interval-qualified market series
 - functions may not capture `let` bindings from the program or from blocks
 - duplicate function names are rejected
@@ -786,15 +808,28 @@ History is tracked per series slot. If any slot requires more than
 Running a script produces:
 
 - `plots`
+- `exports`
+- `triggers`
+- `trigger_events`
 - `alerts`
 
 Current state:
 
 - plots are implemented
+- exports record one typed sample per bar
+- triggers record one typed sample per bar and emit a discrete event when the
+  sample is `true`
 - alerts are present in output types but no alert builtin exists yet
 
 Each plot point contains:
 
+- `bar_index`
+- `time`
+- `value`
+
+Each export/trigger sample contains:
+
+- `name`
 - `bar_index`
 - `time`
 - `value`
@@ -831,9 +866,11 @@ The runtime reports errors for:
 - invalid local or series slots
 - instruction budget exhaustion
 - missing or unexpected interval feeds
+- missing or wrongly typed external inputs
 - lower-than-base interval references
 - misaligned or unsorted interval feeds
 - history requirements that exceed `VmLimits.max_history_capacity`
+- invalid pipeline wiring, cycles, and interval mismatches
 
 ## Unsupported or Not Yet Implemented
 
@@ -846,18 +883,19 @@ The following are not part of the language yet:
 - reassignment
 - alert-producing builtins
 - imports or modules
-- multi-plot output materialization
 - source-level division with `/`
 - block-bodied functions
 - recursion
 - closures or captured local bindings
 - lower-than-base interval references
+- cross-interval strategy composition between different base intervals
 
 ## Examples
 
 See the runnable examples in `examples/`:
 
 - `cargo run --example sma`
+- `cargo run --example pipeline`
 - `cargo run --example rsi`
 - `cargo run --example step_engine`
 

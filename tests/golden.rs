@@ -1,6 +1,8 @@
 use serde_json::json;
 use tradelang::{
-    compile, run, run_multi_interval, Bar, Interval, IntervalFeed, MultiIntervalConfig, VmLimits,
+    compile, compile_with_env, run, run_multi_interval, Bar, CompileEnvironment, ExternalInputDecl,
+    ExternalInputKind, Interval, IntervalFeed, MultiIntervalConfig, PipelineEdge, PipelineEngine,
+    PipelineNodeSpec, PipelineSpec, Type, VmLimits,
 };
 
 fn fixture_bars() -> Vec<Bar> {
@@ -189,7 +191,7 @@ fn golden_function_indexing_over_series_shape_matches() {
 #[test]
 fn golden_nested_function_helpers_shape_matches() {
     let compiled = compile(
-        "fn bullish_bar() = close > open\nfn trigger() = bullish_bar() and close > close[1]\nif trigger() { plot(1) } else { plot(0) }",
+        "fn bullish_bar() = close > open\nfn signal() = bullish_bar() and close > close[1]\nif signal() { plot(1) } else { plot(0) }",
     )
     .expect("script compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
@@ -288,5 +290,72 @@ fn golden_monthly_reference_shape_matches() {
     assert_eq!(
         json["plots"][0]["points"][4]["value"],
         serde_json::json!(0.0)
+    );
+}
+
+#[test]
+fn golden_export_series_shape_matches() {
+    let compiled = compile("export trend = close > close[1]\nplot(0)").expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("trend"));
+    assert_eq!(json["exports"][0]["points"].as_array().unwrap().len(), 20);
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+}
+
+#[test]
+fn golden_pipeline_shape_matches() {
+    let producer = compile("export trend = close > close[1]\nplot(0)").expect("producer");
+    let consumer = compile_with_env(
+        "if trend { plot(1) } else { plot(0) }",
+        &CompileEnvironment {
+            external_inputs: vec![ExternalInputDecl {
+                name: "trend".into(),
+                ty: Type::SeriesBool,
+                kind: ExternalInputKind::ExportSeries,
+            }],
+        },
+    )
+    .expect("consumer");
+    let outputs = PipelineEngine::new(
+        PipelineSpec {
+            nodes: vec![
+                PipelineNodeSpec {
+                    name: "producer".into(),
+                    compiled: producer,
+                    base_interval: Interval::Min1,
+                    data_config: None,
+                },
+                PipelineNodeSpec {
+                    name: "consumer".into(),
+                    compiled: consumer,
+                    base_interval: Interval::Min1,
+                    data_config: None,
+                },
+            ],
+            edges: vec![PipelineEdge {
+                from_node: "producer".into(),
+                output: "trend".into(),
+                to_node: "consumer".into(),
+                input: "trend".into(),
+            }],
+        },
+        VmLimits::default(),
+    )
+    .expect("pipeline")
+    .run(&fixture_bars())
+    .expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["nodes"][0]["outputs"]["exports"][0]["name"],
+        json!("trend")
+    );
+    assert_eq!(
+        json["nodes"][1]["outputs"]["plots"][0]["points"][0]["value"],
+        json!(0.0)
+    );
+    assert_eq!(
+        json["nodes"][1]["outputs"]["plots"][0]["points"][1]["value"],
+        json!(1.0)
     );
 }
