@@ -60,7 +60,7 @@ docker run --rm -p 8080:8080 palmscript-docs
 Then open:
 
 ```text
-http://127.0.0.1:8080
+http://127.0.0.1:8080/docs/
 ```
 
 Equivalent `Makefile` helpers:

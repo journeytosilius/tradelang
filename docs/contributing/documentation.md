@@ -32,6 +32,8 @@ docker build -f Dockerfile.docs -t palmscript-docs .
 docker run --rm -p 8080:8080 palmscript-docs
 ```
 
+The container publishes the static docs site under `http://127.0.0.1:8080/docs/`.
+
 ## Documentation Rules
 
 - extend existing relevant pages before creating near-duplicate pages
