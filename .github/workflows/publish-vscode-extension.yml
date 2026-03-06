@@ -18,7 +18,7 @@ jobs:
             rust_target: x86_64-unknown-linux-gnu
             platform_dir: linux-x64
             binary_name: tradelang-lsp
-          - runner: macos-13
+          - runner: macos-15-intel
             rust_target: x86_64-apple-darwin
             platform_dir: darwin-x64
             binary_name: tradelang-lsp
