@@ -21,7 +21,7 @@ if close > weekly_basis {
 
 ```bash
 tradelang run csv examples/strategies/weekly_bias.trl \
-  --bars examples/data/daily_bars.csv
+  --bars /path/to/daily_bars.csv
 ```
 
 The single CSV file is treated as the raw source. CSV mode rolls it up to the base interval and each declared `use` interval when the file contains enough complete bars.

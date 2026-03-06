@@ -32,5 +32,5 @@ Common commands:
 ./tradelang check examples/strategies/sma_cross.trl
 ./tradelang run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
 ./tradelang run csv examples/strategies/volume_breakout.trl --bars examples/data/minute_bars.csv --format text
-./tradelang run csv examples/strategies/weekly_bias.trl --bars examples/data/daily_bars.csv
+./tradelang run csv examples/strategies/weekly_bias.trl --bars /path/to/daily_bars.csv
 ```

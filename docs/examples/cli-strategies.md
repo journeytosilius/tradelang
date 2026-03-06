@@ -31,7 +31,7 @@ tradelang run csv examples/strategies/volume_breakout.trl \
 
 ```bash
 tradelang run csv examples/strategies/weekly_bias.trl \
-  --bars examples/data/daily_bars.csv
+  --bars /path/to/daily_bars.csv
 ```
 
 That example requires enough daily data to roll into full weekly candles.
