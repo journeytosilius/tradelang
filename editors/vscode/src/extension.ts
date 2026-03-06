@@ -10,8 +10,11 @@ import {
 } from "vscode-languageclient/node";
 
 let client: LanguageClient | undefined;
+let outputChannel: vscode.OutputChannel | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+    outputChannel = vscode.window.createOutputChannel("PalmScript");
+    context.subscriptions.push(outputChannel);
     const restartCommand = vscode.commands.registerCommand(
         "palmscript.restartLanguageServer",
         async () => {
@@ -43,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
-    await startClient(context);
+    await ensureClientStarted(context);
 }
 
 export async function deactivate(): Promise<void> {
@@ -58,7 +61,7 @@ async function restartClient(context: vscode.ExtensionContext): Promise<void> {
         await client.stop();
         client = undefined;
     }
-    await startClient(context);
+    await ensureClientStarted(context);
 }
 
 async function startClient(context: vscode.ExtensionContext): Promise<void> {
@@ -90,6 +93,31 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
     );
     await client.start();
     await client.setTrace(traceLevel());
+    outputChannel?.appendLine(`PalmScript language server started: ${serverPath}`);
+}
+
+async function ensureClientStarted(context: vscode.ExtensionContext): Promise<void> {
+    try {
+        await startClient(context);
+    } catch (error) {
+        outputChannel?.appendLine(startupFailureMessage(error));
+        if (error instanceof Error && error.stack !== undefined) {
+            outputChannel?.appendLine(error.stack);
+        }
+        const action = await vscode.window.showErrorMessage(
+            startupFailureMessage(error),
+            "Open Settings",
+            "Show Output",
+        );
+        if (action === "Open Settings") {
+            await vscode.commands.executeCommand(
+                "workbench.action.openSettings",
+                "palmscript.server.path",
+            );
+        } else if (action === "Show Output") {
+            outputChannel?.show(true);
+        }
+    }
 }
 
 async function resolveServerBinary(context: vscode.ExtensionContext): Promise<string> {
@@ -154,4 +182,9 @@ function traceLevel(): Trace {
         default:
             return Trace.Off;
     }
+}
+
+export function startupFailureMessage(error: unknown): string {
+    const details = error instanceof Error ? error.message : String(error);
+    return `PalmScript language features are unavailable because palmscript-lsp could not be started: ${details}`;
 }

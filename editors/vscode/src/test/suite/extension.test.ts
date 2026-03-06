@@ -2,6 +2,7 @@ import * as assert from "node:assert/strict";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
+import { startupFailureMessage } from "../../extension";
 
 suite("PalmScript extension", () => {
     const serverPath = path.resolve(
@@ -71,6 +72,14 @@ suite("PalmScript extension", () => {
         )) as vscode.TextEdit[];
         assert.ok(formatted.length > 0);
         void editor;
+    });
+
+    test("formats missing language server failures for user-facing alerts", () => {
+        const message = startupFailureMessage(
+            new Error("Could not find palmscript-lsp. Configure `palmscript.server.path`."),
+        );
+        assert.ok(message.includes("language features are unavailable"));
+        assert.ok(message.includes("palmscript-lsp"));
     });
 });
 
