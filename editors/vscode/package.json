@@ -2,7 +2,7 @@
   "name": "palmscript-vscode",
   "displayName": "PalmScript",
   "description": "VS Code support for PalmScript strategies",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "publisher": "journeytosilius",
   "icon": "images/palmscript.png",
   "license": "MIT",
@@ -30,8 +30,7 @@
           "palmscript"
         ],
         "extensions": [
-          ".palm",
-          ".trl"
+          ".palm"
         ],
         "configuration": "./language-configuration.json"
       }

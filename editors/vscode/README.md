@@ -10,8 +10,7 @@ This file remains the short repository-local development note.
 
 The extension recognizes:
 
-1. primary PalmScript sources: `.palm`
-2. legacy TradeLang sources: `.trl`
+1. PalmScript sources: `.palm`
 
 ## Development
 

@@ -25,7 +25,6 @@ target/debug/palmscript dump-bytecode examples/strategies/sma_cross.palm
 
 - install the PalmScript extension
 - open a `.palm` file
-- legacy `.trl` files are still recognized during migration
 - diagnostics, completions, hovers, definitions, document symbols, and formatting are provided by `palmscript-lsp`
 
 ## 5. Build and Serve the Docs

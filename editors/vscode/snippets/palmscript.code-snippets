@@ -1,6 +1,6 @@
 {
   "Strategy Skeleton": {
-    "prefix": "trl-strategy",
+    "prefix": "palm-strategy",
     "body": [
       "interval ${1:1m}",
       "${2:use 1w}",
@@ -16,14 +16,14 @@
     "description": "Create a PalmScript strategy skeleton"
   },
   "Export": {
-    "prefix": "trl-export",
+    "prefix": "palm-export",
     "body": [
       "export ${1:name} = ${2:close > close[1]}"
     ],
     "description": "Create an export output"
   },
   "Trigger": {
-    "prefix": "trl-trigger",
+    "prefix": "palm-trigger",
     "body": [
       "trigger ${1:name} = ${2:close > open}"
     ],

@@ -49,5 +49,3 @@ Compiles and renders the compiled program:
 palmscript dump-bytecode strategy.palm
 palmscript dump-bytecode strategy.palm --format json
 ```
-
-Legacy `.trl` filenames are still accepted.

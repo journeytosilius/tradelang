@@ -23,7 +23,6 @@ cargo run --example monthly_trend
 ## CLI Strategies
 
 Checked-in `.palm` strategies live under `examples/strategies/`.
-The CLI still accepts legacy `.trl` files during migration.
 
 Common commands:
 
