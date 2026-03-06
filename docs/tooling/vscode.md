@@ -4,9 +4,9 @@ The first-party VS Code extension provides editor support for `.trl` files.
 
 Marketplace identity:
 
-- display name: `TradeLang`
-- publisher: `tradelang`
-- extension id: `tradelang.tradelang-vscode`
+- display name: `PalmScript`
+- publisher: `palmscript`
+- extension id: `palmscript.palmscript-vscode`
 
 ## Capabilities
 
@@ -21,25 +21,25 @@ Marketplace identity:
 
 ## Language Server Resolution
 
-The extension resolves `tradelang-lsp` in this order:
+The extension resolves `palmscript-lsp` in this order:
 
-1. `tradelang.server.path`
+1. `palmscript.server.path`
 2. bundled platform binary inside the extension
 3. local development fallback in the repository `target/` directory
 
 ## Settings
 
-- `tradelang.server.path`
-- `tradelang.projectConfigPath`
-- `tradelang.trace.server`
+- `palmscript.server.path`
+- `palmscript.projectConfigPath`
+- `palmscript.trace.server`
 
 ## Packaging
 
-Release builds bundle platform-specific `tradelang-lsp` binaries under:
+Release builds bundle platform-specific `palmscript-lsp` binaries under:
 
 ```text
-server/<platform>-<arch>/tradelang-lsp
-server/<platform>-<arch>/tradelang-lsp.exe
+server/<platform>-<arch>/palmscript-lsp
+server/<platform>-<arch>/palmscript-lsp.exe
 ```
 
 See [Release Workflows](../contributing/releases.md) for the publishing pipeline.

@@ -1,6 +1,6 @@
 # VM Semantics
 
-The TradeLang VM executes one compiled program against one base-step clock.
+The PalmScript VM executes one compiled program against one base-step clock.
 
 ## Hot Path Rules
 

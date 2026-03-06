@@ -1,6 +1,6 @@
 # Documentation Maintenance
 
-The MkDocs site under `docs/` is the canonical documentation source for TradeLang.
+The MkDocs site under `docs/` is the canonical documentation source for PalmScript.
 
 ## When To Update Docs
 

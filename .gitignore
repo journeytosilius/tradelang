@@ -1,5 +1,6 @@
 /target/
 /tradelang
+/palmscript
 /site/
 /.venv-docs/
 /editors/vscode/node_modules/

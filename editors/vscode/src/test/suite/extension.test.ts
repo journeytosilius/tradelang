@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import * as vscode from "vscode";
 
-suite("TradeLang extension", () => {
+suite("PalmScript extension", () => {
     const serverPath = path.resolve(
         __dirname,
         "..",
@@ -12,12 +12,12 @@ suite("TradeLang extension", () => {
         "..",
         "target",
         "debug",
-        process.platform === "win32" ? "tradelang-lsp.exe" : "tradelang-lsp",
+        process.platform === "win32" ? "palmscript-lsp.exe" : "palmscript-lsp",
     );
 
     suiteSetup(async () => {
         await vscode.workspace
-            .getConfiguration("tradelang")
+            .getConfiguration("palmscript")
             .update("server.path", serverPath, vscode.ConfigurationTarget.Global);
     });
 

@@ -1,6 +1,6 @@
 # Testing Expectations
 
-TradeLang is a financial computation engine, so tests are mandatory for non-trivial changes.
+PalmScript is a financial computation engine, so tests are mandatory for non-trivial changes.
 
 ## Required Quality Gate
 

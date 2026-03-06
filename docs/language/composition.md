@@ -1,6 +1,6 @@
 # Composition and External Inputs
 
-TradeLang supports host-managed composition where one compiled strategy can feed another.
+PalmScript supports host-managed composition where one compiled strategy can feed another.
 
 ## External Inputs
 
@@ -10,7 +10,7 @@ From the script's point of view, external inputs behave like predefined root-sco
 
 ## Compile Environments
 
-External inputs are declared outside the source file through `CompileEnvironment`. The CLI `check` and `dump-bytecode` commands can load that from `.tradelang.json`-style JSON, and the language server uses the same model for editor diagnostics.
+External inputs are declared outside the source file through `CompileEnvironment`. The CLI `check` and `dump-bytecode` commands can load that from `.palmscript.json`-style JSON, and the language server uses the same model for editor diagnostics.
 
 ## Pipeline Rules
 

@@ -1,12 +1,12 @@
-use tradelang::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
-use tradelang::compiler::{CompileEnvironment, CompiledProgram, ExternalInputDecl};
-use tradelang::diagnostic::RuntimeError;
-use tradelang::runtime::{
+use palmscript::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
+use palmscript::compiler::{CompileEnvironment, CompiledProgram, ExternalInputDecl};
+use palmscript::diagnostic::RuntimeError;
+use palmscript::runtime::{
     run, run_multi_interval, Bar, Engine, ExternalInputFrame, IntervalFeed, MultiIntervalConfig,
     VmLimits,
 };
-use tradelang::types::Value;
-use tradelang::{
+use palmscript::types::Value;
+use palmscript::{
     compile_with_env, ExternalInputKind, Interval, MarketBinding, MarketField, MarketSource, Type,
 };
 
@@ -115,7 +115,7 @@ fn evaluate_logic(op: &str, left: &str, right: &str) -> Option<f64> {
     let script = with_interval(&format!(
         "if {expr} {{ plot(1) }} else if !({expr}) {{ plot(2) }} else {{ plot(3) }}"
     ));
-    let compiled = tradelang::compile(&script).expect("script should compile");
+    let compiled = palmscript::compile(&script).expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     outputs.plots[0].points[0].value
 }
@@ -201,7 +201,7 @@ fn invalid_jump_is_reported() {
 #[test]
 fn instruction_budget_exhaustion_is_reported() {
     let compiled =
-        tradelang::compile(&with_interval("plot(sma(close, 5))")).expect("script should compile");
+        palmscript::compile(&with_interval("plot(sma(close, 5))")).expect("script should compile");
     let fixture = vec![
         Bar {
             open: 1.0,
@@ -270,7 +270,7 @@ fn or_truth_table_matches_spec() {
 
 #[test]
 fn logical_precedence_matches_spec() {
-    let compiled = tradelang::compile(&with_interval(
+    let compiled = palmscript::compile(&with_interval(
         "if true or false and false { plot(1) } else { plot(0) }",
     ))
     .expect("script should compile");
@@ -280,7 +280,7 @@ fn logical_precedence_matches_spec() {
 
 #[test]
 fn else_if_selects_the_first_matching_branch() {
-    let compiled = tradelang::compile(&with_interval(
+    let compiled = palmscript::compile(&with_interval(
         "if false { plot(0) } else if true { plot(1) } else { plot(2) }",
     ))
     .expect("script should compile");
@@ -329,11 +329,11 @@ fn bars_with_spacing(start_ms: i64, spacing_ms: i64, closes: &[f64]) -> Vec<Bar>
 
 #[test]
 fn user_function_inlining_matches_inline_expression() {
-    let helper = tradelang::compile(&with_interval(
+    let helper = palmscript::compile(&with_interval(
         "fn rising(series) = series > series[1]\nif rising(close) { plot(1) } else { plot(0) }",
     ))
     .expect("helper script should compile");
-    let inline = tradelang::compile(&with_interval(
+    let inline = palmscript::compile(&with_interval(
         "if close > close[1] { plot(1) } else { plot(0) }",
     ))
     .expect("inline script should compile");
@@ -344,7 +344,7 @@ fn user_function_inlining_matches_inline_expression() {
 
 #[test]
 fn nested_user_functions_execute_over_indicators() {
-    let compiled = tradelang::compile(
+    let compiled = palmscript::compile(
         &with_interval(
             "fn crossover(a, b) = a > b and a[1] <= b[1]\nfn long_signal(fast, slow) = crossover(fast, slow) or fast > slow\nlet fast = ema(close, 3)\nlet slow = ema(close, 5)\nif long_signal(fast, slow) { plot(1) } else { plot(0) }",
         ),
@@ -357,7 +357,7 @@ fn nested_user_functions_execute_over_indicators() {
 
 #[test]
 fn user_function_with_na_result_preserves_null_plot() {
-    let compiled = tradelang::compile(&with_interval("fn missing() = na\nplot(missing())"))
+    let compiled = palmscript::compile(&with_interval("fn missing() = na\nplot(missing())"))
         .expect("script should compile");
     let outputs = run(&compiled, &bars(), VmLimits::default()).expect("script should run");
     assert_eq!(outputs.plots[0].points[0].value, None);
@@ -365,7 +365,7 @@ fn user_function_with_na_result_preserves_null_plot() {
 
 #[test]
 fn qualified_series_requires_multi_interval_config() {
-    let compiled = tradelang::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
+    let compiled = palmscript::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
         .expect("script should compile");
     let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("config required");
     assert!(matches!(err, RuntimeError::MissingIntervalConfig));
@@ -373,7 +373,7 @@ fn qualified_series_requires_multi_interval_config() {
 
 #[test]
 fn lower_interval_references_are_rejected() {
-    let compiled = tradelang::compile(&with_intervals("1h", &["1m"], "plot(1m.close)"))
+    let compiled = palmscript::compile(&with_intervals("1h", &["1m"], "plot(1m.close)"))
         .expect("script should compile");
     let err = run_multi_interval(
         &compiled,
@@ -396,7 +396,7 @@ fn lower_interval_references_are_rejected() {
 
 #[test]
 fn hourly_series_only_updates_on_hour_close_boundaries() {
-    let compiled = tradelang::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
+    let compiled = palmscript::compile(&with_intervals("1m", &["1h"], "plot(1h.close)"))
         .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0; 120]);
     let hourly = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[100.0, 200.0]);
@@ -421,7 +421,7 @@ fn hourly_series_only_updates_on_hour_close_boundaries() {
 
 #[test]
 fn minute_series_only_updates_on_minute_close_boundaries_from_seconds() {
-    let compiled = tradelang::compile(&with_intervals("1s", &["1m"], "plot(1m.close)"))
+    let compiled = palmscript::compile(&with_intervals("1s", &["1m"], "plot(1m.close)"))
         .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, SECOND_MS, &[1.0; 120]);
     let minute = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 20.0]);
@@ -445,7 +445,7 @@ fn minute_series_only_updates_on_minute_close_boundaries_from_seconds() {
 
 #[test]
 fn weekly_series_only_updates_on_week_close_boundaries() {
-    let compiled = tradelang::compile(&with_intervals("1d", &["1w"], "plot(1w.close)"))
+    let compiled = palmscript::compile(&with_intervals("1d", &["1w"], "plot(1w.close)"))
         .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, DAY_MS, &[1.0; 14]);
     let weekly = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[10.0, 20.0]);
@@ -470,7 +470,7 @@ fn weekly_series_only_updates_on_week_close_boundaries() {
 
 #[test]
 fn monthly_series_uses_calendar_close_boundaries() {
-    let compiled = tradelang::compile(&with_intervals("1w", &["1M"], "plot(1M.close)"))
+    let compiled = palmscript::compile(&with_intervals("1w", &["1M"], "plot(1M.close)"))
         .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, WEEK_MS, &[1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
     let monthly = bars_with_spacing(
@@ -497,7 +497,7 @@ fn monthly_series_uses_calendar_close_boundaries() {
 
 #[test]
 fn missing_interval_bars_become_na_steps() {
-    let compiled = tradelang::compile(&with_intervals("1h", &["1d"], "plot(1d.close)"))
+    let compiled = palmscript::compile(&with_intervals("1h", &["1d"], "plot(1d.close)"))
         .expect("script should compile");
     let base = bars_with_spacing(JAN_1_2024_UTC_MS, HOUR_MS, &[1.0; 72]);
     let daily = vec![
@@ -527,7 +527,7 @@ fn missing_interval_bars_become_na_steps() {
 
 #[test]
 fn insufficient_history_capacity_rejects_at_engine_construction() {
-    let compiled = tradelang::compile(&with_intervals("1d", &["1w"], "plot(1w.close[3])"))
+    let compiled = palmscript::compile(&with_intervals("1d", &["1w"], "plot(1w.close[3])"))
         .expect("script should compile");
     let err = run_multi_interval(
         &compiled,
@@ -557,7 +557,7 @@ fn insufficient_history_capacity_rejects_at_engine_construction() {
 
 #[test]
 fn exports_are_recorded_each_bar() {
-    let compiled = tradelang::compile(&with_interval("export trend = close > close[1]\nplot(0)"))
+    let compiled = palmscript::compile(&with_interval("export trend = close > close[1]\nplot(0)"))
         .expect("script compiles");
     let outputs = run(
         &compiled,
@@ -570,21 +570,21 @@ fn exports_are_recorded_each_bar() {
     assert_eq!(outputs.exports[0].points.len(), 3);
     assert!(matches!(
         outputs.exports[0].points[0].value,
-        tradelang::OutputValue::NA
+        palmscript::OutputValue::NA
     ));
     assert!(matches!(
         outputs.exports[0].points[1].value,
-        tradelang::OutputValue::Bool(true)
+        palmscript::OutputValue::Bool(true)
     ));
     assert!(matches!(
         outputs.exports[0].points[2].value,
-        tradelang::OutputValue::Bool(false)
+        palmscript::OutputValue::Bool(false)
     ));
 }
 
 #[test]
 fn triggers_emit_samples_and_events() {
-    let compiled = tradelang::compile(&with_interval(
+    let compiled = palmscript::compile(&with_interval(
         "trigger long_entry = close > close[1]\nplot(0)",
     ))
     .expect("script compiles");

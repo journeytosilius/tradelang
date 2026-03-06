@@ -1,7 +1,7 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use tradelang::{compile, run_multi_interval, Interval, MultiIntervalConfig, VmLimits};
+use palmscript::{compile, run_multi_interval, Interval, MultiIntervalConfig, VmLimits};
 
 fn main() {
     let source = "interval 1w\nuse 1M\nuse 1d\nif 1M.close > 1M.close[1] and 1d.volume > 1d.volume[1] { plot(1) } else { plot(0) }";

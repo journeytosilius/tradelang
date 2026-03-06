@@ -3,13 +3,13 @@
 ## 1. Check a Strategy
 
 ```bash
-target/debug/tradelang check examples/strategies/sma_cross.trl
+target/debug/palmscript check examples/strategies/sma_cross.trl
 ```
 
 ## 2. Run a Strategy in CSV Mode
 
 ```bash
-target/debug/tradelang run csv examples/strategies/sma_cross.trl \
+target/debug/palmscript run csv examples/strategies/sma_cross.trl \
   --bars examples/data/minute_bars.csv
 ```
 
@@ -18,14 +18,14 @@ CSV mode is the only `run` mode today. It accepts one raw market-data file, infe
 ## 3. Inspect Bytecode
 
 ```bash
-target/debug/tradelang dump-bytecode examples/strategies/sma_cross.trl
+target/debug/palmscript dump-bytecode examples/strategies/sma_cross.trl
 ```
 
 ## 4. Open the Project in VS Code
 
-- install the TradeLang extension
+- install the PalmScript extension
 - open a `.trl` file
-- diagnostics, completions, hovers, definitions, document symbols, and formatting are provided by `tradelang-lsp`
+- diagnostics, completions, hovers, definitions, document symbols, and formatting are provided by `palmscript-lsp`
 
 ## 5. Build and Serve the Docs
 

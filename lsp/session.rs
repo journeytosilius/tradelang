@@ -2,10 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use lsp_types::{Diagnostic, Uri};
-use serde::Deserialize;
-use tradelang::{
+use palmscript::{
     analyze_document, load_project_config, CompileEnvironment, CompileError, SemanticDocument,
 };
+use serde::Deserialize;
 
 use crate::convert::from_trade_diagnostic;
 use crate::convert::uri_to_path;
@@ -142,7 +142,7 @@ impl Session {
                     root.join(override_path)
                 }
             }
-            None => root.join(".tradelang.json"),
+            None => root.join(".palmscript.json"),
         }
     }
 }

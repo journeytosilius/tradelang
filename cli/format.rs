@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
-use tradelang::bytecode::{Constant, LocalInfo, Program};
-use tradelang::{CompiledProgram, OutputKind, OutputValue, Outputs, Value};
+use palmscript::bytecode::{Constant, LocalInfo, Program};
+use palmscript::{CompiledProgram, OutputKind, OutputValue, Outputs, Value};
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
     let mut out = String::new();

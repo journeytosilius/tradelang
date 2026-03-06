@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use tradelang::{Bar, IntervalFeed, Outputs};
+use palmscript::{Bar, IntervalFeed, Outputs};
 
 pub const SECOND_MS: i64 = 1_000;
 pub const MINUTE_MS: i64 = 60 * SECOND_MS;
@@ -60,35 +60,35 @@ pub fn monthly_feed(closes: &[f64]) -> IntervalFeed {
         });
     }
     IntervalFeed {
-        interval: tradelang::Interval::Month1,
+        interval: palmscript::Interval::Month1,
         bars,
     }
 }
 
 pub fn weekly_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
     IntervalFeed {
-        interval: tradelang::Interval::Week1,
+        interval: palmscript::Interval::Week1,
         bars: flat_bars(start_ms, WEEK_MS, closes),
     }
 }
 
 pub fn daily_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
     IntervalFeed {
-        interval: tradelang::Interval::Day1,
+        interval: palmscript::Interval::Day1,
         bars: flat_bars(start_ms, DAY_MS, closes),
     }
 }
 
 pub fn hourly_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
     IntervalFeed {
-        interval: tradelang::Interval::Hour1,
+        interval: palmscript::Interval::Hour1,
         bars: flat_bars(start_ms, HOUR_MS, closes),
     }
 }
 
 pub fn minute_feed(start_ms: i64, closes: &[f64]) -> IntervalFeed {
     IntervalFeed {
-        interval: tradelang::Interval::Min1,
+        interval: palmscript::Interval::Min1,
         bars: flat_bars(start_ms, MINUTE_MS, closes),
     }
 }

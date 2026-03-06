@@ -13,14 +13,14 @@ let client: LanguageClient | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const restartCommand = vscode.commands.registerCommand(
-        "tradelang.restartLanguageServer",
+        "palmscript.restartLanguageServer",
         async () => {
             await restartClient(context);
         },
     );
     context.subscriptions.push(restartCommand);
 
-    const configWatcher = vscode.workspace.createFileSystemWatcher("**/.tradelang.json");
+    const configWatcher = vscode.workspace.createFileSystemWatcher("**/.palmscript.json");
     const restartOnChange = async (): Promise<void> => {
         if (client !== undefined) {
             await restartClient(context);
@@ -34,9 +34,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(async (event) => {
             if (
-                event.affectsConfiguration("tradelang.server.path") ||
-                event.affectsConfiguration("tradelang.projectConfigPath") ||
-                event.affectsConfiguration("tradelang.trace.server")
+                event.affectsConfiguration("palmscript.server.path") ||
+                event.affectsConfiguration("palmscript.projectConfigPath") ||
+                event.affectsConfiguration("palmscript.trace.server")
             ) {
                 await restartClient(context);
             }
@@ -74,17 +74,17 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
         },
     };
     const clientOptions: LanguageClientOptions = {
-        documentSelector: [{ scheme: "file", language: "tradelang" }],
+        documentSelector: [{ scheme: "file", language: "palmscript" }],
         initializationOptions: {
             projectConfigPath: vscode.workspace
-                .getConfiguration("tradelang")
-                .get<string>("projectConfigPath", ".tradelang.json"),
+                .getConfiguration("palmscript")
+                .get<string>("projectConfigPath", ".palmscript.json"),
         },
     };
 
     client = new LanguageClient(
-        "tradelang",
-        "TradeLang Language Server",
+        "palmscript",
+        "PalmScript Language Server",
         serverOptions,
         clientOptions,
     );
@@ -94,12 +94,12 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
 
 async function resolveServerBinary(context: vscode.ExtensionContext): Promise<string> {
     const configured = vscode.workspace
-        .getConfiguration("tradelang")
+        .getConfiguration("palmscript")
         .get<string>("server.path", "")
         .trim();
     if (configured.length > 0) {
         if (!fs.existsSync(configured)) {
-            throw new Error(`Configured TradeLang server not found: ${configured}`);
+            throw new Error(`Configured PalmScript server not found: ${configured}`);
         }
         return configured;
     }
@@ -119,7 +119,7 @@ async function resolveServerBinary(context: vscode.ExtensionContext): Promise<st
     }
 
     throw new Error(
-        "Could not find tradelang-lsp. Configure `tradelang.server.path` or build the repo binary.",
+        "Could not find palmscript-lsp. Configure `palmscript.server.path` or build the repo binary.",
     );
 }
 
@@ -139,12 +139,12 @@ function bundledBinaryPath(context: vscode.ExtensionContext): string | undefined
 }
 
 function binaryName(): string {
-    return process.platform === "win32" ? "tradelang-lsp.exe" : "tradelang-lsp";
+    return process.platform === "win32" ? "palmscript-lsp.exe" : "palmscript-lsp";
 }
 
 function traceLevel(): Trace {
     const trace = vscode.workspace
-        .getConfiguration("tradelang")
+        .getConfiguration("palmscript")
         .get<string>("trace.server", "off");
     switch (trace) {
         case "messages":

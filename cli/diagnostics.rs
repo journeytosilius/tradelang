@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tradelang::{CompileError, DataPrepError, RuntimeError};
+use palmscript::{CompileError, DataPrepError, RuntimeError};
 
 pub fn format_compile_error(path: &Path, err: &CompileError) -> String {
     let mut rendered = Vec::with_capacity(err.diagnostics.len() + 1);
@@ -26,11 +26,11 @@ pub fn format_data_prep_error(err: &DataPrepError) -> String {
     format!("CSV mode error: {err}")
 }
 
-fn diagnostic_kind_label(kind: tradelang::DiagnosticKind) -> &'static str {
+fn diagnostic_kind_label(kind: palmscript::DiagnosticKind) -> &'static str {
     match kind {
-        tradelang::DiagnosticKind::Lex => "lex",
-        tradelang::DiagnosticKind::Parse => "parse",
-        tradelang::DiagnosticKind::Type => "type",
-        tradelang::DiagnosticKind::Compile => "compile",
+        palmscript::DiagnosticKind::Lex => "lex",
+        palmscript::DiagnosticKind::Parse => "parse",
+        palmscript::DiagnosticKind::Type => "type",
+        palmscript::DiagnosticKind::Compile => "compile",
     }
 }

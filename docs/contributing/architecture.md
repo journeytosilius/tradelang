@@ -1,6 +1,6 @@
 # Repository Architecture
 
-TradeLang is structured as a library-first repository. Tooling layers reuse the library instead of duplicating semantics.
+PalmScript is structured as a library-first repository. Tooling layers reuse the library instead of duplicating semantics.
 
 ## Main Areas
 

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Parser)]
-#[command(name = "tradelang")]
-#[command(about = "TradeLang CLI")]
+#[command(name = "palmscript")]
+#[command(about = "PalmScript CLI")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

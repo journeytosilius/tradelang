@@ -1,10 +1,10 @@
 # Functions
 
-TradeLang supports top-level user-defined functions.
+PalmScript supports top-level user-defined functions.
 
 ## Syntax
 
-```tradelang
+```palmscript
 fn crossover(a, b) = a > b and a[1] <= b[1]
 ```
 

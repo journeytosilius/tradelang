@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use tradelang::{Bar, CompileEnvironment};
+use palmscript::{Bar, CompileEnvironment};
 
 pub fn load_compile_env(path: &Path) -> Result<CompileEnvironment, String> {
     let raw = fs::read_to_string(path)

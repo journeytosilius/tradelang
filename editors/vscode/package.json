@@ -1,9 +1,9 @@
 {
-  "name": "tradelang-vscode",
-  "displayName": "TradeLang",
-  "description": "VS Code support for TradeLang strategies",
+  "name": "palmscript-vscode",
+  "displayName": "PalmScript",
+  "description": "VS Code support for PalmScript strategies",
   "version": "0.1.0",
-  "publisher": "tradelang",
+  "publisher": "palmscript",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,17 +16,17 @@
     "Programming Languages"
   ],
   "activationEvents": [
-    "onLanguage:tradelang",
-    "onCommand:tradelang.restartLanguageServer"
+    "onLanguage:palmscript",
+    "onCommand:palmscript.restartLanguageServer"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
       {
-        "id": "tradelang",
+        "id": "palmscript",
         "aliases": [
-          "TradeLang",
-          "tradelang"
+          "PalmScript",
+          "palmscript"
         ],
         "extensions": [
           ".trl"
@@ -36,37 +36,37 @@
     ],
     "grammars": [
       {
-        "language": "tradelang",
-        "scopeName": "source.tradelang",
-        "path": "./syntaxes/tradelang.tmLanguage.json"
+        "language": "palmscript",
+        "scopeName": "source.palmscript",
+        "path": "./syntaxes/palmscript.tmLanguage.json"
       }
     ],
     "snippets": [
       {
-        "language": "tradelang",
-        "path": "./snippets/tradelang.code-snippets"
+        "language": "palmscript",
+        "path": "./snippets/palmscript.code-snippets"
       }
     ],
     "commands": [
       {
-        "command": "tradelang.restartLanguageServer",
-        "title": "TradeLang: Restart Language Server"
+        "command": "palmscript.restartLanguageServer",
+        "title": "PalmScript: Restart Language Server"
       }
     ],
     "configuration": {
-      "title": "TradeLang",
+      "title": "PalmScript",
       "properties": {
-        "tradelang.server.path": {
+        "palmscript.server.path": {
           "type": "string",
           "default": "",
-          "description": "Optional path to a custom tradelang-lsp binary."
+          "description": "Optional path to a custom palmscript-lsp binary."
         },
-        "tradelang.projectConfigPath": {
+        "palmscript.projectConfigPath": {
           "type": "string",
-          "default": ".tradelang.json",
-          "description": "Workspace-relative or absolute path to the TradeLang project config."
+          "default": ".palmscript.json",
+          "description": "Workspace-relative or absolute path to the PalmScript project config."
         },
-        "tradelang.trace.server": {
+        "palmscript.trace.server": {
           "type": "string",
           "enum": [
             "off",
@@ -74,7 +74,7 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Trace communication with the TradeLang language server."
+          "description": "Trace communication with the PalmScript language server."
         }
       }
     }

@@ -17,19 +17,19 @@ jobs:
           - runner: ubuntu-latest
             rust_target: x86_64-unknown-linux-gnu
             platform_dir: linux-x64
-            binary_name: tradelang-lsp
+            binary_name: palmscript-lsp
           - runner: macos-15-intel
             rust_target: x86_64-apple-darwin
             platform_dir: darwin-x64
-            binary_name: tradelang-lsp
+            binary_name: palmscript-lsp
           - runner: macos-14
             rust_target: aarch64-apple-darwin
             platform_dir: darwin-arm64
-            binary_name: tradelang-lsp
+            binary_name: palmscript-lsp
           - runner: windows-latest
             rust_target: x86_64-pc-windows-msvc
             platform_dir: win32-x64
-            binary_name: tradelang-lsp.exe
+            binary_name: palmscript-lsp.exe
 
     steps:
       - uses: actions/checkout@v4
@@ -38,8 +38,8 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Build tradelang-lsp
-        run: cargo build --release --bin tradelang-lsp --target ${{ matrix.rust_target }}
+      - name: Build palmscript-lsp
+        run: cargo build --release --bin palmscript-lsp --target ${{ matrix.rust_target }}
 
       - name: Stage bundle
         shell: bash
@@ -49,7 +49,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tradelang-lsp-${{ matrix.platform_dir }}
+          name: palmscript-lsp-${{ matrix.platform_dir }}
           path: bundle/${{ matrix.platform_dir }}/${{ matrix.binary_name }}
 
   package-extension:
@@ -75,13 +75,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p editors/vscode/server/linux-x64 editors/vscode/server/darwin-x64 editors/vscode/server/darwin-arm64 editors/vscode/server/win32-x64
-          cp editors/vscode/server/tradelang-lsp-linux-x64/tradelang-lsp editors/vscode/server/linux-x64/tradelang-lsp
-          cp editors/vscode/server/tradelang-lsp-darwin-x64/tradelang-lsp editors/vscode/server/darwin-x64/tradelang-lsp
-          cp editors/vscode/server/tradelang-lsp-darwin-arm64/tradelang-lsp editors/vscode/server/darwin-arm64/tradelang-lsp
-          cp editors/vscode/server/tradelang-lsp-win32-x64/tradelang-lsp.exe editors/vscode/server/win32-x64/tradelang-lsp.exe
-          chmod +x editors/vscode/server/linux-x64/tradelang-lsp
-          chmod +x editors/vscode/server/darwin-x64/tradelang-lsp
-          chmod +x editors/vscode/server/darwin-arm64/tradelang-lsp
+          cp editors/vscode/server/palmscript-lsp-linux-x64/palmscript-lsp editors/vscode/server/linux-x64/palmscript-lsp
+          cp editors/vscode/server/palmscript-lsp-darwin-x64/palmscript-lsp editors/vscode/server/darwin-x64/palmscript-lsp
+          cp editors/vscode/server/palmscript-lsp-darwin-arm64/palmscript-lsp editors/vscode/server/darwin-arm64/palmscript-lsp
+          cp editors/vscode/server/palmscript-lsp-win32-x64/palmscript-lsp.exe editors/vscode/server/win32-x64/palmscript-lsp.exe
+          chmod +x editors/vscode/server/linux-x64/palmscript-lsp
+          chmod +x editors/vscode/server/darwin-x64/palmscript-lsp
+          chmod +x editors/vscode/server/darwin-arm64/palmscript-lsp
 
       - name: Install extension dependencies
         working-directory: editors/vscode
@@ -93,7 +93,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tradelang-vsix
+          name: palmscript-vsix
           path: editors/vscode/*.vsix
 
   publish-extension:
@@ -115,7 +115,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: tradelang-vsix
+          name: palmscript-vsix
           path: dist
 
       - name: Install extension dependencies

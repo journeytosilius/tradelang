@@ -21,8 +21,8 @@ fn bars_csv(rows: &[&str]) -> String {
     csv
 }
 
-fn tradelang_cmd() -> std::process::Command {
-    std::process::Command::new(assert_cmd::cargo::cargo_bin!("tradelang"))
+fn palmscript_cmd() -> std::process::Command {
+    std::process::Command::new(assert_cmd::cargo::cargo_bin!("palmscript"))
 }
 
 fn repo_path(relative: &str) -> PathBuf {
@@ -31,7 +31,7 @@ fn repo_path(relative: &str) -> PathBuf {
 
 #[test]
 fn help_prints_usage() {
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.arg("--help");
     cmd.assert()
         .success()
@@ -43,7 +43,7 @@ fn help_prints_usage() {
 
 #[test]
 fn run_help_mentions_csv_mode() {
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args(["run", "--help"]);
     cmd.assert()
         .success()
@@ -54,7 +54,7 @@ fn run_help_mentions_csv_mode() {
 fn run_requires_bars_argument() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args(["run", "csv", script.to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -70,7 +70,7 @@ fn run_rejects_missing_interval_directive() {
         "bars.csv",
         &bars_csv(&["1704067200000,1,2,0.5,1.5,10"]),
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -96,7 +96,7 @@ fn run_rejects_removed_feed_argument() {
         "bars.csv",
         &bars_csv(&["1704067200000,1,2,0.5,1.5,10"]),
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -115,7 +115,7 @@ fn run_rejects_removed_feed_argument() {
 fn check_reports_success_for_valid_script() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "valid.trl", "interval 1m\nplot(sma(close, 3))");
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
         .success()
@@ -130,7 +130,7 @@ fn check_reports_compile_diagnostics() {
         "invalid.trl",
         "interval 1m\nif true { plot(1) }",
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args(["check", script.to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -150,7 +150,7 @@ fn check_supports_compile_environment_files() {
         "env.json",
         r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "check",
         script.to_str().unwrap(),
@@ -172,7 +172,7 @@ fn run_executes_single_interval_script_and_prints_json_by_default() {
             "1704067260000,2,3,1.5,2.5,11",
         ]),
     );
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "run",
             "csv",
@@ -209,7 +209,7 @@ fn run_executes_multi_interval_script() {
             "1704585600000,1,2,0.5,10.0,10",
         ]),
     );
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "run",
             "csv",
@@ -245,7 +245,7 @@ fn run_rejects_incomplete_rollup_bucket() {
             "1704499200000,1,2,0.5,6.0,10",
         ]),
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -271,7 +271,7 @@ fn run_rejects_raw_input_that_is_too_coarse() {
             "1704153600000,2,3,1.5,2.5,11",
         ]),
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -293,7 +293,7 @@ fn run_rejects_invalid_csv_rows() {
         "bars.csv",
         "time,open,high,low,close,volume\n1704067200000,1,2,0.5,1.5\n",
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -315,7 +315,7 @@ fn run_rejects_invalid_timestamps() {
         "bars.csv",
         "time,open,high,low,close,volume\n1704067200000.5,1,2,0.5,1.5,10\n",
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -344,7 +344,7 @@ fn run_supports_text_output() {
             "1704067260000,2,3,1.5,2.5,11",
         ]),
     );
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args([
         "run",
         "csv",
@@ -366,7 +366,7 @@ fn run_supports_text_output() {
 fn dump_bytecode_text_contains_sections() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(sma(close, 3))");
-    let mut cmd = tradelang_cmd();
+    let mut cmd = palmscript_cmd();
     cmd.args(["dump-bytecode", script.to_str().unwrap()]);
     cmd.assert()
         .success()
@@ -380,7 +380,7 @@ fn dump_bytecode_text_contains_sections() {
 fn dump_bytecode_json_serializes_compiled_program() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.trl", "interval 1m\nplot(close)");
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "dump-bytecode",
             script.to_str().unwrap(),
@@ -409,7 +409,7 @@ fn dump_bytecode_supports_compile_environment_files() {
         "env.json",
         r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
     );
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "dump-bytecode",
             script.to_str().unwrap(),
@@ -430,7 +430,7 @@ fn dump_bytecode_supports_compile_environment_files() {
 
 #[test]
 fn checked_in_single_interval_example_runs_via_cli() {
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "run",
             "csv",
@@ -470,7 +470,7 @@ fn checked_in_multi_interval_example_runs_via_cli() {
 1705104000000,106.0,107.0,105.5,106.5,1120.0\n\
 1705190400000,106.5,107.5,106.0,107.0,1130.0\n",
     );
-    let output = tradelang_cmd()
+    let output = palmscript_cmd()
         .args([
             "run",
             "csv",

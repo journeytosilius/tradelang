@@ -1,6 +1,6 @@
 # Builtins
 
-TradeLang currently provides four builtins:
+PalmScript currently provides four builtins:
 
 - `sma(series, length)`
 - `ema(series, length)`
@@ -23,6 +23,6 @@ They operate on series values and respect sparse update clocks:
 
 Example:
 
-```tradelang
+```palmscript
 plot(sma(close, 14))
 ```

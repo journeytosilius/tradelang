@@ -1,6 +1,6 @@
 # Types and Values
 
-TradeLang currently works with scalar and series forms of numbers, booleans, and missing values.
+PalmScript currently works with scalar and series forms of numbers, booleans, and missing values.
 
 ## Primitive Values
 
@@ -31,4 +31,4 @@ Common cases:
 
 ## Boolean Logic
 
-`and` and `or` implement TradeLang's three-valued logic. They do not simply coerce `na` to `false`. Use them when composing indicator and filter logic that may still be warming up.
+`and` and `or` implement PalmScript's three-valued logic. They do not simply coerce `na` to `false`. Use them when composing indicator and filter logic that may still be warming up.

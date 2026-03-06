@@ -1,10 +1,10 @@
 # Composition Examples
 
-TradeLang supports host-managed composition through exports, triggers, external inputs, and the pipeline runtime.
+PalmScript supports host-managed composition through exports, triggers, external inputs, and the pipeline runtime.
 
 ## Producer Strategy
 
-```tradelang
+```palmscript
 interval 1m
 
 export trend = ema(close, 20) > ema(close, 50)
@@ -15,7 +15,7 @@ trigger breakout = close > high[1]
 
 The consumer does not declare the upstream values in source. They arrive through a compile environment and runtime pipeline wiring:
 
-```tradelang
+```palmscript
 interval 1m
 
 if trend and breakout {
@@ -27,7 +27,7 @@ if trend and breakout {
 
 ## Where To Configure It
 
-- editor-time awareness: `.tradelang.json`
+- editor-time awareness: `.palmscript.json`
 - runtime wiring: pipeline host / `PipelineEngine`
 
 See [Composition and External Inputs](../language/composition.md) and [Pipeline Runtime](../runtime/pipeline-runtime.md).

@@ -1,6 +1,6 @@
 # Diagnostics and Error Classes
 
-TradeLang surfaces several classes of user-visible errors.
+PalmScript surfaces several classes of user-visible errors.
 
 ## Compile Errors
 
@@ -15,10 +15,10 @@ Compile-time diagnostics include:
 
 These surface through:
 
-- `tradelang check`
-- `tradelang run csv` before execution
-- `tradelang dump-bytecode`
-- `tradelang-lsp`
+- `palmscript check`
+- `palmscript run csv` before execution
+- `palmscript dump-bytecode`
+- `palmscript-lsp`
 - the VS Code extension
 
 ## CSV Mode Data Preparation Errors

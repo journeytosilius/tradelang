@@ -1,4 +1,4 @@
-site_name: TradeLang
+site_name: PalmScript
 site_description: Deterministic DSL, bytecode VM, CLI, and editor tooling for financial time-series strategies
 site_url: https://journeytosilius.github.io/tradelang/
 repo_name: journeytosilius/tradelang
@@ -77,7 +77,7 @@ nav:
       - CLI: tooling/cli.md
       - Language Server: tooling/language-server.md
       - VS Code Extension: tooling/vscode.md
-      - .tradelang.json: tooling/project-config.md
+      - .palmscript.json: tooling/project-config.md
   - Examples:
       - CLI Strategies: examples/cli-strategies.md
       - Rust Examples: examples/rust-examples.md

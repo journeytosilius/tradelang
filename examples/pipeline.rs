@@ -1,7 +1,7 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use tradelang::{
+use palmscript::{
     compile, compile_with_env, CompileEnvironment, ExternalInputDecl, ExternalInputKind, Interval,
     PipelineEdge, PipelineEngine, PipelineNodeSpec, PipelineSpec, Type, VmLimits,
 };

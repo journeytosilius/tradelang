@@ -1,13 +1,13 @@
 # CSV Mode and Roll-Up Rules
 
-`tradelang run csv ...` is the only run mode today.
+`palmscript run csv ...` is the only run mode today.
 
 ## Input Contract
 
 CSV mode accepts one raw market-data file:
 
 ```bash
-tradelang run csv strategy.trl --bars bars.csv
+palmscript run csv strategy.trl --bars bars.csv
 ```
 
 Schema:

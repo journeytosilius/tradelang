@@ -152,7 +152,7 @@ pub enum ConfigError {
         #[source]
         source: serde_json::Error,
     },
-    #[error("unsupported TradeLang project config version `{version}`")]
+    #[error("unsupported PalmScript project config version `{version}`")]
     UnsupportedVersion { version: u32 },
 }
 

@@ -1,8 +1,8 @@
-use tradelang::{
+use palmscript::{
     compile, compile_with_env, CompileEnvironment, ExternalInputDecl, ExternalInputKind, Interval,
     PipelineEdge, PipelineEngine, PipelineNodeSpec, PipelineSpec, RuntimeError, Type, VmLimits,
 };
-use tradelang::{Bar, MultiIntervalConfig};
+use palmscript::{Bar, MultiIntervalConfig};
 
 const MINUTE_MS: i64 = 60_000;
 const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;

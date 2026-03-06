@@ -1,6 +1,6 @@
 # Language Server
 
-`tradelang-lsp` is the first-party language server for TradeLang.
+`palmscript-lsp` is the first-party language server for PalmScript.
 
 ## Role
 
@@ -21,4 +21,4 @@ Diagnostics come from the same compiler-backed analysis used by the CLI. The goa
 
 ## Workspace Config Awareness
 
-The language server reads `.tradelang.json` so composed strategies can type-check external inputs during editing.
+The language server reads `.palmscript.json` so composed strategies can type-check external inputs during editing.

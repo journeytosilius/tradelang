@@ -1,4 +1,4 @@
-use tradelang::{
+use palmscript::{
     compile, compile_with_env, CompileEnvironment, ExternalInputDecl, ExternalInputKind, Type,
 };
 

@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use tradelang::{
+use palmscript::{
     compile, compile_with_env, prepare_csv_inputs_for_program, run_multi_interval,
     CompileEnvironment, CompiledProgram, RuntimeError, VmLimits,
 };

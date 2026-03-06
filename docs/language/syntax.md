@@ -1,6 +1,6 @@
 # Syntax and Lexical Structure
 
-TradeLang source files are sequences of top-level items. The parser recognizes:
+PalmScript source files are sequences of top-level items. The parser recognizes:
 
 - `interval <interval>`
 - `use <interval>`
@@ -15,7 +15,7 @@ TradeLang source files are sequences of top-level items. The parser recognizes:
 
 Statements are separated by newlines or semicolons. Newlines inside parentheses or brackets do not terminate a statement.
 
-```tradelang
+```palmscript
 let x = close;
 plot(
     sma(close, 5)
@@ -26,7 +26,7 @@ plot(
 
 Only single-line comments are supported:
 
-```tradelang
+```palmscript
 // trend regime
 let fast = ema(close, 5)
 ```
@@ -76,7 +76,7 @@ Negative values are written with unary `-`.
 
 ## Valid Interval Literals
 
-TradeLang currently supports all Binance kline intervals, case-sensitive:
+PalmScript currently supports all Binance kline intervals, case-sensitive:
 
 - `1s`
 - `1m`

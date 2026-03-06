@@ -2,7 +2,7 @@
 
 This minimal strategy runs on 1-minute bars and exports a trend state while plotting the closing price.
 
-```tradelang
+```palmscript
 interval 1m
 
 let fast = ema(close, 5)
@@ -27,7 +27,7 @@ if trend {
 ## Run It
 
 ```bash
-target/debug/tradelang run csv examples/strategies/sma_cross.trl \
+target/debug/palmscript run csv examples/strategies/sma_cross.trl \
   --bars examples/data/minute_bars.csv
 ```
 
@@ -35,7 +35,7 @@ target/debug/tradelang run csv examples/strategies/sma_cross.trl \
 
 To add higher-interval context:
 
-```tradelang
+```palmscript
 interval 1d
 use 1w
 

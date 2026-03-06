@@ -1,7 +1,7 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use tradelang::{compile, Engine, VmLimits};
+use palmscript::{compile, Engine, VmLimits};
 
 fn main() {
     let source = "interval 1m\nif close > ema(close, 3) { plot(1) } else { plot(0) }";

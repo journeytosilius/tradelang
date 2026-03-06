@@ -1,4 +1,4 @@
-//! Source-to-bytecode compilation for TradeLang programs.
+//! Source-to-bytecode compilation for PalmScript programs.
 //!
 //! This module drives lexing and parsing, performs semantic analysis and type
 //! inference, resolves locals and builtins, and emits deterministic bytecode.

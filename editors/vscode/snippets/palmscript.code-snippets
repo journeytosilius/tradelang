@@ -13,7 +13,7 @@
       "    plot(0)",
       "}"
     ],
-    "description": "Create a TradeLang strategy skeleton"
+    "description": "Create a PalmScript strategy skeleton"
   },
   "Export": {
     "prefix": "trl-export",

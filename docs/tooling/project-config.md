@@ -1,6 +1,6 @@
-# `.tradelang.json`
+# `.palmscript.json`
 
-`.tradelang.json` is the workspace config file used by the IDE layer and the VS Code extension.
+`.palmscript.json` is the workspace config file used by the IDE layer and the VS Code extension.
 
 ## Purpose
 

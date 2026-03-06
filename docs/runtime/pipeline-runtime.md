@@ -1,6 +1,6 @@
 # Pipeline Runtime
 
-TradeLang supports host-managed pipelines over multiple compiled programs.
+PalmScript supports host-managed pipelines over multiple compiled programs.
 
 ## What The Pipeline Owns
 
@@ -26,4 +26,4 @@ Downstream nodes can observe same-bar upstream outputs only when the upstream no
 
 ## What The Pipeline Does Not Change
 
-The pipeline runtime does not create new language semantics. Each node still runs as an ordinary TradeLang program with the same deterministic VM and runtime rules.
+The pipeline runtime does not create new language semantics. Each node still runs as an ordinary PalmScript program with the same deterministic VM and runtime rules.

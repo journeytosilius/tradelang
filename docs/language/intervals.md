@@ -1,18 +1,18 @@
 # Intervals and Multi-Interval Semantics
 
-TradeLang supports one base execution interval plus explicit higher or equal interval references.
+PalmScript supports one base execution interval plus explicit higher or equal interval references.
 
 ## Declaring Intervals
 
 Every strategy must declare exactly one base interval:
 
-```tradelang
+```palmscript
 interval 1d
 ```
 
 Every additional interval used in qualified market-series references must be declared explicitly:
 
-```tradelang
+```palmscript
 interval 1d
 use 1w
 use 1M
@@ -30,7 +30,7 @@ The compiler rejects:
 
 The syntax is:
 
-```tradelang
+```palmscript
 <interval>.<field>
 ```
 

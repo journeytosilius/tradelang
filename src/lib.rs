@@ -1,4 +1,4 @@
-//! TradeLang is a deterministic DSL and bytecode VM for financial time-series
+//! PalmScript is a deterministic DSL and bytecode VM for financial time-series
 //! programs.
 //!
 //! The crate exposes the end-to-end compilation pipeline, runtime entrypoints,

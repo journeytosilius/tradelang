@@ -1,6 +1,6 @@
 # Bytecode Model
 
-TradeLang compiles scripts to a deterministic bytecode program.
+PalmScript compiles scripts to a deterministic bytecode program.
 
 ## Program Metadata
 

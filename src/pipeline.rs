@@ -1,4 +1,4 @@
-//! Host-managed strategy composition over multiple compiled TradeLang programs.
+//! Host-managed strategy composition over multiple compiled PalmScript programs.
 //!
 //! Pipelines execute an acyclic graph of strategies on the same base interval,
 //! exposing upstream `export`/`trigger` outputs as external series inputs to

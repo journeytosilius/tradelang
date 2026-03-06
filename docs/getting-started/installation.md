@@ -5,18 +5,18 @@
 From the repository root:
 
 ```bash
-cargo build --bin tradelang --bin tradelang-lsp
+cargo build --bin palmscript --bin palmscript-lsp
 ```
 
 The binaries will be available at:
 
-- `target/debug/tradelang`
-- `target/debug/tradelang-lsp`
+- `target/debug/palmscript`
+- `target/debug/palmscript-lsp`
 
 Use `--release` for optimized builds:
 
 ```bash
-cargo build --release --bin tradelang --bin tradelang-lsp
+cargo build --release --bin palmscript --bin palmscript-lsp
 ```
 
 ## Install Python Dependencies for Documentation
@@ -49,4 +49,4 @@ npm install
 npm run compile
 ```
 
-The extension can use bundled `tradelang-lsp` binaries or fall back to a locally built repo binary during development.
+The extension can use bundled `palmscript-lsp` binaries or fall back to a locally built repo binary during development.

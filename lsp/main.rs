@@ -4,7 +4,7 @@ mod session;
 
 fn main() {
     if let Err(err) = server::run() {
-        eprintln!("tradelang-lsp: {err}");
+        eprintln!("palmscript-lsp: {err}");
         std::process::exit(1);
     }
 }

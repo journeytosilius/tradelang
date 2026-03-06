@@ -1,4 +1,4 @@
-//! Low-level TradeLang bytecode interpreter.
+//! Low-level PalmScript bytecode interpreter.
 //!
 //! This module contains the bounded series buffer, the per-bar VM execution
 //! engine, and builtin dispatch used by the runtime hot path.

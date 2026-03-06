@@ -1,5 +1,5 @@
-use tradelang::lexer::lex;
-use tradelang::{Interval, TokenKind};
+use palmscript::lexer::lex;
+use palmscript::{Interval, TokenKind};
 
 #[test]
 fn lexes_fn_keyword() {

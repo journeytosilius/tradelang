@@ -1,4 +1,4 @@
-//! Bytecode program representation for compiled TradeLang scripts.
+//! Bytecode program representation for compiled PalmScript scripts.
 //!
 //! The compiler emits a [`Program`] made of typed locals, constants, and
 //! fixed-layout instructions. The VM executes this representation directly.

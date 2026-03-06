@@ -1,7 +1,7 @@
 #[path = "support/mod.rs"]
 mod support;
 
-use tradelang::{compile, run, VmLimits};
+use palmscript::{compile, run, VmLimits};
 
 fn main() {
     let source = "interval 1m\nplot(sma(close, 5))";

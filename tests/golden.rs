@@ -1,9 +1,9 @@
-use serde_json::json;
-use tradelang::{
+use palmscript::{
     compile, compile_with_env, run, run_multi_interval, Bar, CompileEnvironment, ExternalInputDecl,
     ExternalInputKind, Interval, IntervalFeed, MultiIntervalConfig, PipelineEdge, PipelineEngine,
     PipelineNodeSpec, PipelineSpec, Type, VmLimits,
 };
+use serde_json::json;
 
 fn with_interval(source: &str) -> String {
     format!("interval 1m\n{source}")

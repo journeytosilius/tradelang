@@ -1,10 +1,10 @@
 # Multi-Interval Examples
 
-TradeLang supports interval-qualified series such as `1w.close` and `1M.close`, but only after the script declares those intervals with `use`.
+PalmScript supports interval-qualified series such as `1w.close` and `1M.close`, but only after the script declares those intervals with `use`.
 
 ## Strategy Example
 
-```tradelang
+```palmscript
 interval 1d
 use 1w
 
@@ -20,7 +20,7 @@ if close > weekly_basis {
 ## CLI Example
 
 ```bash
-tradelang run csv examples/strategies/weekly_bias.trl \
+palmscript run csv examples/strategies/weekly_bias.trl \
   --bars /path/to/daily_bars.csv
 ```
 

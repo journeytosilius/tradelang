@@ -1,17 +1,17 @@
 # CLI Command Reference
 
-## `tradelang check`
+## `palmscript check`
 
 ```bash
-tradelang check <script.trl> [--env <compile-env.json>]
+palmscript check <script.trl> [--env <compile-env.json>]
 ```
 
 Compiles and validates a strategy without running it.
 
-## `tradelang run csv`
+## `palmscript run csv`
 
 ```bash
-tradelang run csv <script.trl> --bars <bars.csv> \
+palmscript run csv <script.trl> --bars <bars.csv> \
   [--format json|text] \
   [--max-instructions-per-bar N] \
   [--max-history-capacity N]
@@ -19,10 +19,10 @@ tradelang run csv <script.trl> --bars <bars.csv> \
 
 Runs a strategy in CSV mode. The input file is treated as the raw source feed and rolled up to declared intervals if possible.
 
-## `tradelang dump-bytecode`
+## `palmscript dump-bytecode`
 
 ```bash
-tradelang dump-bytecode <script.trl> \
+palmscript dump-bytecode <script.trl> \
   [--env <compile-env.json>] \
   [--format text|json]
 ```

@@ -1,6 +1,6 @@
 # Outputs
 
-TradeLang currently supports three main output forms inside strategies:
+PalmScript currently supports three main output forms inside strategies:
 
 - `plot(...)`
 - `export name = expr`
@@ -25,7 +25,7 @@ Valid value categories:
 
 Example:
 
-```tradelang
+```palmscript
 export trend = ema(close, 20) > ema(close, 50)
 ```
 
@@ -37,7 +37,7 @@ export trend = ema(close, 20) > ema(close, 50)
 
 Example:
 
-```tradelang
+```palmscript
 trigger long_entry = close > high[1]
 ```
 

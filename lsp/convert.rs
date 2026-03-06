@@ -5,7 +5,7 @@ use lsp_types::{
     GotoDefinitionResponse, Hover, HoverContents, Location, MarkupContent, MarkupKind,
     Position as LspPosition, Range, SymbolKind as LspSymbolKind, TextEdit, Uri,
 };
-use tradelang::{
+use palmscript::{
     CompletionEntry, CompletionKind, DefinitionTarget, Diagnostic as TradeDiagnostic, HoverInfo,
     Position, Span, SymbolKind,
 };
@@ -16,7 +16,7 @@ pub fn from_trade_diagnostic(diagnostic: &TradeDiagnostic) -> Diagnostic {
         severity: Some(DiagnosticSeverity::ERROR),
         code: None,
         code_description: None,
-        source: Some("tradelang".to_string()),
+        source: Some("palmscript".to_string()),
         message: diagnostic.message.clone(),
         related_information: None,
         tags: None,
@@ -101,7 +101,7 @@ pub fn completion_item(entry: CompletionEntry) -> CompletionItem {
 }
 
 #[allow(deprecated)]
-pub fn document_symbol(symbol: tradelang::DocumentSymbolInfo) -> DocumentSymbol {
+pub fn document_symbol(symbol: palmscript::DocumentSymbolInfo) -> DocumentSymbol {
     DocumentSymbol {
         name: symbol.name,
         detail: symbol.detail,

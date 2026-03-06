@@ -1,12 +1,12 @@
-# TradeLang
+# PalmScript
 
-TradeLang is a deterministic DSL and bytecode VM for financial time-series strategies.
+PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
 The repository currently ships:
 
 - the Rust library crate
-- the `tradelang` CLI
-- the `tradelang-lsp` language server
+- the `palmscript` CLI
+- the `palmscript-lsp` language server
 - the first-party VS Code extension
 - the MkDocs documentation site
 
@@ -27,8 +27,8 @@ Start here:
 ## Common Commands
 
 ```bash
-cargo build --bin tradelang --bin tradelang-lsp
-target/debug/tradelang check examples/strategies/sma_cross.trl
-target/debug/tradelang run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
+cargo build --bin palmscript --bin palmscript-lsp
+target/debug/palmscript check examples/strategies/sma_cross.trl
+target/debug/palmscript run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
 mkdocs build --strict
 ```

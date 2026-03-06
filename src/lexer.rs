@@ -1,4 +1,4 @@
-//! Lexical analysis for TradeLang source text.
+//! Lexical analysis for PalmScript source text.
 //!
 //! The lexer converts source text into a token stream with spans, preserving
 //! statement separators and reporting lexical diagnostics on invalid input.

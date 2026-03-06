@@ -506,6 +506,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "palmscript"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "lsp-server",
+ "lsp-types",
+ "predicates",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "url",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -773,22 +789,6 @@ checksum = "42d3e9c45c09de15d06dd8acf5f4e0e399e85927b7f00711024eb7ae10fa4869"
 dependencies = [
  "displaydoc",
  "zerovec",
-]
-
-[[package]]
-name = "tradelang"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "clap",
- "lsp-server",
- "lsp-types",
- "predicates",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "url",
 ]
 
 [[package]]

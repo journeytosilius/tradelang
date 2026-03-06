@@ -1,6 +1,6 @@
-# TradeLang Language Reference
+# PalmScript Language Reference
 
-The canonical TradeLang documentation now lives in the MkDocs site under `docs/`.
+The canonical PalmScript documentation now lives in the MkDocs site under `docs/`.
 
 - local docs source: [docs/index.md](docs/index.md)
 - published site: <https://journeytosilius.github.io/tradelang/>

@@ -16,9 +16,9 @@ use lsp_types::{
     DocumentSymbolResponse, GotoDefinitionParams, HoverParams, InitializeParams, OneOf,
     ServerCapabilities, TextDocumentSyncCapability, TextDocumentSyncKind,
 };
+use palmscript::format_document;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use tradelang::format_document;
 
 use crate::convert::{
     completion_item, definition_response, document_symbol, format_edit, hover_from_info,

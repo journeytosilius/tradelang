@@ -1,6 +1,6 @@
 # Compiler Pipeline
 
-TradeLang maintains strict layer boundaries:
+PalmScript maintains strict layer boundaries:
 
 ```text
 source text

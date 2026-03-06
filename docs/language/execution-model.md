@@ -1,6 +1,6 @@
 # Execution Model
 
-TradeLang scripts compile once and execute once per fully closed base-interval candle.
+PalmScript scripts compile once and execute once per fully closed base-interval candle.
 
 ## Per-Bar Execution
 
@@ -15,7 +15,7 @@ For each base bar:
 
 ## Determinism
 
-TradeLang execution is deterministic:
+PalmScript execution is deterministic:
 
 - no filesystem access
 - no network access
@@ -28,7 +28,7 @@ The same compiled program and the same input bars produce the same outputs.
 
 Every script must declare exactly one base interval:
 
-```tradelang
+```palmscript
 interval 1m
 ```
 

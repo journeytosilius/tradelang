@@ -1,12 +1,12 @@
-# TradeLang Documentation
+# PalmScript Documentation
 
-TradeLang is a deterministic DSL for financial time-series programs. Scripts compile to bytecode and run inside a bounded-history VM with no filesystem, network, clock, or randomness access.
+PalmScript is a deterministic DSL for financial time-series programs. Scripts compile to bytecode and run inside a bounded-history VM with no filesystem, network, clock, or randomness access.
 
 This site is the canonical documentation source for the repository. It covers:
 
 - the language itself
 - runtime semantics and data ingestion
-- the `tradelang` CLI
+- the `palmscript` CLI
 - the Rust language server and VS Code extension
 - examples, testing expectations, and release workflows
 
@@ -21,7 +21,7 @@ This site is the canonical documentation source for the repository. It covers:
 
 ## Current Capabilities
 
-TradeLang currently implements:
+PalmScript currently implements:
 
 - numeric, boolean, and `na` literals
 - mandatory source-level `interval <...>` declarations
@@ -35,7 +35,7 @@ TradeLang currently implements:
 - interval-qualified market series such as `1w.close` and `4h.volume`
 - compile-time-inlined user-defined functions
 - host-managed composition through external series inputs
-- the `tradelang` CLI, `tradelang-lsp`, and a first-party VS Code extension
+- the `palmscript` CLI, `palmscript-lsp`, and a first-party VS Code extension
 
 ## Design Principles
 

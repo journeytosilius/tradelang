@@ -1,4 +1,4 @@
-//! High-level runtime for executing compiled TradeLang programs over bars.
+//! High-level runtime for executing compiled PalmScript programs over bars.
 //!
 //! This layer owns VM state across bars, including bounded series history,
 //! indicator state, outputs, and execution limits.

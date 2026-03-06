@@ -1,4 +1,4 @@
-//! Parsing from tokens into the TradeLang AST.
+//! Parsing from tokens into the PalmScript AST.
 //!
 //! The parser builds typed source-level nodes, preserves spans, and accumulates
 //! parse diagnostics instead of emitting bytecode directly.

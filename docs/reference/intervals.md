@@ -1,6 +1,6 @@
 # Interval Table
 
-TradeLang supports all current Binance kline intervals.
+PalmScript supports all current Binance kline intervals.
 
 | Literal | Meaning |
 | --- | --- |

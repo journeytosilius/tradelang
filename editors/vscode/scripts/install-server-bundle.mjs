@@ -38,7 +38,7 @@ if (!fs.existsSync(source)) {
     process.exit(1);
 }
 
-const fileName = platform.startsWith("win32-") ? "tradelang-lsp.exe" : "tradelang-lsp";
+const fileName = platform.startsWith("win32-") ? "palmscript-lsp.exe" : "palmscript-lsp";
 const destinationDir = path.resolve("server", platform);
 const destination = path.join(destinationDir, fileName);
 

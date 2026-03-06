@@ -1,19 +1,19 @@
 # CLI
 
-The official CLI binary is `tradelang`.
+The official CLI binary is `palmscript`.
 
 ## Commands
 
-- `tradelang run csv <script.trl> --bars <bars.csv>`
-- `tradelang check <script.trl>`
-- `tradelang dump-bytecode <script.trl>`
+- `palmscript run csv <script.trl> --bars <bars.csv>`
+- `palmscript check <script.trl>`
+- `palmscript dump-bytecode <script.trl>`
 
 ## `run csv`
 
 Executes a strategy in CSV mode:
 
 ```bash
-tradelang run csv examples/strategies/sma_cross.trl \
+palmscript run csv examples/strategies/sma_cross.trl \
   --bars examples/data/minute_bars.csv
 ```
 
@@ -38,8 +38,8 @@ The command:
 Validates source without running it:
 
 ```bash
-tradelang check strategy.trl
-tradelang check strategy.trl --env env.json
+palmscript check strategy.trl
+palmscript check strategy.trl --env env.json
 ```
 
 ## `dump-bytecode`
@@ -47,8 +47,8 @@ tradelang check strategy.trl --env env.json
 Compiles and renders the compiled program:
 
 ```bash
-tradelang dump-bytecode strategy.trl
-tradelang dump-bytecode strategy.trl --format json
+palmscript dump-bytecode strategy.trl
+palmscript dump-bytecode strategy.trl --format json
 ```
 
 The optional `--env` flag lets you load a compile environment for external inputs.

@@ -29,8 +29,8 @@ Checked-in `.trl` strategies live under `examples/strategies/`.
 Common commands:
 
 ```bash
-./tradelang check examples/strategies/sma_cross.trl
-./tradelang run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
-./tradelang run csv examples/strategies/volume_breakout.trl --bars examples/data/minute_bars.csv --format text
-./tradelang run csv examples/strategies/weekly_bias.trl --bars /path/to/daily_bars.csv
+./palmscript check examples/strategies/sma_cross.trl
+./palmscript run csv examples/strategies/sma_cross.trl --bars examples/data/minute_bars.csv
+./palmscript run csv examples/strategies/volume_breakout.trl --bars examples/data/minute_bars.csv --format text
+./palmscript run csv examples/strategies/weekly_bias.trl --bars /path/to/daily_bars.csv
 ```
