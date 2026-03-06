@@ -60,7 +60,20 @@ PalmScript currently supports these first-class templates:
 - `hyperliquid.spot("<symbol>")`
 - `hyperliquid.perps("<symbol>")`
 
-As implemented today, all four templates accept all supported PalmScript interval literals.
+Interval support is template-specific.
+
+Rules:
+
+- `binance.spot` accepts all supported PalmScript interval literals
+- `binance.usdm` accepts all supported PalmScript interval literals
+- `hyperliquid.spot` rejects `1s` and `6h`
+- `hyperliquid.perps` rejects `1s` and `6h`
+
+Operational fetch constraints are also template-specific:
+
+- Hyperliquid REST only exposes the most recent `5000` candles per feed
+- market mode must reject any Hyperliquid feed request that exceeds that retention window
+- Binance feeds are paginated internally and do not have the same whole-window retention cap in PalmScript market mode
 
 ## Source Field Set
 

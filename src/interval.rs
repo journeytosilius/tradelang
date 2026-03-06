@@ -377,12 +377,12 @@ impl SourceTemplate {
 
     pub const fn supports_interval(self, interval: Interval) -> bool {
         match self {
-            Self::BinanceSpot
-            | Self::BinanceUsdm
-            | Self::HyperliquidSpot
-            | Self::HyperliquidPerps => {
+            Self::BinanceSpot | Self::BinanceUsdm => {
                 let _ = interval;
                 true
+            }
+            Self::HyperliquidSpot | Self::HyperliquidPerps => {
+                !matches!(interval, Interval::Sec1 | Interval::Hour6)
             }
         }
     }
@@ -472,6 +472,14 @@ mod tests {
             Some(SourceTemplate::HyperliquidPerps)
         );
         assert_eq!(SourceTemplate::parse("binance", "perps"), None);
+    }
+
+    #[test]
+    fn hyperliquid_templates_reject_unsupported_intervals() {
+        assert!(!SourceTemplate::HyperliquidSpot.supports_interval(Interval::Sec1));
+        assert!(!SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour6));
+        assert!(SourceTemplate::HyperliquidSpot.supports_interval(Interval::Min1));
+        assert!(SourceTemplate::HyperliquidPerps.supports_interval(Interval::Hour4));
     }
 
     #[test]

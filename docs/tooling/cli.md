@@ -51,7 +51,7 @@ Use market mode when:
 - the script declares one or more `source` directives
 - you want PalmScript to fetch exchange candles directly
 
-Market mode compiles the script, resolves the required source feeds, fetches candles for each required `(source, interval)`, constructs the source-aware runtime inputs, runs the VM, and prints outputs.
+Market mode compiles the script, resolves the required source feeds, validates venue-specific guardrails, fetches candles for each required `(source, interval)`, constructs the source-aware runtime inputs, runs the VM, and prints outputs.
 
 See [Market Mode](market-mode.md) for supported templates and fetch behavior.
 

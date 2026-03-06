@@ -13,14 +13,12 @@ fn compiled(source: &str) -> CompiledProgram {
 // - MissingBaseInterval
 // - MissingSources
 // - InvalidTimeWindow
+// - UnsupportedInterval
+// - RecentHistoryLimitExceeded
 // - RequestFailed
 // - MalformedResponse
 // - NoData
 // - UnknownHyperliquidSpotSymbol
-//
-// Future-only with today's supported source templates:
-// - UnsupportedInterval
-//   Reason: all current source templates accept all currently supported intervals.
 
 #[test]
 fn market_fetch_error_catalog_matches_contract() {
@@ -71,8 +69,12 @@ fn market_fetch_error_catalog_matches_contract() {
     let source_compiled =
         compiled("interval 1m\nsource a = binance.spot(\"BTCUSDT\")\nplot(a.close)");
     let missing_sources_compiled = compiled("interval 1m\nplot(close)");
+    let unsupported_interval_compiled =
+        compiled("interval 1s\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.close)");
+    let recent_history_limit_compiled =
+        compiled("interval 1m\nsource a = hyperliquid.perps(\"BTC\")\nplot(a.close)");
 
-    let cases: [(&str, Result<(), ExchangeFetchError>); 7] = [
+    let cases: [(&str, Result<(), ExchangeFetchError>); 9] = [
         (
             "missing_base_interval",
             fetch_source_runtime_config(&empty_compiled, 1, 2, &ExchangeEndpoints::default())
@@ -94,6 +96,26 @@ fn market_fetch_error_catalog_matches_contract() {
                 &source_compiled,
                 1_704_067_260_000,
                 1_704_067_260_000,
+                &ExchangeEndpoints::default(),
+            )
+            .map(|_| ()),
+        ),
+        (
+            "unsupported_interval",
+            fetch_source_runtime_config(
+                &unsupported_interval_compiled,
+                1_704_067_200_000,
+                1_704_067_260_000,
+                &ExchangeEndpoints::default(),
+            )
+            .map(|_| ()),
+        ),
+        (
+            "recent_history_limit_exceeded",
+            fetch_source_runtime_config(
+                &recent_history_limit_compiled,
+                1_704_067_200_000,
+                1_704_067_200_000 + 5_001 * 60_000,
                 &ExchangeEndpoints::default(),
             )
             .map(|_| ()),
@@ -160,6 +182,8 @@ fn market_fetch_error_catalog_matches_contract() {
         "exchange-backed runs require a base interval declaration",
         "exchange-backed runs require at least one `source` declaration",
         "invalid market time window: from 1704067260000 must be less than to 1704067260000",
+        "source `a` with template `hyperliquid.perps` does not support interval `1s`",
+        "source `a` (hyperliquid.perps) `BTC` 1m requires 5001 candle(s) for the requested window, but the venue only provides the most recent 5000 candle(s) over REST",
         "failed to fetch `a` (binance.spot) `BTCUSDT` 1m: HTTP 500 Internal Server Error",
         "malformed response for `a` (binance.spot) `BTCUSDT` 1m: invalid `open` value",
         "no data returned for `a` (binance.spot) `BTCUSDT` 1m",

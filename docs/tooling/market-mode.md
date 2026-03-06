@@ -21,6 +21,13 @@ Rules:
 - `hyperliquid.spot("<symbol>")`
 - `hyperliquid.perps("<symbol>")`
 
+Template-specific interval support:
+
+- `binance.spot`: all supported PalmScript intervals
+- `binance.usdm`: all supported PalmScript intervals
+- `hyperliquid.spot`: all supported PalmScript intervals except `1s` and `6h`
+- `hyperliquid.perps`: all supported PalmScript intervals except `1s` and `6h`
+
 Example:
 
 ```palmscript
@@ -43,6 +50,18 @@ Market mode:
 - converts venue responses into the canonical bar schema `time,open,high,low,close,volume`
 - runs the VM over the resulting source-aware runtime configuration
 
+## Venue Guardrails
+
+Market mode validates venue-specific constraints before execution.
+
+Current guardrails:
+
+- Hyperliquid `candleSnapshot` feeds are limited to the most recent `5000` candles per `(source, interval)` feed, so PalmScript rejects requests that exceed that retention window
+- Hyperliquid source templates reject unsupported intervals such as `1s` and `6h`
+- Binance spot and USD-M feeds use segment-specific REST page sizes internally during pagination
+
+PalmScript fails closed for these constraints. It must not run a strategy on silently truncated exchange history.
+
 ## Base Clock
 
 Source-aware scripts still execute on one declared base interval.
@@ -63,5 +82,7 @@ Market mode fails deterministically for:
 - invalid time windows
 - request failures
 - malformed venue responses
+- unsupported source-template intervals
+- venue retention-limit violations
 - unresolved Hyperliquid spot symbols
 - empty historical windows for a required feed

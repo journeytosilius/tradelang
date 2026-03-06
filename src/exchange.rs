@@ -17,8 +17,35 @@ use crate::runtime::{Bar, SourceFeed, SourceRuntimeConfig};
 const BINANCE_SPOT_URL: &str = "https://api.binance.com";
 const BINANCE_USDM_URL: &str = "https://fapi.binance.com";
 const HYPERLIQUID_INFO_URL: &str = "https://api.hyperliquid.xyz/info";
-const BINANCE_PAGE_LIMIT: usize = 1000;
+const BINANCE_SPOT_PAGE_LIMIT: usize = 1000;
+const BINANCE_USDM_PAGE_LIMIT: usize = 1500;
 const HYPERLIQUID_PAGE_LIMIT: usize = 500;
+const HYPERLIQUID_RECENT_CANDLE_LIMIT: usize = 5_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SourceFetchConstraints {
+    page_limit: usize,
+    recent_candle_limit: Option<usize>,
+}
+
+impl SourceFetchConstraints {
+    const fn for_template(template: SourceTemplate) -> Self {
+        match template {
+            SourceTemplate::BinanceSpot => Self {
+                page_limit: BINANCE_SPOT_PAGE_LIMIT,
+                recent_candle_limit: None,
+            },
+            SourceTemplate::BinanceUsdm => Self {
+                page_limit: BINANCE_USDM_PAGE_LIMIT,
+                recent_candle_limit: None,
+            },
+            SourceTemplate::HyperliquidSpot | SourceTemplate::HyperliquidPerps => Self {
+                page_limit: HYPERLIQUID_PAGE_LIMIT,
+                recent_candle_limit: Some(HYPERLIQUID_RECENT_CANDLE_LIMIT),
+            },
+        }
+    }
+}
 
 #[derive(Clone, Debug, Serialize)]
 struct BinanceKlineQuery<'a> {
@@ -183,6 +210,15 @@ pub enum ExchangeFetchError {
         template: &'static str,
         interval: &'static str,
     },
+    #[error("source `{alias}` ({template}) `{symbol}` {interval} requires {requested_candles} candle(s) for the requested window, but the venue only provides the most recent {max_candles} candle(s) over REST")]
+    RecentHistoryLimitExceeded {
+        alias: String,
+        template: &'static str,
+        symbol: String,
+        interval: &'static str,
+        requested_candles: usize,
+        max_candles: usize,
+    },
     #[error("failed to fetch `{alias}` ({template}) `{symbol}` {interval}: {message}")]
     RequestFailed {
         alias: String,
@@ -261,6 +297,7 @@ pub fn fetch_source_runtime_config(
                 interval: requirement.interval.as_str(),
             });
         }
+        validate_source_request(source, requirement.interval, from_ms, to_ms)?;
         let bars = fetch_source_bars(
             &client,
             source,
@@ -342,6 +379,7 @@ fn fetch_binance_bars(
     base_url: &str,
     path: &str,
 ) -> Result<Vec<Bar>, ExchangeFetchError> {
+    let page_limit = SourceFetchConstraints::for_template(source.template).page_limit;
     let mut start_time = from_ms;
     let mut bars: Vec<Bar> = Vec::new();
     loop {
@@ -352,7 +390,7 @@ fn fetch_binance_bars(
                 interval: interval.as_str(),
                 start_time,
                 end_time: to_ms.saturating_sub(1),
-                limit: BINANCE_PAGE_LIMIT,
+                limit: page_limit,
             })
             .send()
             .map_err(|err| request_failed(source, interval, err.to_string()))?;
@@ -391,7 +429,7 @@ fn fetch_binance_bars(
             bars.push(bar);
         }
 
-        if rows.len() < BINANCE_PAGE_LIMIT {
+        if rows.len() < page_limit {
             break;
         }
         let Some(last_open) = last_open else {
@@ -421,6 +459,7 @@ fn fetch_hyperliquid_bars(
     info_url: &str,
     coin: String,
 ) -> Result<Vec<Bar>, ExchangeFetchError> {
+    let page_limit = SourceFetchConstraints::for_template(source.template).page_limit;
     let mut start_time = from_ms;
     let mut bars: Vec<Bar> = Vec::new();
     loop {
@@ -472,7 +511,7 @@ fn fetch_hyperliquid_bars(
             bars.push(bar);
         }
 
-        if rows.len() < HYPERLIQUID_PAGE_LIMIT {
+        if rows.len() < page_limit {
             break;
         }
         let Some(last_open) = last_open else {
@@ -562,6 +601,61 @@ fn resolve_hyperliquid_spot_coin(
     Err(ExchangeFetchError::UnknownHyperliquidSpotSymbol {
         symbol: symbol.to_string(),
     })
+}
+
+fn validate_source_request(
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<(), ExchangeFetchError> {
+    let constraints = SourceFetchConstraints::for_template(source.template);
+    if let Some(max_candles) = constraints.recent_candle_limit {
+        let requested_candles = requested_candle_count(interval, from_ms, to_ms);
+        if requested_candles > max_candles {
+            return Err(ExchangeFetchError::RecentHistoryLimitExceeded {
+                alias: source.alias.clone(),
+                template: source.template.as_str(),
+                symbol: source.symbol.clone(),
+                interval: interval.as_str(),
+                requested_candles,
+                max_candles,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn requested_candle_count(interval: Interval, from_ms: i64, to_ms: i64) -> usize {
+    if from_ms >= to_ms {
+        return 0;
+    }
+    let Some(mut open_time) = first_open_time_in_window(interval, from_ms, to_ms) else {
+        return 0;
+    };
+
+    let mut count = 0usize;
+    while open_time < to_ms {
+        count = count.saturating_add(1);
+        let Some(next_open) = interval.next_open_time(open_time) else {
+            break;
+        };
+        open_time = next_open;
+    }
+    count
+}
+
+fn first_open_time_in_window(interval: Interval, from_ms: i64, to_ms: i64) -> Option<i64> {
+    if from_ms >= to_ms {
+        return None;
+    }
+    let bucket_open = interval.bucket_open_time(from_ms)?;
+    let first_open = if bucket_open >= from_ms {
+        bucket_open
+    } else {
+        interval.next_open_time(bucket_open)?
+    };
+    (first_open < to_ms).then_some(first_open)
 }
 
 fn parse_text_f64(
@@ -677,8 +771,9 @@ impl HyperliquidCandle {
 #[cfg(test)]
 mod tests {
     use super::{
-        fetch_source_runtime_config, resolve_hyperliquid_spot_coin, BinanceKlineRow,
-        ExchangeEndpoints, ExchangeFetchError, HyperliquidCandle,
+        fetch_source_runtime_config, requested_candle_count, resolve_hyperliquid_spot_coin,
+        BinanceKlineRow, ExchangeEndpoints, ExchangeFetchError, HyperliquidCandle,
+        SourceFetchConstraints, BINANCE_USDM_PAGE_LIMIT, HYPERLIQUID_RECENT_CANDLE_LIMIT,
     };
     use crate::compile;
     use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
@@ -842,6 +937,49 @@ mod tests {
                 .expect("config");
         assert_eq!(config.base_interval, Interval::Min1);
         assert_eq!(config.feeds.len(), 3);
+    }
+
+    #[test]
+    fn hyperliquid_recent_history_limit_is_enforced_before_fetch() {
+        let compiled =
+            compile("interval 1m\nsource hl = hyperliquid.perps(\"BTC\")\nplot(hl.close)")
+                .expect("compile");
+        let err = fetch_source_runtime_config(
+            &compiled,
+            1_704_067_200_000,
+            1_704_067_200_000 + 5_001 * 60_000,
+            &ExchangeEndpoints::default(),
+        )
+        .expect_err("history limit should fail");
+        assert_eq!(
+            err.to_string(),
+            "source `hl` (hyperliquid.perps) `BTC` 1m requires 5001 candle(s) for the requested window, but the venue only provides the most recent 5000 candle(s) over REST"
+        );
+    }
+
+    #[test]
+    fn requested_candle_count_skips_partial_open_bucket() {
+        assert_eq!(
+            requested_candle_count(Interval::Min1, 1_704_067_200_001, 1_704_067_260_000),
+            0
+        );
+        assert_eq!(
+            requested_candle_count(Interval::Min1, 1_704_067_200_000, 1_704_067_320_000),
+            2
+        );
+    }
+
+    #[test]
+    fn source_fetch_constraints_match_supported_templates() {
+        assert_eq!(
+            SourceFetchConstraints::for_template(SourceTemplate::BinanceUsdm).page_limit,
+            BINANCE_USDM_PAGE_LIMIT
+        );
+        assert_eq!(
+            SourceFetchConstraints::for_template(SourceTemplate::HyperliquidSpot)
+                .recent_candle_limit,
+            Some(HYPERLIQUID_RECENT_CANDLE_LIMIT)
+        );
     }
 
     #[test]
