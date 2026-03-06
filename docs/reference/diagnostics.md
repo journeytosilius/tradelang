@@ -1,0 +1,48 @@
+# Diagnostics and Error Classes
+
+TradeLang surfaces several classes of user-visible errors.
+
+## Compile Errors
+
+Compile-time diagnostics include:
+
+- lexer and parser errors
+- invalid `interval` / `use` declarations
+- type errors
+- invalid identifiers
+- illegal function usage
+- invalid external-input declarations or collisions
+
+These surface through:
+
+- `tradelang check`
+- `tradelang run csv` before execution
+- `tradelang dump-bytecode`
+- `tradelang-lsp`
+- the VS Code extension
+
+## CSV Mode Data Preparation Errors
+
+The data-preparation layer can fail before runtime with errors such as:
+
+- `CannotInferInputInterval`
+- `MissingBaseIntervalDeclaration`
+- `RawIntervalTooCoarse`
+- `UnsupportedRollupPath`
+- `InsufficientDataForInterval`
+- `IncompleteRollupBucket`
+- `UnsortedInputBars`
+- `DuplicateInputBarTime`
+
+These happen after successful compilation but before VM execution.
+
+## Runtime Errors
+
+Runtime errors include:
+
+- feed compatibility problems
+- history-cap violations
+- pipeline topology and wiring failures
+- execution-limit violations
+
+The runtime fails deterministically rather than silently degrading semantics.

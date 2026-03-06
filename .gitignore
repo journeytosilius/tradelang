@@ -1,5 +1,7 @@
 /target/
 /tradelang
+/site/
+/.venv-docs/
 /editors/vscode/node_modules/
 /editors/vscode/out/
 /editors/vscode/.vscode-test/

@@ -1,0 +1,96 @@
+site_name: TradeLang
+site_description: Deterministic DSL, bytecode VM, CLI, and editor tooling for financial time-series strategies
+site_url: https://journeytosilius.github.io/tradelang/
+repo_name: journeytosilius/tradelang
+repo_url: https://github.com/journeytosilius/tradelang
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/overview.md
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - First Strategy: getting-started/first-strategy.md
+  - Language:
+      - Syntax and Lexical Structure: language/syntax.md
+      - Execution Model: language/execution-model.md
+      - Types and Values: language/types-values.md
+      - Intervals and Multi-Interval Semantics: language/intervals.md
+      - Expressions and Control Flow: language/expressions-control-flow.md
+      - Functions: language/functions.md
+      - Builtins: language/builtins.md
+      - Outputs: language/outputs.md
+      - Composition and External Inputs: language/composition.md
+  - Runtime:
+      - Compiler Pipeline: runtime/compiler-pipeline.md
+      - Bytecode Model: runtime/bytecode.md
+      - VM Semantics: runtime/vm.md
+      - Bounded History and Memory: runtime/history-memory.md
+      - CSV Mode and Roll-Up Rules: runtime/csv-mode.md
+      - Pipeline Runtime: runtime/pipeline-runtime.md
+  - Tooling:
+      - CLI: tooling/cli.md
+      - Language Server: tooling/language-server.md
+      - VS Code Extension: tooling/vscode.md
+      - .tradelang.json: tooling/project-config.md
+  - Examples:
+      - CLI Strategies: examples/cli-strategies.md
+      - Rust Examples: examples/rust-examples.md
+      - Multi-Interval Strategies: examples/multi-interval.md
+      - Composition Examples: examples/composition.md
+  - Contributing:
+      - Repository Architecture: contributing/architecture.md
+      - Testing Expectations: contributing/testing.md
+      - Release Workflows: contributing/releases.md
+      - Documentation Maintenance: contributing/documentation.md
+  - Reference:
+      - Grammar Sketch: reference/grammar.md
+      - Interval Table: reference/intervals.md
+      - CLI Command Reference: reference/cli.md
+      - Diagnostics and Error Classes: reference/diagnostics.md
+      - Glossary: reference/glossary.md
