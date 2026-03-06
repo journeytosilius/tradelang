@@ -1,0 +1,32 @@
+{
+  "Strategy Skeleton": {
+    "prefix": "trl-strategy",
+    "body": [
+      "interval ${1:1m}",
+      "${2:use 1w}",
+      "",
+      "let basis = ema(close, ${3:8})",
+      "",
+      "if close > basis {",
+      "    plot(1)",
+      "} else {",
+      "    plot(0)",
+      "}"
+    ],
+    "description": "Create a TradeLang strategy skeleton"
+  },
+  "Export": {
+    "prefix": "trl-export",
+    "body": [
+      "export ${1:name} = ${2:close > close[1]}"
+    ],
+    "description": "Create an export output"
+  },
+  "Trigger": {
+    "prefix": "trl-trigger",
+    "body": [
+      "trigger ${1:name} = ${2:close > open}"
+    ],
+    "description": "Create a trigger output"
+  }
+}

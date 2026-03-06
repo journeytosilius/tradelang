@@ -62,7 +62,7 @@ pub fn compile_with_env(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum InferredType {
+pub(crate) enum InferredType {
     Concrete(Type),
     Na,
 }
@@ -88,9 +88,9 @@ impl InferredType {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct ExprInfo {
-    ty: InferredType,
-    update_mask: u32,
+pub(crate) struct ExprInfo {
+    pub(crate) ty: InferredType,
+    pub(crate) update_mask: u32,
 }
 
 impl ExprInfo {
@@ -164,6 +164,26 @@ struct Analysis {
     outputs: Vec<OutputDecl>,
     qualified_slots: HashMap<(Interval, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct AnalysisSnapshot {
+    pub(crate) expr_info: HashMap<NodeId, ExprInfo>,
+}
+
+pub(crate) fn analyze_semantics(
+    source: &str,
+    env: &CompileEnvironment,
+) -> Result<(Ast, AnalysisSnapshot), CompileError> {
+    let tokens = lexer::lex(source)?;
+    let ast = parser::parse(&tokens)?;
+    let analysis = Analyzer::new(&ast, env).analyze(&ast)?;
+    Ok((
+        ast,
+        AnalysisSnapshot {
+            expr_info: analysis.expr_info,
+        },
+    ))
 }
 
 struct Analyzer<'a> {
@@ -459,7 +479,7 @@ impl<'a> Analyzer<'a> {
                 self.validate_function_expr(left, params);
                 self.validate_function_expr(right, params);
             }
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call { callee, args, .. } => {
                 match BuiltinId::from_name(callee) {
                     Some(BuiltinId::Plot) => {
                         self.diagnostics.push(Diagnostic::new(
@@ -566,7 +586,7 @@ impl<'a> Analyzer<'a> {
 
     fn analyze_stmt(&mut self, stmt: &Stmt) {
         match &stmt.kind {
-            StmtKind::Let { name, expr } => {
+            StmtKind::Let { name, expr, .. } => {
                 let expr_info = self.analyze_expr(expr);
                 let concrete = expr_info.ty.concrete().unwrap_or(Type::F64);
                 if self.scopes.last().unwrap().contains_key(name) {
@@ -588,10 +608,10 @@ impl<'a> Analyzer<'a> {
                 );
                 self.analysis.resolved_let_slots.insert(stmt.id, slot);
             }
-            StmtKind::Export { name, expr } => {
+            StmtKind::Export { name, expr, .. } => {
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries);
             }
-            StmtKind::Trigger { name, expr } => {
+            StmtKind::Trigger { name, expr, .. } => {
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger);
             }
             StmtKind::If {
@@ -701,7 +721,7 @@ impl<'a> Analyzer<'a> {
             ExprKind::QualifiedSeries { interval, .. } => ExprInfo::series(interval.mask()),
             ExprKind::Unary { op, expr: inner } => self.analyze_unary(*op, inner),
             ExprKind::Binary { op, left, right } => self.analyze_binary(*op, left, right),
-            ExprKind::Call { callee, args } => self.analyze_call(expr, callee, args),
+            ExprKind::Call { callee, args, .. } => self.analyze_call(expr, callee, args),
             ExprKind::Index { target, index } => self.analyze_index(target, index, expr.span),
         };
         self.analysis.expr_info.insert(expr.id, info);
@@ -1106,7 +1126,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     update_mask: left_info.update_mask | right_info.update_mask,
                 }
             }
-            ExprKind::Call { callee, args } => self.analyze_call(expr, callee, args),
+            ExprKind::Call { callee, args, .. } => self.analyze_call(expr, callee, args),
             ExprKind::Index { target, index } => self.analyze_index(target, index, expr.span),
         };
         self.expr_info.insert(expr.id, info);
@@ -1409,7 +1429,7 @@ fn collect_called_user_functions<'a>(
             collect_called_user_functions(left, functions_by_name, calls);
             collect_called_user_functions(right, functions_by_name, calls);
         }
-        ExprKind::Call { callee, args } => {
+        ExprKind::Call { callee, args, .. } => {
             if functions_by_name.contains_key(callee) {
                 calls.push(callee.as_str());
             }
@@ -1686,7 +1706,7 @@ impl<'a> Compiler<'a> {
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
         match &stmt.kind {
-            StmtKind::Let { name, expr } => {
+            StmtKind::Let { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_let_slots[&stmt.id];
                 self.emit(
@@ -1700,7 +1720,7 @@ impl<'a> Compiler<'a> {
                     .unwrap()
                     .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
             }
-            StmtKind::Export { name, expr } | StmtKind::Trigger { name, expr } => {
+            StmtKind::Export { name, expr, .. } | StmtKind::Trigger { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_output_slots[&stmt.id];
                 self.emit(
@@ -1829,7 +1849,7 @@ impl<'a> Compiler<'a> {
                 };
                 self.emit(Instruction::new(opcode).with_span(expr.span));
             }
-            ExprKind::Call { callee, args } => {
+            ExprKind::Call { callee, args, .. } => {
                 self.emit_call(expr, callee, args, expr_info, user_calls);
             }
             ExprKind::Index { target, index } => {

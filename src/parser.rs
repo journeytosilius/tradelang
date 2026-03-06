@@ -142,11 +142,11 @@ impl<'a> Parser<'a> {
 
     fn parse_function_decl(&mut self) -> Option<FunctionDecl> {
         let start = self.previous().span;
-        let name = match self.advance().cloned() {
+        let (name, name_span) = match self.advance().cloned() {
             Some(Token {
                 kind: TokenKind::Ident(name),
-                ..
-            }) => name,
+                span,
+            }) => (name, span),
             _ => {
                 self.error_here("expected identifier after `fn`");
                 return None;
@@ -190,6 +190,7 @@ impl<'a> Parser<'a> {
         Some(FunctionDecl {
             id: self.alloc_id(),
             name,
+            name_span,
             params,
             span: start.merge(body.span),
             body,
@@ -198,8 +199,11 @@ impl<'a> Parser<'a> {
 
     fn parse_let_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        let name = match self.advance().map(|token| &token.kind) {
-            Some(TokenKind::Ident(name)) => name.clone(),
+        let (name, name_span) = match self.advance().cloned() {
+            Some(Token {
+                kind: TokenKind::Ident(name),
+                span,
+            }) => (name, span),
             _ => {
                 self.error_here("expected identifier after `let`");
                 return None;
@@ -211,7 +215,11 @@ impl<'a> Parser<'a> {
         Some(Stmt {
             id: self.alloc_id(),
             span,
-            kind: StmtKind::Let { name, expr },
+            kind: StmtKind::Let {
+                name,
+                name_span,
+                expr,
+            },
         })
     }
 
@@ -236,8 +244,11 @@ impl<'a> Parser<'a> {
 
     fn parse_output_stmt(&mut self, export: bool) -> Option<Stmt> {
         let start = self.previous().span;
-        let name = match self.advance().map(|token| &token.kind) {
-            Some(TokenKind::Ident(name)) => name.clone(),
+        let (name, name_span) = match self.advance().cloned() {
+            Some(Token {
+                kind: TokenKind::Ident(name),
+                span,
+            }) => (name, span),
             _ => {
                 self.error_here(if export {
                     "expected identifier after `export`"
@@ -254,9 +265,17 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span,
             kind: if export {
-                StmtKind::Export { name, expr }
+                StmtKind::Export {
+                    name,
+                    name_span,
+                    expr,
+                }
             } else {
-                StmtKind::Trigger { name, expr }
+                StmtKind::Trigger {
+                    name,
+                    name_span,
+                    expr,
+                }
             },
         })
     }
@@ -426,8 +445,8 @@ impl<'a> Parser<'a> {
 
     fn parse_call(&mut self, callee: Expr) -> Option<Expr> {
         let left = self.expect_kind(|kind| matches!(kind, TokenKind::LeftParen), "expected `(`")?;
-        let name = match callee.kind {
-            ExprKind::Ident(name) => name,
+        let (name, callee_span) = match callee.kind {
+            ExprKind::Ident(name) => (name, callee.span),
             _ => {
                 self.push_diagnostic("only identifiers can be called in v0.1", callee.span);
                 return None;
@@ -450,7 +469,11 @@ impl<'a> Parser<'a> {
         Some(Expr {
             id: self.alloc_id(),
             span: left.span.merge(right.span),
-            kind: ExprKind::Call { callee: name, args },
+            kind: ExprKind::Call {
+                callee: name,
+                callee_span,
+                args,
+            },
         })
     }
 

@@ -11,6 +11,7 @@ pub mod bytecode;
 pub mod compiler;
 pub mod data_prep;
 pub mod diagnostic;
+pub mod ide;
 mod indicators;
 pub mod interval;
 pub mod lexer;
@@ -29,6 +30,11 @@ pub use compiler::{
 };
 pub use data_prep::{infer_input_interval, prepare_csv_inputs_for_program, PreparedInputs};
 pub use diagnostic::{CompileError, DataPrepError, Diagnostic, DiagnosticKind, RuntimeError};
+pub use ide::{
+    analyze_document, format_document, load_project_config, CompletionEntry, CompletionKind,
+    ConfigError, DefinitionTarget, DocumentConfig, DocumentSymbolInfo, HoverInfo, ProjectConfig,
+    SemanticDocument, Symbol, SymbolKind,
+};
 pub use interval::{Interval, MarketBinding, MarketField, MarketSource, INTERVAL_SPECS};
 pub use output::{
     Alert, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, StepOutput,

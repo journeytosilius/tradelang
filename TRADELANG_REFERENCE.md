@@ -11,8 +11,12 @@ compiler, and runtime behavior.
 
 TradeLang is currently a small deterministic DSL for financial time-series
 programs compiled to bytecode and executed by a VM. The repository now ships
-both the library crate and the official `tradelang` CLI binary, which wraps
-the existing compiler and runtime APIs.
+the library crate, the official `tradelang` CLI binary, and a first-party
+editor stack built from the same library APIs:
+
+- `tradelang`: CLI wrapper around the compiler and runtime
+- `tradelang-lsp`: language server binary for editor integrations
+- `editors/vscode/`: VS Code extension that launches `tradelang-lsp`
 
 The implemented language supports:
 
@@ -870,14 +874,43 @@ Each export/trigger sample contains:
 
 Examples of generated output are available under `examples/`.
 
-The official CLI can also execute scripts directly through CSV mode. In CSV
-mode, one raw `--bars` file is loaded and rolled up automatically to the
-strategy's declared base and supplemental intervals when possible:
+The official CLI can also execute scripts directly through CSV mode. This is
+the only `run` mode today. In CSV mode, one raw `--bars` file is loaded and
+rolled up automatically to the strategy's declared base and supplemental
+intervals when possible. Manual per-interval `--feed` wiring is no longer part
+of the CLI:
 
 ```bash
 tradelang check strategy.trl
 tradelang run csv strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
+```
+
+For editor authoring, the repository now also ships `tradelang-lsp` plus a VS
+Code extension under `editors/vscode/`. The editor stack reuses the same parser
+and compiler diagnostics as the CLI, so syntax and type errors are reported
+before a strategy is run.
+
+For composed strategies, editor-only compile environments are configured with a
+workspace `.tradelang.json` file:
+
+```json
+{
+  "version": 1,
+  "documents": {
+    "strategies/consumer.trl": {
+      "compile_environment": {
+        "external_inputs": [
+          {
+            "name": "trend",
+            "ty": "SeriesBool",
+            "kind": "ExportSeries"
+          }
+        ]
+      }
+    }
+  }
+}
 ```
 
 ## Diagnostics

@@ -1,0 +1,62 @@
+{
+  "scopeName": "source.tradelang",
+  "name": "TradeLang",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#intervals" },
+    { "include": "#booleans" },
+    { "include": "#numbers" },
+    { "include": "#functions" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.tradelang",
+          "match": "//.*$"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.tradelang",
+          "match": "\\b(interval|use|fn|let|export|trigger|if|else|and|or|na)\\b"
+        }
+      ]
+    },
+    "intervals": {
+      "patterns": [
+        {
+          "name": "constant.numeric.interval.tradelang",
+          "match": "\\b(1s|1m|3m|5m|15m|30m|1h|2h|4h|6h|8h|12h|1d|3d|1w|1M)\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.tradelang",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.tradelang",
+          "match": "\\b\\d+(?:\\.\\d+)?\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.tradelang",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*(?=\\()"
+        }
+      ]
+    }
+  }
+}

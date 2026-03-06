@@ -1,5 +1,8 @@
 /target/
 /tradelang
+/editors/vscode/node_modules/
+/editors/vscode/out/
+/editors/vscode/.vscode-test/
 
 # Editor files
 .idea/

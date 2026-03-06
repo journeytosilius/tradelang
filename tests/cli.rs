@@ -450,6 +450,26 @@ fn checked_in_single_interval_example_runs_via_cli() {
 
 #[test]
 fn checked_in_multi_interval_example_runs_via_cli() {
+    let dir = tempdir().expect("tempdir");
+    let bars = write_file(
+        dir.path(),
+        "daily_bars.csv",
+        "time,open,high,low,close,volume\n\
+1704067200000,100.0,101.0,99.0,100.5,1000.0\n\
+1704153600000,100.5,101.5,100.0,101.0,1010.0\n\
+1704240000000,101.0,102.0,100.5,101.5,1020.0\n\
+1704326400000,101.5,102.5,101.0,102.0,1030.0\n\
+1704412800000,102.0,103.0,101.5,102.5,1040.0\n\
+1704499200000,102.5,103.5,102.0,103.0,1050.0\n\
+1704585600000,103.0,104.0,102.5,103.5,1060.0\n\
+1704672000000,103.5,104.5,103.0,104.0,1070.0\n\
+1704758400000,104.0,105.0,103.5,104.5,1080.0\n\
+1704844800000,104.5,105.5,104.0,105.0,1090.0\n\
+1704931200000,105.0,106.0,104.5,105.5,1100.0\n\
+1705017600000,105.5,106.5,105.0,106.0,1110.0\n\
+1705104000000,106.0,107.0,105.5,106.5,1120.0\n\
+1705190400000,106.5,107.5,106.0,107.0,1130.0\n",
+    );
     let output = tradelang_cmd()
         .args([
             "run",
@@ -458,7 +478,7 @@ fn checked_in_multi_interval_example_runs_via_cli() {
                 .to_str()
                 .unwrap(),
             "--bars",
-            repo_path("examples/data/daily_bars.csv").to_str().unwrap(),
+            bars.to_str().unwrap(),
         ])
         .output()
         .expect("run command executes");

@@ -45,6 +45,7 @@ pub struct Stmt {
 pub struct FunctionDecl {
     pub id: NodeId,
     pub name: String,
+    pub name_span: Span,
     pub params: Vec<FunctionParam>,
     pub body: Expr,
     pub span: Span,
@@ -60,14 +61,17 @@ pub struct FunctionParam {
 pub enum StmtKind {
     Let {
         name: String,
+        name_span: Span,
         expr: Expr,
     },
     Export {
         name: String,
+        name_span: Span,
         expr: Expr,
     },
     Trigger {
         name: String,
+        name_span: Span,
         expr: Expr,
     },
     If {
@@ -106,6 +110,7 @@ pub enum ExprKind {
     },
     Call {
         callee: String,
+        callee_span: Span,
         args: Vec<Expr>,
     },
     Index {

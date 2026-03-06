@@ -14,15 +14,22 @@ cargo run --example pipeline
 Each example compiles a TradeLang script, runs it against a small OHLCV fixture,
 and prints the resulting outputs.
 
-For direct script execution outside Rust examples, use the CLI CSV mode. The
-single `--bars` file is treated as raw market data and rolled up automatically
-to the strategy's declared `interval` and `use` intervals when possible:
+For direct script execution outside Rust examples, use the CLI CSV mode. This
+is the only `run` mode today. The single `--bars` file is treated as raw market
+data and rolled up automatically to the strategy's declared `interval` and
+`use` intervals when possible. Manual per-interval `--feed` wiring is no
+longer part of the CLI:
 
 ```bash
 tradelang check strategy.trl
 tradelang run csv strategy.trl --bars bars.csv
 tradelang dump-bytecode strategy.trl
 ```
+
+For editor authoring, use the VS Code extension in `editors/vscode/`. It
+launches the Rust `tradelang-lsp` binary and surfaces compiler-backed
+diagnostics, hovers, completions, definitions, symbols, and formatting while
+editing `.trl` files.
 
 Current examples:
 

@@ -1,0 +1,5 @@
+interval 1m
+
+if true {
+    plot(1)
+}

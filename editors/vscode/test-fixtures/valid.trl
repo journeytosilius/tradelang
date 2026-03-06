@@ -1,0 +1,6 @@
+interval 1m
+
+let basis = ema(close, 5)
+export trend = close > basis
+
+plot(basis)
