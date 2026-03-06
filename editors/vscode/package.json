@@ -2,7 +2,7 @@
   "name": "palmscript-vscode",
   "displayName": "PalmScript",
   "description": "VS Code support for PalmScript strategies",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "journeytosilius",
   "license": "MIT",
   "repository": {
