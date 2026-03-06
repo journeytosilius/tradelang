@@ -4,6 +4,10 @@
   "description": "VS Code support for TradeLang strategies",
   "version": "0.1.0",
   "publisher": "tradelang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/journeytosilius/tradelang.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
