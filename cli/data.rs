@@ -1,14 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use palmscript::{Bar, CompileEnvironment};
-
-pub fn load_compile_env(path: &Path) -> Result<CompileEnvironment, String> {
-    let raw = fs::read_to_string(path)
-        .map_err(|err| format!("failed to read `{}`: {err}", path.display()))?;
-    serde_json::from_str(&raw)
-        .map_err(|err| format!("failed to parse compile env `{}`: {err}", path.display()))
-}
+use palmscript::Bar;
 
 pub fn load_bars_csv(path: &Path) -> Result<Vec<Bar>, String> {
     let raw = fs::read_to_string(path)
@@ -79,23 +72,9 @@ fn parse_f64(raw: &str, path: &Path, line: usize, field: &str) -> Result<f64, St
 
 #[cfg(test)]
 mod tests {
-    use super::{load_bars_csv, load_compile_env};
+    use super::load_bars_csv;
     use std::fs;
     use tempfile::tempdir;
-
-    #[test]
-    fn load_compile_env_reads_valid_json() {
-        let dir = tempdir().expect("tempdir");
-        let path = dir.path().join("env.json");
-        fs::write(
-            &path,
-            r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
-        )
-        .expect("write env");
-        let env = load_compile_env(&path).expect("env loads");
-        assert_eq!(env.external_inputs.len(), 1);
-        assert_eq!(env.external_inputs[0].name, "trend");
-    }
 
     #[test]
     fn load_bars_csv_rejects_bad_header_and_invalid_values() {

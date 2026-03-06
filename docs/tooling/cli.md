@@ -39,7 +39,6 @@ Validates source without running it:
 
 ```bash
 palmscript check strategy.palm
-palmscript check strategy.palm --env env.json
 ```
 
 ## `dump-bytecode`
@@ -51,5 +50,4 @@ palmscript dump-bytecode strategy.palm
 palmscript dump-bytecode strategy.palm --format json
 ```
 
-The optional `--env` flag lets you load a compile environment for external inputs.
 Legacy `.trl` filenames are still accepted.

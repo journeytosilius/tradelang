@@ -5,7 +5,6 @@ The canonical examples documentation now lives in the MkDocs site:
 - [CLI Strategies](../docs/examples/cli-strategies.md)
 - [Rust Examples](../docs/examples/rust-examples.md)
 - [Multi-Interval Examples](../docs/examples/multi-interval.md)
-- [Composition Examples](../docs/examples/composition.md)
 
 This file remains a short inventory for repository browsing.
 
@@ -19,7 +18,6 @@ cargo run --example rsi
 cargo run --example step_engine
 cargo run --example multi_interval
 cargo run --example monthly_trend
-cargo run --example pipeline
 ```
 
 ## CLI Strategies

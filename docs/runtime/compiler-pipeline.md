@@ -23,4 +23,4 @@ The parser emits AST only. Bytecode generation and runtime behavior happen later
 
 ## Why This Matters
 
-The CLI, language server, VS Code extension, and pipeline runtime all depend on these same stages. Tooling stays thin because the language rules live in the library rather than in duplicated wrappers.
+The CLI, language server, and VS Code extension all depend on these same stages. Tooling stays thin because the language rules live in the library rather than in duplicated wrappers.

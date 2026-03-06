@@ -19,7 +19,7 @@ They operate on series values and respect sparse update clocks:
 
 ## `plot`
 
-`plot` is terminal output. It produces plot series in runtime outputs but is not a composable upstream input in pipeline mode.
+`plot` is terminal output. It produces plot series in runtime outputs and is not consumable by other language features.
 
 Example:
 

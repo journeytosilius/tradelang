@@ -28,5 +28,4 @@ At each step the engine produces a `StepOutput`. Over a full run it accumulates 
 These structures power:
 
 - CLI JSON and text output
-- pipeline outputs
-- downstream trigger handling
+- trigger event handling

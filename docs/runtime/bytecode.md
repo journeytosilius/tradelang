@@ -8,7 +8,6 @@ Compiled programs carry more than raw instructions. They also encode:
 
 - slot layout
 - output declarations
-- external input declarations
 - base interval
 - declared supplemental intervals
 - per-slot history requirements

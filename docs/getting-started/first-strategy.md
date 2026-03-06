@@ -21,7 +21,7 @@ if trend {
 
 - `interval 1m` binds unqualified market series like `close` to 1-minute bars
 - `let` binds reusable expressions
-- `export` publishes a named output series that another strategy or host can consume later
+- `export` publishes a named output series in the runtime outputs
 - `plot` emits chart-oriented output
 
 ## Run It

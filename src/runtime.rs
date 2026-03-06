@@ -58,21 +58,6 @@ pub struct MultiIntervalConfig {
     pub supplemental: Vec<IntervalFeed>,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct ExternalInputFrame<'a> {
-    pub values: &'a [Value],
-}
-
-impl<'a> ExternalInputFrame<'a> {
-    pub const fn new(values: &'a [Value]) -> Self {
-        Self { values }
-    }
-
-    pub const fn empty() -> Self {
-        Self { values: &[] }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VmLimits {
     pub max_instructions_per_bar: usize,
@@ -227,16 +212,7 @@ impl Engine {
     }
 
     pub fn run_step(&mut self, bar: Bar) -> Result<crate::output::StepOutput, RuntimeError> {
-        self.run_step_with_inputs(bar, ExternalInputFrame::empty())
-    }
-
-    pub fn run_step_with_inputs(
-        &mut self,
-        bar: Bar,
-        external_inputs: ExternalInputFrame<'_>,
-    ) -> Result<crate::output::StepOutput, RuntimeError> {
         self.prepare_bar(bar)?;
-        self.commit_external_inputs(external_inputs)?;
         let mut remaining_steps = self.limits.max_instructions_per_bar;
         let program = &self.compiled.program;
         let mut vm_engine = VmEngine {
@@ -321,42 +297,6 @@ impl Engine {
             for index in 0..self.feed_cursors.len() {
                 self.advance_feed(index, base_close)?;
             }
-        }
-
-        Ok(())
-    }
-
-    fn commit_external_inputs(
-        &mut self,
-        external_inputs: ExternalInputFrame<'_>,
-    ) -> Result<(), RuntimeError> {
-        if external_inputs.values.len() != self.compiled.program.external_inputs.len() {
-            return Err(RuntimeError::ExternalInputArityMismatch {
-                expected: self.compiled.program.external_inputs.len(),
-                found: external_inputs.values.len(),
-            });
-        }
-
-        for (decl, value) in self
-            .compiled
-            .program
-            .external_inputs
-            .iter()
-            .zip(external_inputs.values.iter())
-        {
-            validate_series_sample(decl.ty, value, |expected, found| {
-                RuntimeError::ExternalInputTypeMismatch {
-                    name: decl.name.clone(),
-                    expected,
-                    found,
-                }
-            })?;
-            let slot = decl.slot as usize;
-            self.current_values[slot] = value.clone();
-            self.series_values
-                .get_mut(slot)
-                .ok_or(RuntimeError::InvalidSeriesSlot { slot })?
-                .push(value.clone());
         }
 
         Ok(())
@@ -671,24 +611,6 @@ fn synthetic_values() -> [Value; 6] {
         Value::NA,
         Value::NA,
     ]
-}
-
-fn validate_series_sample(
-    ty: crate::types::Type,
-    value: &Value,
-    error: impl FnOnce(&'static str, &'static str) -> RuntimeError,
-) -> Result<(), RuntimeError> {
-    match ty {
-        crate::types::Type::SeriesF64 => match value {
-            Value::F64(_) | Value::NA => Ok(()),
-            other => Err(error("series<float>", other.type_name())),
-        },
-        crate::types::Type::SeriesBool => match value {
-            Value::Bool(_) | Value::NA => Ok(()),
-            other => Err(error("series<bool>", other.type_name())),
-        },
-        _ => Err(error("series", value.type_name())),
-    }
 }
 
 fn output_value_for_decl(

@@ -83,21 +83,6 @@ pub enum Constant {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ExternalInputKind {
-    #[default]
-    ExportSeries,
-    TriggerSeries,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExternalInputInfo {
-    pub name: String,
-    pub ty: Type,
-    pub kind: ExternalInputKind,
-    pub slot: u16,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputKind {
     #[default]
     ExportSeries,
@@ -128,7 +113,6 @@ pub struct Program {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Constant>,
     pub locals: Vec<LocalInfo>,
-    pub external_inputs: Vec<ExternalInputInfo>,
     pub outputs: Vec<OutputDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_intervals: Vec<crate::Interval>,

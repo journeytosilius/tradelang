@@ -34,7 +34,6 @@ PalmScript currently implements:
 - predefined market data series: `open`, `high`, `low`, `close`, `volume`, `time`
 - interval-qualified market series such as `1w.close` and `4h.volume`
 - compile-time-inlined user-defined functions
-- host-managed composition through external series inputs
 - the `palmscript` CLI, `palmscript-lsp`, and a first-party VS Code extension
 
 ## Design Principles

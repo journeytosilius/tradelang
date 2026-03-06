@@ -14,7 +14,7 @@ The runtime output model also includes alerts as a structured output channel.
 
 ## `export`
 
-`export` publishes a named output series that other strategies or host systems can consume later.
+`export` publishes a named output series in the runtime outputs.
 
 Valid value categories:
 

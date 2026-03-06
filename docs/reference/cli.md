@@ -3,7 +3,7 @@
 ## `palmscript check`
 
 ```bash
-palmscript check <script.palm> [--env <compile-env.json>]
+palmscript check <script.palm>
 ```
 
 Compiles and validates a strategy without running it.
@@ -23,7 +23,6 @@ Runs a strategy in CSV mode. The input file is treated as the raw source feed an
 
 ```bash
 palmscript dump-bytecode <script.palm> \
-  [--env <compile-env.json>] \
   [--format text|json]
 ```
 

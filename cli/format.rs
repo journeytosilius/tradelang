@@ -111,15 +111,6 @@ pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
         let _ = writeln!(out, "  [{}] {}", index, fmt_local(local));
     }
 
-    let _ = writeln!(out, "External Inputs");
-    for input in &program.external_inputs {
-        let _ = writeln!(
-            out,
-            "  name={} kind={:?} ty={:?} slot={}",
-            input.name, input.kind, input.ty, input.slot
-        );
-    }
-
     let _ = writeln!(out, "Outputs");
     for output in &program.outputs {
         let _ = writeln!(

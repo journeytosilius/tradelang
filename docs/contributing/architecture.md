@@ -4,7 +4,7 @@ PalmScript is structured as a library-first repository. Tooling layers reuse the
 
 ## Main Areas
 
-- `src/`: compiler, runtime, VM, pipeline, IDE, and shared types
+- `src/`: compiler, runtime, VM, IDE, and shared types
 - `cli/`: CLI binary
 - `lsp/`: language server binary
 - `editors/vscode/`: VS Code extension

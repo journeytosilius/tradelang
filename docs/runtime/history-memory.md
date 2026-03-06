@@ -18,4 +18,4 @@ Series history is stored in bounded buffers. The runtime does not allow unbounde
 
 ## Sparse Series Updates
 
-Multi-interval execution and external inputs can advance at different effective clocks. PalmScript tracks those update clocks so derived series and indicators only advance when their source data actually advances.
+Multi-interval execution can advance different series at different effective clocks. PalmScript tracks those update clocks so derived series and indicators only advance when their source data actually advances.

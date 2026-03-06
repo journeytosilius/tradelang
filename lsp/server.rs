@@ -24,21 +24,15 @@ use crate::convert::{
     completion_item, definition_response, document_symbol, format_edit, hover_from_info,
     offset_from_position, uri_to_path,
 };
-use crate::session::{InitializationOptions, Session};
+use crate::session::Session;
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let (connection, io_threads) = Connection::stdio();
     let initialization_params =
         connection.initialize(serde_json::to_value(server_capabilities())?)?;
     let init_params: InitializeParams = serde_json::from_value(initialization_params)?;
-    let options: InitializationOptions = init_params
-        .initialization_options
-        .clone()
-        .map(serde_json::from_value)
-        .transpose()?
-        .unwrap_or_default();
-    let workspace_roots = workspace_roots(&init_params);
-    let mut session = Session::new(workspace_roots, options);
+    let _workspace_roots = workspace_roots(&init_params);
+    let mut session = Session::new();
 
     for message in &connection.receiver {
         match message {

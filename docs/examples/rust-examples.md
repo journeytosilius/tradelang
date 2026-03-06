@@ -10,7 +10,6 @@ cargo run --example rsi
 cargo run --example step_engine
 cargo run --example multi_interval
 cargo run --example monthly_trend
-cargo run --example pipeline
 ```
 
 ## What They Cover
@@ -20,4 +19,3 @@ cargo run --example pipeline
 - `step_engine`: explicit per-bar stepping with the engine
 - `multi_interval`: higher-interval data usage
 - `monthly_trend`: mixed monthly and daily context
-- `pipeline`: host-managed composition

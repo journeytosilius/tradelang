@@ -8,10 +8,6 @@ The execution clock declared by `interval <...>`. Unqualified market series refe
 
 Any interval explicitly listed in `use <...>` so the strategy may reference it.
 
-## External Input
-
-A typed series value injected by a host or pipeline into a compiled program.
-
 ## No Lookahead
 
 The guarantee that higher-interval values appear only after their candles fully close.

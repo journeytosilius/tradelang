@@ -34,7 +34,6 @@ The extension resolves `palmscript-lsp` in this order:
 ## Settings
 
 - `palmscript.server.path`
-- `palmscript.projectConfigPath`
 - `palmscript.trace.server`
 
 ## Packaging

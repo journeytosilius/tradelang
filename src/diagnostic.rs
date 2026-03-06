@@ -108,14 +108,6 @@ pub enum RuntimeError {
     InvalidLocalSlot { slot: usize },
     #[error("invalid series slot {slot}")]
     InvalidSeriesSlot { slot: usize },
-    #[error("external input count mismatch: expected {expected}, found {found}")]
-    ExternalInputArityMismatch { expected: usize, found: usize },
-    #[error("external input `{name}` expected {expected}, found {found}")]
-    ExternalInputTypeMismatch {
-        name: String,
-        expected: &'static str,
-        found: &'static str,
-    },
     #[error("output `{name}` expected {expected}, found {found}")]
     OutputTypeMismatch {
         name: String,
@@ -146,31 +138,6 @@ pub enum RuntimeError {
         slot: usize,
         required: usize,
         limit: usize,
-    },
-    #[error("pipeline graph contains a cycle")]
-    PipelineCycle,
-    #[error("pipeline node `{node}` is duplicated")]
-    DuplicatePipelineNode { node: String },
-    #[error("pipeline node `{node}` is missing")]
-    MissingPipelineNode { node: String },
-    #[error("pipeline nodes must share the same base interval; `{node}` uses {interval:?} but expected {expected:?}")]
-    PipelineIntervalMismatch {
-        node: String,
-        interval: Interval,
-        expected: Interval,
-    },
-    #[error("pipeline input `{input}` on node `{node}` is missing a producer")]
-    MissingPipelineInput { node: String, input: String },
-    #[error("pipeline input `{input}` on node `{node}` has multiple producers")]
-    DuplicatePipelineInput { node: String, input: String },
-    #[error("pipeline output `{output}` not found on node `{node}`")]
-    MissingPipelineOutput { node: String, output: String },
-    #[error("pipeline input `{input}` on node `{node}` expected {expected} but producer provides {found}")]
-    PipelineInputTypeMismatch {
-        node: String,
-        input: String,
-        expected: &'static str,
-        found: &'static str,
     },
 }
 
@@ -217,15 +184,7 @@ mod tests {
             pc: 4,
             opcode: OpCode::Add,
         };
-        let pipeline = RuntimeError::PipelineInputTypeMismatch {
-            node: "consumer".to_string(),
-            input: "trend".to_string(),
-            expected: "series<bool>",
-            found: "series<f64>",
-        };
         assert!(stack.to_string().contains("pc 4"));
         assert!(stack.to_string().contains("Add"));
-        assert!(pipeline.to_string().contains("consumer"));
-        assert!(pipeline.to_string().contains("trend"));
     }
 }

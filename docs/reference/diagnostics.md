@@ -11,7 +11,6 @@ Compile-time diagnostics include:
 - type errors
 - invalid identifiers
 - illegal function usage
-- invalid external-input declarations or collisions
 
 These surface through:
 
@@ -42,7 +41,6 @@ Runtime errors include:
 
 - feed compatibility problems
 - history-cap violations
-- pipeline topology and wiring failures
 - execution-limit violations
 
 The runtime fails deterministically rather than silently degrading semantics.

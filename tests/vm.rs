@@ -1,14 +1,11 @@
 use palmscript::bytecode::{Constant, Instruction, LocalInfo, OpCode, Program};
-use palmscript::compiler::{CompileEnvironment, CompiledProgram, ExternalInputDecl};
+use palmscript::compiler::CompiledProgram;
 use palmscript::diagnostic::RuntimeError;
 use palmscript::runtime::{
-    run, run_multi_interval, Bar, Engine, ExternalInputFrame, IntervalFeed, MultiIntervalConfig,
-    VmLimits,
+    run, run_multi_interval, Bar, IntervalFeed, MultiIntervalConfig, VmLimits,
 };
 use palmscript::types::Value;
-use palmscript::{
-    compile_with_env, ExternalInputKind, Interval, MarketBinding, MarketField, MarketSource, Type,
-};
+use palmscript::{Interval, MarketBinding, MarketField, MarketSource, Type};
 
 fn with_interval(source: &str) -> String {
     format!("interval 1m\n{source}")
@@ -135,7 +132,6 @@ fn tiny_program_push_add_plot_executes() {
             Constant::Value(Value::F64(2.0)),
         ],
         locals: empty_locals(),
-        external_inputs: vec![],
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
@@ -159,7 +155,6 @@ fn stack_underflow_is_reported() {
         ],
         constants: vec![],
         locals: empty_locals(),
-        external_inputs: vec![],
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
@@ -183,7 +178,6 @@ fn invalid_jump_is_reported() {
         ],
         constants: vec![],
         locals: empty_locals(),
-        external_inputs: vec![],
         outputs: vec![],
         base_interval: None,
         declared_intervals: vec![],
@@ -599,55 +593,4 @@ fn triggers_emit_samples_and_events() {
     assert_eq!(outputs.trigger_events.len(), 2);
     assert_eq!(outputs.trigger_events[0].bar_index, 1);
     assert_eq!(outputs.trigger_events[1].bar_index, 3);
-}
-
-#[test]
-fn external_inputs_support_indexing_and_indicators() {
-    let env = CompileEnvironment {
-        external_inputs: vec![ExternalInputDecl {
-            name: "trend".into(),
-            ty: Type::SeriesF64,
-            kind: ExternalInputKind::ExportSeries,
-        }],
-    };
-    let compiled =
-        compile_with_env(&with_interval("plot(ema(trend, 2) + trend[1])"), &env).expect("compiles");
-    let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[1.0, 1.0, 1.0]);
-    let mut engine = Engine::try_new(compiled, VmLimits::default()).expect("engine builds");
-    let inputs = [[Value::F64(10.0)], [Value::F64(12.0)], [Value::F64(14.0)]];
-
-    for (bar, input) in bars.into_iter().zip(inputs) {
-        engine
-            .run_step_with_inputs(bar, ExternalInputFrame::new(&input))
-            .expect("step runs");
-    }
-
-    let outputs = engine.finish();
-    assert_eq!(outputs.plots[0].points[0].value, None);
-    assert_eq!(outputs.plots[0].points[1].value, Some(21.0));
-    assert_eq!(outputs.plots[0].points[2].value, Some(25.0));
-}
-
-#[test]
-fn missing_external_inputs_reject_at_runtime() {
-    let env = CompileEnvironment {
-        external_inputs: vec![ExternalInputDecl {
-            name: "trend".into(),
-            ty: Type::SeriesBool,
-            kind: ExternalInputKind::ExportSeries,
-        }],
-    };
-    let compiled = compile_with_env(
-        &with_interval("if trend { plot(1) } else { plot(0) }"),
-        &env,
-    )
-    .expect("compiles");
-    let err = run(&compiled, &fixture_bars(), VmLimits::default()).expect_err("missing input");
-    assert!(matches!(
-        err,
-        RuntimeError::ExternalInputArityMismatch {
-            expected: 1,
-            found: 0
-        }
-    ));
 }

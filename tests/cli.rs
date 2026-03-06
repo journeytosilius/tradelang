@@ -138,29 +138,6 @@ fn check_reports_compile_diagnostics() {
 }
 
 #[test]
-fn check_supports_compile_environment_files() {
-    let dir = tempdir().expect("tempdir");
-    let script = write_file(
-        dir.path(),
-        "consumer.palm",
-        "interval 1m\nif trend { plot(1) } else { plot(0) }",
-    );
-    let env = write_file(
-        dir.path(),
-        "env.json",
-        r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
-    );
-    let mut cmd = palmscript_cmd();
-    cmd.args([
-        "check",
-        script.to_str().unwrap(),
-        "--env",
-        env.to_str().unwrap(),
-    ]);
-    cmd.assert().success();
-}
-
-#[test]
 fn run_executes_single_interval_script_and_prints_json_by_default() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(dir.path(), "script.palm", "interval 1m\nplot(close[1])");
@@ -398,38 +375,6 @@ fn dump_bytecode_json_serializes_compiled_program() {
     assert!(json["program"]["instructions"].is_array());
     assert!(json["program"]["locals"].is_array());
     assert_eq!(json["program"]["base_interval"], Value::from("Min1"));
-}
-
-#[test]
-fn dump_bytecode_supports_compile_environment_files() {
-    let dir = tempdir().expect("tempdir");
-    let script = write_file(
-        dir.path(),
-        "consumer.palm",
-        "interval 1m\nif trend { plot(1) } else { plot(0) }",
-    );
-    let env = write_file(
-        dir.path(),
-        "env.json",
-        r#"{"external_inputs":[{"name":"trend","ty":"SeriesBool","kind":"ExportSeries"}]}"#,
-    );
-    let output = palmscript_cmd()
-        .args([
-            "dump-bytecode",
-            script.to_str().unwrap(),
-            "--env",
-            env.to_str().unwrap(),
-            "--format",
-            "json",
-        ])
-        .output()
-        .expect("dump-bytecode executes");
-    assert!(output.status.success());
-    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
-    assert_eq!(
-        json["program"]["external_inputs"][0]["name"],
-        Value::from("trend")
-    );
 }
 
 #[test]

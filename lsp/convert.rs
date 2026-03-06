@@ -91,9 +91,7 @@ pub fn completion_item(entry: CompletionEntry) -> CompletionItem {
                 CompletionItemKind::KEYWORD
             }
             CompletionKind::Builtin | CompletionKind::Function => CompletionItemKind::FUNCTION,
-            CompletionKind::Series | CompletionKind::Variable | CompletionKind::ExternalInput => {
-                CompletionItemKind::VARIABLE
-            }
+            CompletionKind::Series | CompletionKind::Variable => CompletionItemKind::VARIABLE,
         }),
         detail: entry.detail,
         ..CompletionItem::default()
@@ -123,9 +121,7 @@ fn symbol_kind(kind: SymbolKind) -> LspSymbolKind {
         SymbolKind::Interval | SymbolKind::UseInterval => LspSymbolKind::NAMESPACE,
         SymbolKind::Function => LspSymbolKind::FUNCTION,
         SymbolKind::Parameter => LspSymbolKind::VARIABLE,
-        SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger | SymbolKind::ExternalInput => {
-            LspSymbolKind::VARIABLE
-        }
+        SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => LspSymbolKind::VARIABLE,
     }
 }
 

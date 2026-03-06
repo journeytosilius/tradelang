@@ -21,7 +21,6 @@ Depending on the change, add or update:
 - semantic/compiler tests
 - VM/runtime tests
 - CLI integration tests
-- pipeline tests
 - language server and VS Code tests
 - documentation links and command examples when docs-facing behavior changes
 

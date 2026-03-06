@@ -23,22 +23,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
     context.subscriptions.push(restartCommand);
 
-    const configWatcher = vscode.workspace.createFileSystemWatcher("**/.palmscript.json");
-    const restartOnChange = async (): Promise<void> => {
-        if (client !== undefined) {
-            await restartClient(context);
-        }
-    };
-    configWatcher.onDidChange(restartOnChange);
-    configWatcher.onDidCreate(restartOnChange);
-    configWatcher.onDidDelete(restartOnChange);
-    context.subscriptions.push(configWatcher);
-
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration(async (event) => {
             if (
                 event.affectsConfiguration("palmscript.server.path") ||
-                event.affectsConfiguration("palmscript.projectConfigPath") ||
                 event.affectsConfiguration("palmscript.trace.server")
             ) {
                 await restartClient(context);
@@ -78,11 +66,6 @@ async function startClient(context: vscode.ExtensionContext): Promise<void> {
     };
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: "file", language: "palmscript" }],
-        initializationOptions: {
-            projectConfigPath: vscode.workspace
-                .getConfiguration("palmscript")
-                .get<string>("projectConfigPath", ".palmscript.json"),
-        },
     };
 
     client = new LanguageClient(

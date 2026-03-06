@@ -1,6 +1,4 @@
-use palmscript::{
-    compile, compile_with_env, CompileEnvironment, ExternalInputDecl, ExternalInputKind, Type,
-};
+use palmscript::compile;
 
 fn compile_err(source: &str) -> String {
     let err = compile(source).expect_err("expected compile error");
@@ -181,9 +179,7 @@ fn rejects_function_body_captures() {
     let message = compile_err(&with_interval(
         "let basis = close\nfn helper() = basis\nplot(1)",
     ));
-    assert!(message.contains(
-        "function bodies may only reference parameters, predefined series, or external inputs"
-    ));
+    assert!(message.contains("function bodies may only reference parameters or predefined series"));
 }
 
 #[test]
@@ -304,23 +300,7 @@ fn rejects_numeric_triggers() {
 }
 
 #[test]
-fn compile_with_env_resolves_external_inputs() {
-    let env = CompileEnvironment {
-        external_inputs: vec![ExternalInputDecl {
-            name: "trend".into(),
-            ty: Type::SeriesBool,
-            kind: ExternalInputKind::ExportSeries,
-        }],
-    };
-    compile_with_env(
-        &with_interval("if trend { plot(1) } else { plot(0) }"),
-        &env,
-    )
-    .expect("external inputs should compile");
-}
-
-#[test]
-fn compile_without_env_rejects_external_inputs() {
+fn rejects_unknown_identifiers() {
     let message = compile_err(&with_interval("if trend { plot(1) } else { plot(0) }"));
     assert!(message.contains("unknown identifier `trend`"));
 }

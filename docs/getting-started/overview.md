@@ -2,7 +2,7 @@
 
 PalmScript exists in three layers:
 
-- the Rust library, which owns lexing, parsing, semantic analysis, bytecode generation, VM execution, input preparation, pipeline execution, and IDE analysis
+- the Rust library, which owns lexing, parsing, semantic analysis, bytecode generation, VM execution, input preparation, and IDE analysis
 - the `palmscript` CLI, which runs scripts directly
 - the editor stack, built from `palmscript-lsp` plus the VS Code extension
 

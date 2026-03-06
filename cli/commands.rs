@@ -2,14 +2,14 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, compile_with_env, prepare_csv_inputs_for_program, run_multi_interval,
-    CompileEnvironment, CompiledProgram, RuntimeError, VmLimits,
+    compile, prepare_csv_inputs_for_program, run_multi_interval, CompiledProgram, RuntimeError,
+    VmLimits,
 };
 
 use crate::args::{
     BytecodeFormat, CheckArgs, Cli, Command, CsvRunArgs, DumpBytecodeArgs, OutputFormat, RunCommand,
 };
-use crate::data::{load_bars_csv, load_compile_env};
+use crate::data::load_bars_csv;
 use crate::diagnostics::{format_compile_error, format_data_prep_error, format_runtime_error};
 use crate::format::{render_bytecode_text, render_outputs_text};
 
@@ -30,11 +30,6 @@ fn run_mode(mode: RunCommand) -> Result<(), String> {
 fn run_csv(args: CsvRunArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
-    if !compiled.program.external_inputs.is_empty() {
-        return Err(
-            "scripts with external inputs must run through the future pipeline command".to_string(),
-        );
-    }
     let raw_bars = load_bars_csv(&args.bars)?;
     let prepared = prepare_csv_inputs_for_program(&compiled, raw_bars)
         .map_err(|err| format_data_prep_error(&err))?;
@@ -61,22 +56,14 @@ fn run_csv(args: CsvRunArgs) -> Result<(), String> {
 
 fn check_script(args: CheckArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
-    let env = match args.env {
-        Some(path) => load_compile_env(&path)?,
-        None => CompileEnvironment::default(),
-    };
-    compile_source(&source, &args.script, &env)?;
+    compile_source(&source, &args.script)?;
     println!("{}: ok", args.script.display());
     Ok(())
 }
 
 fn dump_bytecode(args: DumpBytecodeArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
-    let env = match args.env {
-        Some(path) => load_compile_env(&path)?,
-        None => CompileEnvironment::default(),
-    };
-    let compiled = compile_source(&source, &args.script, &env)?;
+    let compiled = compile_source(&source, &args.script)?;
     match args.format {
         BytecodeFormat::Json => println!(
             "{}",
@@ -87,16 +74,8 @@ fn dump_bytecode(args: DumpBytecodeArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn compile_source(
-    source: &str,
-    path: &Path,
-    env: &CompileEnvironment,
-) -> Result<CompiledProgram, String> {
-    if env.external_inputs.is_empty() {
-        compile(source).map_err(|err| format_compile_error(path, &err))
-    } else {
-        compile_with_env(source, env).map_err(|err| format_compile_error(path, &err))
-    }
+fn compile_source(source: &str, path: &Path) -> Result<CompiledProgram, String> {
+    compile(source).map_err(|err| format_compile_error(path, &err))
 }
 
 fn load_source(path: &Path) -> Result<String, String> {

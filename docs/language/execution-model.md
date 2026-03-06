@@ -8,10 +8,9 @@ For each base bar:
 
 1. base market series are loaded
 2. referenced higher or equal intervals are advanced up to the current fully closed base boundary
-3. external inputs are injected if the host or pipeline provides them
-4. bytecode executes
-5. bounded series state is updated
-6. outputs are emitted for the current bar
+3. bytecode executes
+4. bounded series state is updated
+5. outputs are emitted for the current bar
 
 ## Determinism
 

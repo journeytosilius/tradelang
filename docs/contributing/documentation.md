@@ -10,7 +10,6 @@ Update documentation whenever a change affects:
 - runtime behavior
 - CLI commands or flags
 - CSV mode or roll-up behavior
-- pipeline behavior
 - editor tooling behavior
 - released artifacts or workflows
 - examples or checked-in fixtures used in docs

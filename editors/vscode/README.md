@@ -4,7 +4,6 @@ The canonical documentation for the editor stack now lives in the MkDocs site:
 
 - [VS Code Extension](../../docs/tooling/vscode.md)
 - [Language Server](../../docs/tooling/language-server.md)
-- [.palmscript.json](../../docs/tooling/project-config.md)
 - [Release Workflows](../../docs/contributing/releases.md)
 
 This file remains the short repository-local development note.

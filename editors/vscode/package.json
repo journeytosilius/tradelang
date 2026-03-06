@@ -63,11 +63,6 @@
           "default": "",
           "description": "Optional path to a custom palmscript-lsp binary."
         },
-        "palmscript.projectConfigPath": {
-          "type": "string",
-          "default": ".palmscript.json",
-          "description": "Workspace-relative or absolute path to the PalmScript project config."
-        },
         "palmscript.trace.server": {
           "type": "string",
           "enum": [

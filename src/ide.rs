@@ -5,15 +5,12 @@
 //! language logic in the language server or editor extension.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs;
-use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::ast::{Ast, Block, Expr, ExprKind, FunctionDecl, IntervalDecl, Stmt, StmtKind, UnaryOp};
 use crate::builtins::BuiltinId;
-use crate::compiler::{analyze_semantics, CompileEnvironment, ExprInfo, InferredType};
+use crate::compiler::{analyze_semantics, ExprInfo, InferredType};
 use crate::diagnostic::CompileError;
 use crate::interval::{Interval, MarketField, INTERVAL_SPECS};
 use crate::lexer;
@@ -68,7 +65,6 @@ pub enum SymbolKind {
     Let,
     Export,
     Trigger,
-    ExternalInput,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,7 +111,6 @@ pub enum CompletionKind {
     Field,
     Function,
     Variable,
-    ExternalInput,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,37 +118,6 @@ pub struct CompletionEntry {
     pub label: String,
     pub kind: CompletionKind,
     pub detail: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ProjectConfig {
-    pub version: u32,
-    #[serde(default)]
-    pub documents: BTreeMap<String, DocumentConfig>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DocumentConfig {
-    #[serde(default)]
-    pub compile_environment: CompileEnvironment,
-}
-
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("failed to read `{path}`: {source}")]
-    Read {
-        path: PathBuf,
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("failed to parse `{path}`: {source}")]
-    Parse {
-        path: PathBuf,
-        #[source]
-        source: serde_json::Error,
-    },
-    #[error("unsupported PalmScript project config version `{version}`")]
-    UnsupportedVersion { version: u32 },
 }
 
 #[derive(Clone, Debug)]
@@ -174,7 +138,6 @@ struct Reference {
 
 #[derive(Clone, Debug)]
 struct ResolutionContext<'a> {
-    env: &'a CompileEnvironment,
     expr_info: &'a HashMap<u32, ExprInfo>,
     definitions: Vec<DefinitionTarget>,
     symbols: Vec<Symbol>,
@@ -303,7 +266,6 @@ impl SemanticDocument {
                 for definition in &self.definitions {
                     let kind = match definition.kind {
                         SymbolKind::Function => CompletionKind::Function,
-                        SymbolKind::ExternalInput => CompletionKind::ExternalInput,
                         _ => CompletionKind::Variable,
                     };
                     items
@@ -321,13 +283,9 @@ impl SemanticDocument {
     }
 }
 
-pub fn analyze_document(
-    source: &str,
-    env: &CompileEnvironment,
-) -> Result<SemanticDocument, CompileError> {
-    let (ast, analysis) = analyze_semantics(source, env)?;
+pub fn analyze_document(source: &str) -> Result<SemanticDocument, CompileError> {
+    let (ast, analysis) = analyze_semantics(source)?;
     let mut context = ResolutionContext {
-        env,
         expr_info: &analysis.expr_info,
         definitions: Vec::new(),
         symbols: Vec::new(),
@@ -351,41 +309,6 @@ pub fn format_document(source: &str) -> Result<String, CompileError> {
     Ok(format_ast(&ast))
 }
 
-pub fn load_project_config(path: &Path) -> Result<ProjectConfig, ConfigError> {
-    let raw = fs::read_to_string(path).map_err(|source| ConfigError::Read {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let config: ProjectConfig =
-        serde_json::from_str(&raw).map_err(|source| ConfigError::Parse {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    if config.version != 1 {
-        return Err(ConfigError::UnsupportedVersion {
-            version: config.version,
-        });
-    }
-    Ok(config)
-}
-
-impl ProjectConfig {
-    pub fn compile_environment_for_document(
-        &self,
-        workspace_root: &Path,
-        document_path: &Path,
-    ) -> CompileEnvironment {
-        let Ok(relative) = document_path.strip_prefix(workspace_root) else {
-            return CompileEnvironment::default();
-        };
-        let key = normalize_relative_path(relative);
-        self.documents
-            .get(&key)
-            .map(|config| config.compile_environment.clone())
-            .unwrap_or_default()
-    }
-}
-
 fn build_semantic_document(context: &mut ResolutionContext<'_>, ast: &Ast) {
     if let Some(base) = ast.strategy_intervals.base.first() {
         context.document_symbols.push(DocumentSymbolInfo {
@@ -404,26 +327,6 @@ fn build_semantic_document(context: &mut ResolutionContext<'_>, ast: &Ast) {
             SymbolKind::UseInterval,
             "Referenced interval",
         ));
-    }
-
-    for external in &context.env.external_inputs {
-        let detail = format!(
-            "external input: {} ({})",
-            render_type(external.ty),
-            external.kind.kind_name()
-        );
-        let index = push_definition(
-            context,
-            DefinitionTarget {
-                name: external.name.clone(),
-                kind: SymbolKind::ExternalInput,
-                span: Span::default(),
-                selection_span: Span::default(),
-                detail: Some(detail),
-                navigable: false,
-            },
-        );
-        context.root_symbols.insert(external.name.clone(), index);
     }
 
     for function in &ast.functions {
@@ -839,13 +742,6 @@ fn field_doc_suffix(field: MarketField) -> &'static str {
     }
 }
 
-fn normalize_relative_path(path: &Path) -> String {
-    path.components()
-        .map(|component| component.as_os_str().to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompletionContext {
     General,
@@ -1108,19 +1004,6 @@ fn trim_float(value: f64) -> String {
     }
 }
 
-trait ExternalInputKindExt {
-    fn kind_name(&self) -> &'static str;
-}
-
-impl ExternalInputKindExt for crate::ExternalInputKind {
-    fn kind_name(&self) -> &'static str {
-        match self {
-            crate::ExternalInputKind::ExportSeries => "export series",
-            crate::ExternalInputKind::TriggerSeries => "trigger series",
-        }
-    }
-}
-
 fn render_market_field(field: MarketField) -> &'static str {
     match field {
         MarketField::Open => "open",
@@ -1134,14 +1017,7 @@ fn render_market_field(field: MarketField) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::Path;
-
-    use super::{
-        analyze_document, format_document, load_project_config, CompletionKind, ProjectConfig,
-    };
-    use crate::{CompileEnvironment, ExternalInputDecl, ExternalInputKind, Type};
-    use tempfile::NamedTempFile;
+    use super::{analyze_document, format_document, CompletionKind};
 
     fn with_interval(source: &str) -> String {
         format!("interval 1m\n{source}")
@@ -1152,7 +1028,7 @@ mod tests {
         let source = with_interval(
             "fn crossover(a, b) = a > b\nlet basis = ema(close, 5)\nexport trend = crossover(close, basis)\nif trend { plot(1) } else { plot(0) }",
         );
-        let document = analyze_document(&source, &CompileEnvironment::default()).expect("semantic");
+        let document = analyze_document(&source).expect("semantic");
         assert!(document
             .symbols()
             .iter()
@@ -1169,11 +1045,7 @@ mod tests {
     #[test]
     fn completions_include_keywords_builtins_and_fields() {
         let source = with_interval("plot(1w.)");
-        let document = analyze_document(
-            &source.replace("1w.", "close"),
-            &CompileEnvironment::default(),
-        )
-        .expect("semantic");
+        let document = analyze_document(&source.replace("1w.", "close")).expect("semantic");
         let general = document.completions_at(0);
         assert!(general.iter().any(|entry| entry.label == "interval"));
         assert!(general
@@ -1189,42 +1061,5 @@ mod tests {
         let formatted = format_document(source).expect("formatted");
         let reformatted = format_document(&formatted).expect("reformatted");
         assert_eq!(formatted, reformatted);
-    }
-
-    #[test]
-    fn project_config_loads_workspace_relative_envs() {
-        let file = NamedTempFile::new().expect("temp file");
-        fs::write(
-            file.path(),
-            r#"{
-  "version": 1,
-  "documents": {
-    "strategies/consumer.palm": {
-      "compile_environment": {
-        "external_inputs": [
-          { "name": "trend", "ty": "SeriesBool", "kind": "ExportSeries" }
-        ]
-      }
-    }
-  }
-}"#,
-        )
-        .expect("write");
-        let config = load_project_config(file.path()).expect("config");
-        let env = config.compile_environment_for_document(
-            Path::new("/workspace"),
-            Path::new("/workspace/strategies/consumer.palm"),
-        );
-        assert_eq!(
-            env,
-            CompileEnvironment {
-                external_inputs: vec![ExternalInputDecl {
-                    name: "trend".to_string(),
-                    ty: Type::SeriesBool,
-                    kind: ExternalInputKind::ExportSeries,
-                }],
-            }
-        );
-        let _: ProjectConfig = config;
     }
 }

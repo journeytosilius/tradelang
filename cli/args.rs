@@ -41,15 +41,11 @@ pub struct CsvRunArgs {
 #[derive(Debug, clap::Args)]
 pub struct CheckArgs {
     pub script: PathBuf,
-    #[arg(long)]
-    pub env: Option<PathBuf>,
 }
 
 #[derive(Debug, clap::Args)]
 pub struct DumpBytecodeArgs {
     pub script: PathBuf,
-    #[arg(long)]
-    pub env: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = BytecodeFormat::Text)]
     pub format: BytecodeFormat,
 }
