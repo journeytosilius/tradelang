@@ -5,8 +5,8 @@ The first-party VS Code extension provides editor support for `.trl` files.
 Marketplace identity:
 
 - display name: `PalmScript`
-- publisher: `palmscript`
-- extension id: `palmscript.palmscript-vscode`
+- publisher: `journeytosilius`
+- extension id: `journeytosilius.palmscript-vscode`
 
 ## Capabilities
 
