@@ -1,5 +1,9 @@
 # PalmScript
 
+<p align="center">
+  <img src="editors/vscode/images/palmscript.png" alt="PalmScript logo" width="220">
+</p>
+
 PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
 The repository currently ships:
