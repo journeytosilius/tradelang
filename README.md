@@ -29,7 +29,7 @@ PalmScript currently implements:
 - deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals
 - an expanding executable TA-Lib-style builtin surface, with remaining reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`
-- venue-aware signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`
+- venue-aware signal-to-portfolio backtesting through `palmscript run backtest` and `run_backtest_with_sources`, including machine-readable order and trade diagnostics
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
 

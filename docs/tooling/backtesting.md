@@ -99,9 +99,28 @@ The result includes:
 - order lifecycle records in `orders`
 - per-fill records in `fills`
 - closed round trips in `trades`
+- event-centered diagnostics in `diagnostics`
 - per-bar account marks in `equity_curve`
 - aggregate metrics in `summary`
 - any still-open position in `open_position`
+
+The `diagnostics` payload is designed for machine analysis and LLM-driven
+iteration. It currently includes:
+
+- per-order diagnostics with signal, placement, and fill snapshots of named `export` features
+- per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
+- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, stop-loss, take-profit, and reversal exits
+
+To make regime and setup context available to diagnostics, export those fields
+explicitly in the strategy:
+
+```palm
+export trend_long_state = trend_long
+export adaptive_bias = spot.close - kama_4h
+export breakout_long_state = breakout_long
+```
+
+Those exported values are then snapshotted automatically around backtest events.
 
 ## Signal Resolution
 

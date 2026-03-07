@@ -16,7 +16,7 @@ use crate::bytecode::SignalRole;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
-use crate::output::Outputs;
+use crate::output::{OutputValue, Outputs};
 use crate::runtime::{run_with_sources, Bar, SourceRuntimeConfig, VmLimits};
 
 const BPS_SCALE: f64 = 10_000.0;
@@ -148,11 +148,114 @@ pub struct OrderRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FeatureValue {
+    pub name: String,
+    pub value: OutputValue,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FeatureSnapshot {
+    pub bar_index: usize,
+    pub time: f64,
+    pub values: Vec<FeatureValue>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TradeExitClassification {
+    Signal,
+    StopLoss,
+    TakeProfit,
+    Reversal,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderDiagnostic {
+    pub order_id: usize,
+    pub role: SignalRole,
+    pub kind: OrderKind,
+    pub status: OrderStatus,
+    pub end_reason: Option<OrderEndReason>,
+    pub signal_snapshot: Option<FeatureSnapshot>,
+    pub placed_snapshot: Option<FeatureSnapshot>,
+    pub fill_snapshot: Option<FeatureSnapshot>,
+    pub bars_to_fill: Option<usize>,
+    pub time_to_fill_ms: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TradeDiagnostic {
+    pub trade_id: usize,
+    pub side: PositionSide,
+    pub entry_order_id: usize,
+    pub exit_order_id: usize,
+    pub entry_role: SignalRole,
+    pub exit_role: SignalRole,
+    pub entry_kind: OrderKind,
+    pub exit_kind: OrderKind,
+    pub exit_classification: TradeExitClassification,
+    pub entry_snapshot: Option<FeatureSnapshot>,
+    pub exit_snapshot: Option<FeatureSnapshot>,
+    pub bars_held: usize,
+    pub duration_ms: f64,
+    pub realized_pnl: f64,
+    pub mae_price_delta: f64,
+    pub mfe_price_delta: f64,
+    pub mae_pct: f64,
+    pub mfe_pct: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OrderKindDiagnosticSummary {
+    pub kind: OrderKind,
+    pub placed_count: usize,
+    pub filled_count: usize,
+    pub cancelled_count: usize,
+    pub rejected_count: usize,
+    pub expired_count: usize,
+    pub fill_rate: f64,
+    pub average_bars_to_fill: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SideDiagnosticSummary {
+    pub side: PositionSide,
+    pub trade_count: usize,
+    pub win_rate: f64,
+    pub average_realized_pnl: f64,
+    pub average_bars_held: f64,
+    pub average_mae_pct: f64,
+    pub average_mfe_pct: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BacktestDiagnosticSummary {
+    pub order_fill_rate: f64,
+    pub average_bars_to_fill: f64,
+    pub average_bars_held: f64,
+    pub average_mae_pct: f64,
+    pub average_mfe_pct: f64,
+    pub signal_exit_count: usize,
+    pub stop_loss_exit_count: usize,
+    pub take_profit_exit_count: usize,
+    pub reversal_exit_count: usize,
+    pub by_order_kind: Vec<OrderKindDiagnosticSummary>,
+    pub by_side: Vec<SideDiagnosticSummary>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BacktestDiagnostics {
+    pub order_diagnostics: Vec<OrderDiagnostic>,
+    pub trade_diagnostics: Vec<TradeDiagnostic>,
+    pub summary: BacktestDiagnosticSummary,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BacktestResult {
     pub outputs: Outputs,
     pub orders: Vec<OrderRecord>,
     pub fills: Vec<Fill>,
     pub trades: Vec<Trade>,
+    pub diagnostics: BacktestDiagnostics,
     pub equity_curve: Vec<EquityPoint>,
     pub summary: BacktestSummary,
     pub open_position: Option<PositionSnapshot>,

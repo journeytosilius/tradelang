@@ -199,6 +199,76 @@ plot(spot.close)",
 }
 
 #[test]
+fn diagnostics_capture_trade_context_and_excursions() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+export trend_state = spot.close > spot.close[1]
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                Bar {
+                    open: 12.0,
+                    high: 14.0,
+                    low: 11.0,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 11.0,
+                    high: 11.0,
+                    low: 8.0,
+                    close: 8.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 7.0,
+                    high: 7.0,
+                    low: 6.0,
+                    close: 7.0,
+                    volume: 1_000.0,
+                    time: (support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.diagnostics.order_diagnostics.len(), 2);
+    assert_eq!(result.diagnostics.trade_diagnostics.len(), 1);
+    assert_eq!(result.diagnostics.summary.signal_exit_count, 1);
+    let order_diag = &result.diagnostics.order_diagnostics[0];
+    let signal_snapshot = order_diag
+        .signal_snapshot
+        .as_ref()
+        .expect("signal snapshot should exist");
+    assert_eq!(signal_snapshot.values[0].name, "trend_state");
+    assert_eq!(
+        signal_snapshot.values[0].value,
+        palmscript::OutputValue::Bool(true)
+    );
+
+    let trade_diag = &result.diagnostics.trade_diagnostics[0];
+    assert!(trade_diag.mfe_pct > 0.0);
+    assert!(trade_diag.mae_pct < 0.0);
+    assert_eq!(trade_diag.entry_snapshot, order_diag.fill_snapshot);
+}
+
+#[test]
 fn fees_and_slippage_adjust_fill_prices_and_fees() {
     let compiled = compile(
         "interval 1m

@@ -72,8 +72,8 @@ Requirements:
 
 Backtest output:
 
-- JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, equity, summary, and any open position
-- text output renders summary metrics plus order and trade sections
+- JSON includes runtime `outputs`, order lifecycle records in `orders`, fills, trades, event diagnostics in `diagnostics`, equity, summary, and any open position
+- text output renders summary metrics plus diagnostics, order, and trade sections
 
 ## `palmscript dump-bytecode`
 

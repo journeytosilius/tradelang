@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::backtest::orders::{empty_request_slots, CapturedOrderRequest, SignalBatch};
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
-use crate::backtest::{BacktestError, OrderKind};
+use crate::backtest::{BacktestError, FeatureSnapshot, FeatureValue, OrderKind};
 use crate::bytecode::{OrderDecl, SignalRole};
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
@@ -10,11 +10,64 @@ use crate::output::{OutputValue, Outputs};
 
 pub(crate) struct PreparedBacktest {
     pub signal_batches: Vec<SignalBatch>,
+    pub export_lookup: ExportLookup,
 }
 
 pub(crate) struct ExecutionSource {
     pub source_id: u16,
     pub template: SourceTemplate,
+}
+
+pub(crate) struct ExportLookup {
+    point_indices_by_time: Vec<HashMap<i64, usize>>,
+}
+
+impl ExportLookup {
+    fn from_outputs(outputs: &Outputs) -> Self {
+        let point_indices_by_time = outputs
+            .exports
+            .iter()
+            .map(|series| {
+                series
+                    .points
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, point)| {
+                        point.time.and_then(time_key).map(|time| (time, index))
+                    })
+                    .collect()
+            })
+            .collect();
+        Self {
+            point_indices_by_time,
+        }
+    }
+
+    pub(crate) fn snapshot_at(&self, outputs: &Outputs, time: f64) -> Option<FeatureSnapshot> {
+        let time_key = time_key(time)?;
+        let mut bar_index = None;
+        let mut values = Vec::with_capacity(outputs.exports.len());
+        for (series, indices) in outputs.exports.iter().zip(&self.point_indices_by_time) {
+            let Some(point_index) = indices.get(&time_key).copied() else {
+                continue;
+            };
+            let point = &series.points[point_index];
+            bar_index.get_or_insert(point.bar_index);
+            values.push(FeatureValue {
+                name: series.name.clone(),
+                value: point.value.clone(),
+            });
+        }
+        if values.is_empty() {
+            None
+        } else {
+            Some(FeatureSnapshot {
+                bar_index: bar_index.unwrap_or_default(),
+                time,
+                values,
+            })
+        }
+    }
 }
 
 pub(crate) fn resolve_execution_source(
@@ -55,6 +108,7 @@ pub(crate) fn prepare_backtest(
 
     Ok(PreparedBacktest {
         signal_batches: collect_signal_batches(outputs, signal_roles, explicit_orders),
+        export_lookup: ExportLookup::from_outputs(outputs),
     })
 }
 

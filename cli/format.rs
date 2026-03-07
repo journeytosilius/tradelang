@@ -165,6 +165,53 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     let _ = writeln!(out, "rejected_count={rejected_count}");
     let _ = writeln!(out, "expired_count={expired_count}");
 
+    out.push_str("Diagnostics Summary\n");
+    let _ = writeln!(
+        out,
+        "order_fill_rate_pct={:.2}",
+        result.diagnostics.summary.order_fill_rate * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "average_bars_to_fill={:.2}",
+        result.diagnostics.summary.average_bars_to_fill
+    );
+    let _ = writeln!(
+        out,
+        "average_bars_held={:.2}",
+        result.diagnostics.summary.average_bars_held
+    );
+    let _ = writeln!(
+        out,
+        "average_mae_pct={:.2}",
+        result.diagnostics.summary.average_mae_pct * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "average_mfe_pct={:.2}",
+        result.diagnostics.summary.average_mfe_pct * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "signal_exit_count={}",
+        result.diagnostics.summary.signal_exit_count
+    );
+    let _ = writeln!(
+        out,
+        "stop_loss_exit_count={}",
+        result.diagnostics.summary.stop_loss_exit_count
+    );
+    let _ = writeln!(
+        out,
+        "take_profit_exit_count={}",
+        result.diagnostics.summary.take_profit_exit_count
+    );
+    let _ = writeln!(
+        out,
+        "reversal_exit_count={}",
+        result.diagnostics.summary.reversal_exit_count
+    );
+
     out.push_str("Recent Orders\n");
     let recent_orders = result.orders.iter().rev().take(5).collect::<Vec<_>>();
     for order in recent_orders.iter().rev() {
@@ -505,6 +552,23 @@ mod tests {
                 max_drawdown: 10.0,
                 max_gross_exposure: 125.0,
             },
+            diagnostics: palmscript::BacktestDiagnostics {
+                order_diagnostics: vec![],
+                trade_diagnostics: vec![],
+                summary: palmscript::BacktestDiagnosticSummary {
+                    order_fill_rate: 1.0,
+                    average_bars_to_fill: 0.0,
+                    average_bars_held: 1.0,
+                    average_mae_pct: -0.02,
+                    average_mfe_pct: 0.05,
+                    signal_exit_count: 1,
+                    stop_loss_exit_count: 0,
+                    take_profit_exit_count: 0,
+                    reversal_exit_count: 0,
+                    by_order_kind: vec![],
+                    by_side: vec![],
+                },
+            },
             open_position: None,
         };
 
@@ -513,6 +577,8 @@ mod tests {
         assert!(rendered.contains("starting_equity=1000.00"));
         assert!(rendered.contains("Order Summary"));
         assert!(rendered.contains("placed_count=1"));
+        assert!(rendered.contains("Diagnostics Summary"));
+        assert!(rendered.contains("order_fill_rate_pct=100.00"));
         assert!(rendered.contains("Recent Orders"));
         assert!(rendered.contains("role=long_entry"));
         assert!(rendered.contains("Recent Trades"));

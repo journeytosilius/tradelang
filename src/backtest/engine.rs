@@ -2,14 +2,18 @@ use crate::backtest::bridge::PreparedBacktest;
 use crate::backtest::orders::{
     adjusted_price, close_position, close_trade, empty_request_slots, evaluate_active_order,
     fill_action_for_role, missing_field_reason, open_position, position_side_for_entry,
-    role_applicable, role_index, unrealized_pnl_for_position, ActiveOrder, OpenTrade,
-    PositionState, WorkingState, ROLE_PRIORITY,
+    role_applicable, role_index, unrealized_pnl_for_position, update_open_trade_excursions,
+    ActiveOrder, CapturedOrderRequest, FillExecutionContext, OpenTrade, PositionState,
+    TradeEntryContext, WorkingState, ROLE_PRIORITY,
 };
 use crate::backtest::{
-    BacktestConfig, BacktestError, BacktestResult, BacktestSummary, EquityPoint, OrderEndReason,
-    OrderRecord, OrderStatus, PositionSide,
+    BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
+    BacktestSummary, EquityPoint, FeatureSnapshot, OrderDiagnostic, OrderEndReason,
+    OrderKindDiagnosticSummary, OrderRecord, OrderStatus, PositionSide, SideDiagnosticSummary,
+    TradeDiagnostic, TradeExitClassification,
 };
 use crate::bytecode::SignalRole;
+use crate::order::OrderKind;
 use crate::output::Outputs;
 use crate::runtime::Bar;
 
@@ -21,6 +25,13 @@ pub(crate) struct OrderRecordUpdate {
     pub fill_price: Option<f64>,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct OrderDiagnosticContext {
+    signal_snapshot: Option<FeatureSnapshot>,
+    placed_snapshot: Option<FeatureSnapshot>,
+    fill_snapshot: Option<FeatureSnapshot>,
 }
 
 pub(crate) fn simulate_backtest(
@@ -36,7 +47,9 @@ pub(crate) fn simulate_backtest(
     let mut open_trade = None::<OpenTrade>;
     let mut fills = Vec::new();
     let mut trades = Vec::new();
+    let mut trade_diagnostics = Vec::<TradeDiagnostic>::new();
     let mut orders = Vec::<OrderRecord>::new();
+    let mut order_contexts = Vec::<OrderDiagnosticContext>::new();
     let mut equity_curve = Vec::with_capacity(execution_bars.len());
     let mut active_orders: [Option<ActiveOrder>; 4] = [None, None, None, None];
     let mut pending_requests = empty_request_slots();
@@ -60,6 +73,10 @@ pub(crate) fn simulate_backtest(
             batch_cursor += 1;
         }
 
+        if let Some(open_trade) = open_trade.as_mut() {
+            update_open_trade_excursions(open_trade, bar.high, bar.low);
+        }
+
         if position.is_none()
             && pending_requests[role_index(SignalRole::LongEntry)].is_some()
             && pending_requests[role_index(SignalRole::ShortEntry)].is_some()
@@ -77,6 +94,7 @@ pub(crate) fn simulate_backtest(
             if !role_applicable(role, position.as_ref()) {
                 continue;
             }
+
             if let Some(existing) = active_orders[slot].take() {
                 update_order_record(
                     &mut orders[existing.record_index],
@@ -92,8 +110,18 @@ pub(crate) fn simulate_backtest(
                 );
             }
 
+            let context = OrderDiagnosticContext {
+                signal_snapshot: prepared
+                    .export_lookup
+                    .snapshot_at(&outputs, request.signal_time),
+                placed_snapshot: prepared.export_lookup.snapshot_at(&outputs, bar.time),
+                fill_snapshot: None,
+            };
             let mut record =
                 crate::backtest::orders::order_record(request, bar_index, bar.time, orders.len());
+            let record_index = orders.len();
+            order_contexts.push(context);
+
             if let Some(reason) = missing_field_reason(request) {
                 record.status = OrderStatus::Rejected;
                 record.end_reason = Some(reason);
@@ -101,7 +129,6 @@ pub(crate) fn simulate_backtest(
                 continue;
             }
 
-            let record_index = orders.len();
             orders.push(record);
             active_orders[slot] = Some(ActiveOrder {
                 request,
@@ -167,15 +194,19 @@ pub(crate) fn simulate_backtest(
                 }
                 crate::backtest::orders::Evaluation::Fill(execution) => {
                     let action = fill_action_for_role(role);
-                    let execution_price =
-                        if matches!(active.request.kind, crate::order::OrderKind::Market) {
-                            adjusted_price(execution.raw_price, action, slippage_rate)
-                        } else {
-                            execution.price
-                        };
+                    let execution_price = if matches!(active.request.kind, OrderKind::Market) {
+                        adjusted_price(execution.raw_price, action, slippage_rate)
+                    } else {
+                        execution.price
+                    };
+                    let fill_snapshot = prepared.export_lookup.snapshot_at(&outputs, bar.time);
+                    order_contexts[active.record_index].fill_snapshot = fill_snapshot.clone();
 
                     maybe_close_position_for_role(
                         role,
+                        active.record_index,
+                        active.request.kind,
+                        fill_snapshot.clone(),
                         bar_index,
                         bar.time,
                         execution.raw_price,
@@ -186,19 +217,29 @@ pub(crate) fn simulate_backtest(
                         &mut open_trade,
                         &mut fills,
                         &mut trades,
+                        &mut trade_diagnostics,
                         &mut total_realized_pnl,
                     );
 
                     if let Some(next_side) = position_side_for_entry(role) {
-                        let (next_position, next_trade, entry_fill) = open_position(
-                            bar_index,
-                            bar.time,
-                            execution.raw_price,
-                            execution_price,
+                        let (next_position, mut next_trade, entry_fill) = open_position(
+                            FillExecutionContext {
+                                bar_index,
+                                time: bar.time,
+                                raw_price: execution.raw_price,
+                                execution_price,
+                            },
                             next_side,
+                            TradeEntryContext {
+                                order_id: active.record_index,
+                                role,
+                                kind: active.request.kind,
+                                snapshot: fill_snapshot,
+                            },
                             fee_rate,
                             &mut cash,
                         );
+                        update_open_trade_excursions(&mut next_trade, bar.high, bar.low);
                         fills.push(entry_fill);
                         position = Some(next_position);
                         open_trade = Some(next_trade);
@@ -245,6 +286,9 @@ pub(crate) fn simulate_backtest(
         });
     }
 
+    let order_diagnostics = build_order_diagnostics(&orders, &order_contexts);
+    let diagnostics_summary = build_diagnostics_summary(&order_diagnostics, &trade_diagnostics);
+
     let ending_equity = equity_curve
         .last()
         .map_or(config.initial_capital, |point| point.equity);
@@ -283,6 +327,11 @@ pub(crate) fn simulate_backtest(
         orders,
         fills,
         trades,
+        diagnostics: BacktestDiagnostics {
+            order_diagnostics,
+            trade_diagnostics,
+            summary: diagnostics_summary,
+        },
         equity_curve,
         summary: BacktestSummary {
             starting_equity: config.initial_capital,
@@ -302,8 +351,8 @@ pub(crate) fn simulate_backtest(
 }
 
 fn accumulate_pending_requests(
-    pending_requests: &mut [Option<crate::backtest::orders::CapturedOrderRequest>; 4],
-    requests: [Option<crate::backtest::orders::CapturedOrderRequest>; 4],
+    pending_requests: &mut [Option<CapturedOrderRequest>; 4],
+    requests: [Option<CapturedOrderRequest>; 4],
     pending_conflict_time: &mut Option<f64>,
 ) {
     for request in requests.into_iter().flatten() {
@@ -318,6 +367,9 @@ fn accumulate_pending_requests(
 #[allow(clippy::too_many_arguments)]
 fn maybe_close_position_for_role(
     role: SignalRole,
+    order_id: usize,
+    order_kind: OrderKind,
+    exit_snapshot: Option<FeatureSnapshot>,
     bar_index: usize,
     time: f64,
     raw_price: f64,
@@ -328,6 +380,7 @@ fn maybe_close_position_for_role(
     open_trade: &mut Option<OpenTrade>,
     fills: &mut Vec<crate::backtest::Fill>,
     trades: &mut Vec<crate::backtest::Trade>,
+    trade_diagnostics: &mut Vec<TradeDiagnostic>,
     total_realized_pnl: &mut f64,
 ) {
     let should_close = matches!(
@@ -354,12 +407,32 @@ fn maybe_close_position_for_role(
         cash,
         &closed_position,
     );
-    let trade = close_trade(
-        open_trade.take().expect("open trade should exist"),
-        exit_fill.clone(),
-    );
+    let open_trade = open_trade.take().expect("open trade should exist");
+    let trade = close_trade(open_trade.clone(), exit_fill.clone());
     *total_realized_pnl += trade.realized_pnl;
-    fills.push(exit_fill);
+    fills.push(exit_fill.clone());
+    trade_diagnostics.push(TradeDiagnostic {
+        trade_id: trades.len(),
+        side: open_trade.side,
+        entry_order_id: open_trade.entry_order_id,
+        exit_order_id: order_id,
+        entry_role: open_trade.entry_role,
+        exit_role: role,
+        entry_kind: open_trade.entry_kind,
+        exit_kind: order_kind,
+        exit_classification: classify_exit(role, order_kind),
+        entry_snapshot: open_trade.entry_snapshot,
+        exit_snapshot,
+        bars_held: exit_fill
+            .bar_index
+            .saturating_sub(open_trade.entry.bar_index),
+        duration_ms: exit_fill.time - open_trade.entry.time,
+        realized_pnl: trade.realized_pnl,
+        mae_price_delta: open_trade.mae_price_delta,
+        mfe_price_delta: open_trade.mfe_price_delta,
+        mae_pct: pct_delta(open_trade.mae_price_delta, open_trade.entry.price),
+        mfe_pct: pct_delta(open_trade.mfe_price_delta, open_trade.entry.price),
+    });
     trades.push(trade);
 }
 
@@ -402,4 +475,235 @@ fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
     record.fill_price = update.fill_price;
     record.status = update.status;
     record.end_reason = update.end_reason;
+}
+
+fn build_order_diagnostics(
+    orders: &[OrderRecord],
+    contexts: &[OrderDiagnosticContext],
+) -> Vec<OrderDiagnostic> {
+    orders
+        .iter()
+        .zip(contexts)
+        .map(|(order, context)| OrderDiagnostic {
+            order_id: order.id,
+            role: order.role,
+            kind: order.kind,
+            status: order.status,
+            end_reason: order.end_reason,
+            signal_snapshot: context.signal_snapshot.clone(),
+            placed_snapshot: context.placed_snapshot.clone(),
+            fill_snapshot: context.fill_snapshot.clone(),
+            bars_to_fill: order
+                .fill_bar_index
+                .map(|fill_bar_index| fill_bar_index.saturating_sub(order.placed_bar_index)),
+            time_to_fill_ms: order
+                .fill_time
+                .map(|fill_time| fill_time - order.placed_time),
+        })
+        .collect()
+}
+
+fn build_diagnostics_summary(
+    order_diagnostics: &[OrderDiagnostic],
+    trade_diagnostics: &[TradeDiagnostic],
+) -> BacktestDiagnosticSummary {
+    let order_fill_rate = ratio(
+        order_diagnostics
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Filled))
+            .count(),
+        order_diagnostics.len(),
+    );
+    let average_bars_to_fill = average(
+        order_diagnostics
+            .iter()
+            .filter_map(|diagnostic| diagnostic.bars_to_fill.map(|bars| bars as f64)),
+    );
+    let average_bars_held = average(
+        trade_diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.bars_held as f64),
+    );
+    let average_mae_pct = average(
+        trade_diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.mae_pct),
+    );
+    let average_mfe_pct = average(
+        trade_diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.mfe_pct),
+    );
+
+    let mut by_order_kind = Vec::new();
+    for kind in [
+        OrderKind::Market,
+        OrderKind::Limit,
+        OrderKind::StopMarket,
+        OrderKind::StopLimit,
+        OrderKind::TakeProfitMarket,
+        OrderKind::TakeProfitLimit,
+    ] {
+        let matching = order_diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.kind == kind)
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            continue;
+        }
+        let placed_count = matching.len();
+        let filled_count = matching
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Filled))
+            .count();
+        let cancelled_count = matching
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Cancelled))
+            .count();
+        let rejected_count = matching
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Rejected))
+            .count();
+        let expired_count = matching
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic.status, OrderStatus::Expired))
+            .count();
+        by_order_kind.push(OrderKindDiagnosticSummary {
+            kind,
+            placed_count,
+            filled_count,
+            cancelled_count,
+            rejected_count,
+            expired_count,
+            fill_rate: ratio(filled_count, placed_count),
+            average_bars_to_fill: average(
+                matching
+                    .iter()
+                    .filter_map(|diagnostic| diagnostic.bars_to_fill.map(|bars| bars as f64)),
+            ),
+        });
+    }
+
+    let mut by_side = Vec::new();
+    for side in [PositionSide::Long, PositionSide::Short] {
+        let matching = trade_diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.side == side)
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            continue;
+        }
+        by_side.push(SideDiagnosticSummary {
+            side,
+            trade_count: matching.len(),
+            win_rate: ratio(
+                matching
+                    .iter()
+                    .filter(|diagnostic| diagnostic.realized_pnl > 0.0)
+                    .count(),
+                matching.len(),
+            ),
+            average_realized_pnl: average(
+                matching.iter().map(|diagnostic| diagnostic.realized_pnl),
+            ),
+            average_bars_held: average(
+                matching
+                    .iter()
+                    .map(|diagnostic| diagnostic.bars_held as f64),
+            ),
+            average_mae_pct: average(matching.iter().map(|diagnostic| diagnostic.mae_pct)),
+            average_mfe_pct: average(matching.iter().map(|diagnostic| diagnostic.mfe_pct)),
+        });
+    }
+
+    BacktestDiagnosticSummary {
+        order_fill_rate,
+        average_bars_to_fill,
+        average_bars_held,
+        average_mae_pct,
+        average_mfe_pct,
+        signal_exit_count: trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.exit_classification,
+                    TradeExitClassification::Signal
+                )
+            })
+            .count(),
+        stop_loss_exit_count: trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.exit_classification,
+                    TradeExitClassification::StopLoss
+                )
+            })
+            .count(),
+        take_profit_exit_count: trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.exit_classification,
+                    TradeExitClassification::TakeProfit
+                )
+            })
+            .count(),
+        reversal_exit_count: trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                matches!(
+                    diagnostic.exit_classification,
+                    TradeExitClassification::Reversal
+                )
+            })
+            .count(),
+        by_order_kind,
+        by_side,
+    }
+}
+
+fn classify_exit(role: SignalRole, order_kind: OrderKind) -> TradeExitClassification {
+    if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry) {
+        TradeExitClassification::Reversal
+    } else if matches!(order_kind, OrderKind::StopMarket | OrderKind::StopLimit) {
+        TradeExitClassification::StopLoss
+    } else if matches!(
+        order_kind,
+        OrderKind::TakeProfitMarket | OrderKind::TakeProfitLimit
+    ) {
+        TradeExitClassification::TakeProfit
+    } else {
+        TradeExitClassification::Signal
+    }
+}
+
+fn pct_delta(delta: f64, price: f64) -> f64 {
+    if price.abs() < crate::backtest::EPSILON {
+        0.0
+    } else {
+        delta / price
+    }
+}
+
+fn average(values: impl IntoIterator<Item = f64>) -> f64 {
+    let mut count = 0usize;
+    let mut sum = 0.0;
+    for value in values {
+        sum += value;
+        count += 1;
+    }
+    if count == 0 {
+        0.0
+    } else {
+        sum / count as f64
+    }
+}
+
+fn ratio(numerator: usize, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator as f64 / denominator as f64
+    }
 }

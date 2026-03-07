@@ -1,5 +1,6 @@
 use crate::backtest::{
-    Fill, FillAction, OrderEndReason, OrderRecord, OrderStatus, PositionSide, EPSILON,
+    FeatureSnapshot, Fill, FillAction, OrderEndReason, OrderRecord, OrderStatus, PositionSide,
+    EPSILON,
 };
 use crate::bytecode::SignalRole;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
@@ -77,6 +78,28 @@ pub(crate) struct OpenTrade {
     pub side: PositionSide,
     pub quantity: f64,
     pub entry: Fill,
+    pub entry_order_id: usize,
+    pub entry_role: SignalRole,
+    pub entry_kind: OrderKind,
+    pub entry_snapshot: Option<FeatureSnapshot>,
+    pub mae_price_delta: f64,
+    pub mfe_price_delta: f64,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct TradeEntryContext {
+    pub order_id: usize,
+    pub role: SignalRole,
+    pub kind: OrderKind,
+    pub snapshot: Option<FeatureSnapshot>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct FillExecutionContext {
+    pub bar_index: usize,
+    pub time: f64,
+    pub raw_price: f64,
+    pub execution_price: f64,
 }
 
 pub(crate) fn empty_request_slots() -> [Option<CapturedOrderRequest>; 4] {
@@ -399,11 +422,9 @@ pub(crate) fn adjusted_price(raw_price: f64, action: FillAction, slippage_rate: 
 }
 
 pub(crate) fn open_position(
-    bar_index: usize,
-    time: f64,
-    raw_price: f64,
-    execution_price: f64,
+    execution: FillExecutionContext,
     side: PositionSide,
+    entry_context: TradeEntryContext,
     fee_rate: f64,
     cash: &mut f64,
 ) -> (PositionState, OpenTrade, Fill) {
@@ -411,8 +432,8 @@ pub(crate) fn open_position(
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let quantity = *cash / (execution_price * (1.0 + fee_rate));
-    let notional = quantity * execution_price;
+    let quantity = *cash / (execution.execution_price * (1.0 + fee_rate));
+    let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     match side {
         PositionSide::Long => *cash -= notional + fee,
@@ -424,26 +445,32 @@ pub(crate) fn open_position(
         PositionSide::Short => -quantity,
     };
     let fill = Fill {
-        bar_index,
-        time,
+        bar_index: execution.bar_index,
+        time: execution.time,
         action,
         quantity,
-        raw_price,
-        price: execution_price,
+        raw_price: execution.raw_price,
+        price: execution.execution_price,
         notional,
         fee,
     };
     let position = PositionState {
         side,
         quantity: signed_quantity,
-        entry_bar_index: bar_index,
-        entry_time: time,
-        entry_price: execution_price,
+        entry_bar_index: execution.bar_index,
+        entry_time: execution.time,
+        entry_price: execution.execution_price,
     };
     let trade = OpenTrade {
         side,
         quantity,
         entry: fill.clone(),
+        entry_order_id: entry_context.order_id,
+        entry_role: entry_context.role,
+        entry_kind: entry_context.kind,
+        entry_snapshot: entry_context.snapshot,
+        mae_price_delta: 0.0,
+        mfe_price_delta: 0.0,
     };
     (position, trade, fill)
 }
@@ -499,6 +526,27 @@ pub(crate) fn close_trade(open_trade: OpenTrade, exit: Fill) -> crate::backtest:
         entry: open_trade.entry,
         exit,
         realized_pnl,
+    }
+}
+
+pub(crate) fn update_open_trade_excursions(
+    open_trade: &mut OpenTrade,
+    bar_high: f64,
+    bar_low: f64,
+) {
+    match open_trade.side {
+        PositionSide::Long => {
+            let favorable = bar_high - open_trade.entry.price;
+            let adverse = bar_low - open_trade.entry.price;
+            open_trade.mfe_price_delta = open_trade.mfe_price_delta.max(favorable);
+            open_trade.mae_price_delta = open_trade.mae_price_delta.min(adverse);
+        }
+        PositionSide::Short => {
+            let favorable = open_trade.entry.price - bar_low;
+            let adverse = open_trade.entry.price - bar_high;
+            open_trade.mfe_price_delta = open_trade.mfe_price_delta.max(favorable);
+            open_trade.mae_price_delta = open_trade.mae_price_delta.min(adverse);
+        }
     }
 }
 
