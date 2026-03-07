@@ -3,20 +3,19 @@ source spot = binance.spot("BTCUSDT")
 use spot 1d
 use spot 1w
 
-// Multi-timeframe short-biased trend strategy with adaptive 4h bias,
-// market short entries, and protective stop exits.
+// Multi-timeframe long-only trend strategy with adaptive 4h bias,
+// breakout market entries, and protective stop exits.
 input fast_len = 13
 input slow_len = 89
-input daily_fast_len = 30
-input daily_slow_len = 80
-input weekly_fast_len = 5
-input weekly_slow_len = 13
+input daily_fast_len = 20
+input daily_slow_len = 50
+input weekly_fast_len = 8
+input weekly_slow_len = 21
 input rsi_len = 14
-input breakout_len = 20
+input breakout_len = 30
 input kama_len = 30
-input stop_len = 5
-const long_rsi_threshold = 55
-const short_rsi_threshold = 45
+input stop_len = 6
+const long_rsi_threshold = 58
 const macd_fast_len = 12
 const macd_slow_len = 26
 const macd_signal_len = 9
@@ -31,33 +30,31 @@ let rsi_4h = rsi(spot.close, rsi_len)
 let kama_4h = kama(spot.close, kama_len)
 let (macd_line, macd_signal, macd_hist) = macd(spot.close, macd_fast_len, macd_slow_len, macd_signal_len)
 let breakout_high = highest(spot.high, breakout_len)[1]
-let breakout_low = lowest(spot.low, breakout_len)[1]
-let long_stop = lowest(spot.low, stop_len)[1]
-let short_stop = highest(spot.high, stop_len)[1]
+let long_stop_base = lowest(spot.low, stop_len)[1]
 
-let trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow) and above(spot.close, kama_4h)
-let trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow) and below(spot.close, kama_4h)
+let trend_long = above(weekly_fast, weekly_slow) and above(daily_fast, daily_slow) and above(fast, slow) and above(spot.close, kama_4h)
 let breakout_long = above(spot.close, breakout_high)
-let breakout_short = below(spot.close, breakout_low)
+let long_stop = trend_long and above(rsi_4h, 50) ? long_stop_base : (fast > long_stop_base ? fast : long_stop_base)
+
 export trend_long_state = trend_long
-export trend_short_state = trend_short
+export trend_short_state = false
 export breakout_long_state = breakout_long
-export breakout_short_state = breakout_short
+export breakout_short_state = false
 export adaptive_bias = spot.close - kama_4h
 export long_stop_level = long_stop
-export short_stop_level = short_stop
+export short_stop_level = na
 
-// Longs are disabled in this checked-in variant because diagnostics on the
-// current 1-year BTCUSDT window showed the short side carrying the edge.
-entry long = false
-entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
+// This checked-in variant stays flat during weak or bearish higher-timeframe
+// regimes instead of forcing shorts into BTC's structurally bullish periods.
+entry long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0)
+entry short = false
 exit long = true
 exit short = true
 
-order entry long = limit(fast, tif.gtc, false)
+order entry long = market()
 order exit long = stop_market(long_stop, trigger_ref.last)
 order entry short = market()
-order exit short = stop_market(short_stop, trigger_ref.last)
+order exit short = stop_market(fast, trigger_ref.last)
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

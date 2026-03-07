@@ -25,7 +25,7 @@ Additional checked-in strategy example:
 
 ```bash
 palmscript run backtest examples/strategies/adaptive_trend_backtest.palm \
-  --from 1741305600000 \
+  --from 1646611200000 \
   --to 1772841600000
 ```
 
@@ -38,15 +38,15 @@ palmscript run backtest examples/strategies/venue_orders_backtest.palm \
   --format text
 ```
 
-On Binance spot `BTCUSDT`, that window corresponds to `2025-03-07T00:00:00Z`
+On Binance spot `BTCUSDT`, that window corresponds to `2022-03-07T00:00:00Z`
 through `2026-03-07T00:00:00Z`. With default backtest settings
 (`initial_capital=10000`, `fee_bps=5`, `slippage_bps=2`), the checked-in
-short-biased strategy produced:
+long-only regime strategy produced:
 
-- `ending_equity = 12142.04`
-- `total_return = 21.42%`
-- `trade_count = 26`
-- `max_drawdown = 1550.96`
+- `ending_equity = 15445.13`
+- `total_return = 54.45%`
+- `trade_count = 49`
+- `max_drawdown = 1865.41`
 
 Those numbers are an example snapshot, not a promise of future performance.
 
