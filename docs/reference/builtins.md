@@ -33,6 +33,7 @@ PalmScript currently provides these callable builtins:
 - `mult(a, b)`
 - `sub(a, b)`
 - `avgprice(open, high, low, close)`
+- `bop(open, high, low, close)`
 - `medprice(high, low)`
 - `typprice(high, low, close)`
 - `wclprice(high, low, close)`
@@ -58,6 +59,7 @@ PalmScript currently provides these callable builtins:
 - `correl(series0, series1[, length=30])`
 - `aroon(high, low[, length=14])`
 - `aroonosc(high, low[, length=14])`
+- `cci(high, low, close[, length=14])`
 - `cmo(series[, length=14])`
 - `willr(high, low, close[, length=14])`
 - `obv(series, volume)`
@@ -209,6 +211,7 @@ These builtins are currently executable:
 - `mult(a, b)`
 - `sub(a, b)`
 - `avgprice(open, high, low, close)`
+- `bop(open, high, low, close)`
 - `medprice(high, low)`
 - `typprice(high, low, close)`
 - `wclprice(high, low, close)`
@@ -219,6 +222,10 @@ Rules:
 - if any argument is a series, the result type is `series<float>`
 - otherwise the result type is `float`
 - if any required input is `na`, the result is `na`
+
+Additional OHLC rule:
+
+- `bop` returns `(close - open) / (high - low)` and returns `0` when `high - low <= 0`
 
 ### TA-Lib rolling window helpers
 
@@ -361,6 +368,17 @@ Rules:
 - `cmo` uses TA-Lib's Wilder-style smoothed gain and loss state
 - the result type is `series<float>`
 - if the smoothed gain and loss sum to `0`, `cmo` returns `0`
+
+### `cci(high, low, close[, length=14])`
+
+Rules:
+
+- the first three arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be an integer literal greater than or equal to `2`
+- `cci` uses the trailing typical-price average and mean deviation over the requested window
+- if the current typical-price delta or mean deviation is `0`, `cci` returns `0`
+- the result type is `series<float>`
 
 ### `aroon(high, low[, length=14])` and `aroonosc(high, low[, length=14])`
 

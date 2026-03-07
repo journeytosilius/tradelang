@@ -492,6 +492,21 @@ fn golden_avgprice_matches_expected_value() {
 }
 
 #[test]
+fn golden_bop_matches_expected_ratio() {
+    let compiled = compile(&with_interval("plot(bop(open, high, low, close))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::json!(0.25)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(0.25)
+    );
+}
+
+#[test]
 fn golden_unary_math_transform_compiles_over_series() {
     let compiled = compile(&with_interval("plot(cos(close - close))")).expect("compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
@@ -551,6 +566,25 @@ fn golden_stddev_applies_factor() {
     assert_eq!(
         json["plots"][0]["points"][4]["value"],
         serde_json::json!(2.8284271247461903)
+    );
+}
+
+#[test]
+fn golden_cci_uses_talib_default_window() {
+    let compiled = compile(&with_interval("plot(cci(high, low, close, 3))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][2]["value"],
+        serde_json::json!(100.00000000000001)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(100.00000000000001)
     );
 }
 

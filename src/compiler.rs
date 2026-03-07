@@ -2084,6 +2084,32 @@ fn analyze_helper_builtin(
             }
             numeric_result(arg_info)
         }
+        BuiltinKind::CurrentOhlc => {
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                3 => "fourth",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
         BuiltinKind::RollingSingleInput => {
             let series_info = arg_info[0];
             if !series_info.ty.is_series_numeric() {
@@ -2463,6 +2489,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::UnaryMathTransform
         | BuiltinKind::NumericBinary
         | BuiltinKind::PriceTransform => numeric_result(arg_info),
+        BuiltinKind::CurrentOhlc => ExprInfo::series(0),
         BuiltinKind::BarsSince
         | BuiltinKind::Indicator
         | BuiltinKind::MovingAverage
@@ -3145,7 +3172,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Cmo
             | BuiltinId::Willr
             | BuiltinId::Aroon
-            | BuiltinId::AroonOsc => {
+            | BuiltinId::AroonOsc
+            | BuiltinId::Bop
+            | BuiltinId::Cci => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3530,6 +3559,19 @@ impl<'a> Compiler<'a> {
                 } else {
                     self.emit_f64_constant(14.0, expr.span);
                 }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::CurrentOhlc => {
+                self.emit_series_ref(&args[0], 1, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 1, expr_info, user_calls);
+                self.emit_series_ref(&args[2], 1, expr_info, user_calls);
+                self.emit_series_ref(&args[3], 1, expr_info, user_calls);
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)

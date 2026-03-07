@@ -34,6 +34,7 @@ pub enum BuiltinKind {
     UnaryMathTransform,
     NumericBinary,
     PriceTransform,
+    CurrentOhlc,
     RollingSingleInput,
     RollingSingleInputFactor,
     RollingSingleInputTuple,
@@ -141,10 +142,12 @@ pub enum BuiltinId {
     Willr = 79,
     Aroon = 80,
     AroonOsc = 81,
+    Bop = 82,
+    Cci = 83,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 82] = [
+    pub const RESERVED: [Self; 84] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -227,9 +230,11 @@ impl BuiltinId {
         Self::Willr,
         Self::Aroon,
         Self::AroonOsc,
+        Self::Bop,
+        Self::Cci,
     ];
 
-    pub const CALLABLE: [Self; 76] = [
+    pub const CALLABLE: [Self; 78] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -306,6 +311,8 @@ impl BuiltinId {
         Self::Willr,
         Self::Aroon,
         Self::AroonOsc,
+        Self::Bop,
+        Self::Cci,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -392,6 +399,8 @@ impl BuiltinId {
             "willr" => Some(Self::Willr),
             "aroon" => Some(Self::Aroon),
             "aroonosc" => Some(Self::AroonOsc),
+            "bop" => Some(Self::Bop),
+            "cci" => Some(Self::Cci),
             _ => None,
         }
     }
@@ -480,6 +489,8 @@ impl BuiltinId {
             79 => Some(Self::Willr),
             80 => Some(Self::Aroon),
             81 => Some(Self::AroonOsc),
+            82 => Some(Self::Bop),
+            83 => Some(Self::Cci),
             _ => None,
         }
     }
@@ -568,6 +579,8 @@ impl BuiltinId {
             Self::Willr => "willr",
             Self::Aroon => "aroon",
             Self::AroonOsc => "aroonosc",
+            Self::Bop => "bop",
+            Self::Cci => "cci",
         }
     }
 
@@ -600,6 +613,7 @@ impl BuiltinId {
             Self::Avgprice | Self::Medprice | Self::Typprice | Self::Wclprice => {
                 BuiltinKind::PriceTransform
             }
+            Self::Bop => BuiltinKind::CurrentOhlc,
             Self::Max | Self::Min | Self::Sum | Self::Midpoint => BuiltinKind::RollingSingleInput,
             Self::Wma | Self::Avgdev | Self::MaxIndex | Self::MinIndex => {
                 BuiltinKind::RollingSingleInput
@@ -617,6 +631,7 @@ impl BuiltinId {
             Self::Aroon => BuiltinKind::RollingHighLowTuple,
             Self::AroonOsc => BuiltinKind::RollingHighLow,
             Self::Willr => BuiltinKind::RollingHighLowClose,
+            Self::Cci => BuiltinKind::RollingHighLowClose,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
             Self::Above | Self::Below => BuiltinKind::Relation2,
@@ -683,7 +698,9 @@ impl BuiltinId {
             }
             Self::Cmo => BuiltinArity::Range { min: 1, max: 2 },
             Self::Aroon | Self::AroonOsc => BuiltinArity::Range { min: 2, max: 3 },
+            Self::Cci => BuiltinArity::Range { min: 3, max: 4 },
             Self::Avgprice => BuiltinArity::Exact(4),
+            Self::Bop => BuiltinArity::Exact(4),
             Self::Typprice
             | Self::Wclprice
             | Self::Ma
@@ -799,6 +816,8 @@ impl BuiltinId {
             Self::Willr => "willr(high, low, close[, length=14])",
             Self::Aroon => "aroon(high, low[, length=14])",
             Self::AroonOsc => "aroonosc(high, low[, length=14])",
+            Self::Bop => "bop(open, high, low, close)",
+            Self::Cci => "cci(high, low, close[, length=14])",
         }
     }
 
@@ -886,6 +905,8 @@ impl BuiltinId {
             Self::Willr => "Williams' %R over a trailing high-low-close window.",
             Self::Aroon => "Aroon tuple (aroon_down, aroon_up) over a trailing high-low window.",
             Self::AroonOsc => "Aroon oscillator over a trailing high-low window.",
+            Self::Bop => "Balance of power for the current bar.",
+            Self::Cci => "Commodity channel index over a trailing high-low-close window.",
         }
     }
 }

@@ -28,7 +28,7 @@ Implemented TA-Lib-style builtins in this change:
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
 - overlap helpers: `midpoint`, `midprice`, `wma`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
-- momentum helpers: `apo`, `ppo`, `aroon`, `aroonosc`, `cmo`, `mom`, `roc`, `rocp`, `rocr`, `rocr100`, `willr`
+- momentum helpers: `apo`, `ppo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `rocp`, `rocr`, `rocr100`, `willr`
 - volume and volatility helpers: `obv`, `trange`
 
 Current `ma_type` variants:
@@ -57,6 +57,7 @@ Current TA-Lib defaults now honored in the executable surface:
 - `correl` defaults to `length=30`
 - `apo` and `ppo` default to `fast_length=12`, `slow_length=26`, and `ma_type.sma`
 - `aroon` and `aroonosc` default to `length=14`
+- `cci` defaults to `length=14`
 - `cmo` defaults to `length=14`
 - `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
 - `willr` defaults to `length=14`
