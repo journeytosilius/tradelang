@@ -1,11 +1,25 @@
 # Backtesting
 
-PalmScript now exposes a library-first backtester on top of the existing
+PalmScript exposes a deterministic backtester on top of the existing
 source-aware runtime.
 
 The backtester does not change PalmScript syntax or VM semantics. It runs a
 compiled script, consumes trigger events from the runtime outputs, and simulates
 fills, trades, and equity for one configured execution source.
+
+## CLI
+
+Run a checked-in strategy end to end:
+
+```bash
+palmscript run backtest examples/strategies/multi_strategy_backtest.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --fee-bps 10 \
+  --slippage-bps 2
+```
+
+When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
 
 ## Rust API
 
@@ -51,16 +65,6 @@ let result = run_backtest_with_sources(
 println!("ending equity = {}", result.summary.ending_equity);
 ```
 
-Checked-in end-to-end example:
-
-```bash
-cargo run --example binance_multi_strategy_backtest
-```
-
-That example loads [`examples/strategies/multi_strategy_backtest.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/multi_strategy_backtest.palm),
-fetches the required Binance feeds for the last 365 days ending at the latest
-closed 4-hour boundary, and prints the backtest summary plus recent trades.
-
 The result includes:
 
 - raw runtime `outputs`
@@ -100,11 +104,8 @@ V1 uses intentionally simple deterministic execution rules:
 
 ## Current Scope
 
-The backtester is library-first in this release.
-
 Not included in V1:
 
-- a `palmscript` CLI backtest command
 - stop or limit orders
 - partial fills
 - leverage beyond the implicit 1x gross-notional model

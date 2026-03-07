@@ -56,6 +56,7 @@ fn run_help_mentions_market_mode() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("market"))
+        .stdout(predicate::str::contains("backtest"))
         .stdout(predicate::str::contains("csv").not());
 }
 
@@ -550,4 +551,124 @@ fn run_market_rejects_hyperliquid_windows_beyond_rest_history_limit() {
             "requires 5001 candle(s) for the requested window",
         ))
         .stderr(predicate::str::contains("most recent 5000 candle(s)"));
+}
+
+#[test]
+fn run_backtest_executes_single_source_script_with_default_execution_source() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "12.0", "12.5", "8.0", "9.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "8.0", "8.5", "7.5", "8.0", "13.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "backtest.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067440000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+        ])
+        .output()
+        .expect("backtest command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["summary"]["trade_count"], Value::from(1));
+    let ending_equity = json["summary"]["ending_equity"]
+        .as_f64()
+        .expect("ending equity should be numeric");
+    assert!((ending_equity - 666.6666666666667).abs() < 1e-9);
+}
+
+#[test]
+fn run_backtest_supports_text_output() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "12.0", "12.5", "8.0", "9.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "8.0", "8.5", "7.5", "8.0", "13.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "backtest.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger long_entry = spot.close > spot.close[1]\ntrigger long_exit = spot.close < spot.close[1]\nplot(spot.close)",
+    );
+
+    let mut cmd = palmscript_cmd();
+    cmd.env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067440000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--format",
+            "text",
+        ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Backtest Summary"))
+        .stdout(predicate::str::contains("Recent Trades"))
+        .stdout(predicate::str::contains("Open Position"));
+}
+
+#[test]
+fn run_backtest_requires_execution_source_for_multi_source_scripts() {
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "backtest.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nsource perp = binance.usdm(\"BTCUSDT\")\ntrigger long_entry = spot.close > perp.close\nplot(spot.close - perp.close)",
+    );
+
+    let mut cmd = palmscript_cmd();
+    cmd.args([
+        "run",
+        "backtest",
+        script.to_str().unwrap(),
+        "--from",
+        "1704067200000",
+        "--to",
+        "1704067440000",
+    ]);
+    cmd.assert().failure().stderr(predicate::str::contains(
+        "backtest mode requires --execution-source when the script declares multiple `source`s",
+    ));
 }

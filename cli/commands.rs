@@ -2,16 +2,16 @@ use std::fs;
 use std::path::Path;
 
 use palmscript::{
-    compile, fetch_source_runtime_config, run_with_sources, CompiledProgram, ExchangeEndpoints,
-    RuntimeError, VmLimits,
+    compile, fetch_source_runtime_config, run_backtest_with_sources, run_with_sources,
+    BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, SignalContract, VmLimits,
 };
 
 use crate::args::{
-    BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, MarketRunArgs, OutputFormat,
-    RunCommand,
+    BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command, DumpBytecodeArgs, MarketRunArgs,
+    OutputFormat, RunCommand,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
-use crate::format::{render_bytecode_text, render_outputs_text};
+use crate::format::{render_backtest_text, render_bytecode_text, render_outputs_text};
 
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
@@ -24,6 +24,7 @@ pub fn run(cli: Cli) -> Result<(), String> {
 fn run_mode(mode: RunCommand) -> Result<(), String> {
     match mode {
         RunCommand::Market(args) => run_market(args),
+        RunCommand::Backtest(args) => run_backtest(args),
     }
 }
 
@@ -59,6 +60,46 @@ fn run_market(args: MarketRunArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
+    let source = load_source(&args.script)?;
+    let compiled = compile(&source).map_err(|err| format_compile_error(&args.script, &err))?;
+    if compiled.program.declared_sources.is_empty() {
+        return Err("backtest mode requires at least one `source` declaration".to_string());
+    }
+    let execution_source_alias = resolve_execution_source_alias(&compiled, args.execution_source)?;
+    let runtime = fetch_source_runtime_config(
+        &compiled,
+        args.from,
+        args.to,
+        &ExchangeEndpoints::from_env(),
+    )
+    .map_err(|err| format!("backtest mode error: {err}"))?;
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits {
+            max_instructions_per_bar: args.max_instructions_per_bar,
+            max_history_capacity: args.max_history_capacity,
+        },
+        BacktestConfig {
+            execution_source_alias,
+            initial_capital: args.initial_capital,
+            fee_bps: args.fee_bps,
+            slippage_bps: args.slippage_bps,
+            signals: SignalContract::default(),
+        },
+    )
+    .map_err(|err| format!("backtest mode error: {err}"))?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&result).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_backtest_text(&result)),
+    }
+    Ok(())
+}
+
 fn check_script(args: CheckArgs) -> Result<(), String> {
     let source = load_source(&args.script)?;
     compile_source(&source, &args.script)?;
@@ -85,6 +126,22 @@ fn compile_source(source: &str, path: &Path) -> Result<CompiledProgram, String> 
 
 fn load_source(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|err| format!("failed to read `{}`: {err}", path.display()))
+}
+
+fn resolve_execution_source_alias(
+    compiled: &CompiledProgram,
+    provided: Option<String>,
+) -> Result<String, String> {
+    if let Some(alias) = provided {
+        return Ok(alias);
+    }
+    match compiled.program.declared_sources.as_slice() {
+        [source] => Ok(source.alias.clone()),
+        _ => Err(
+            "backtest mode requires --execution-source when the script declares multiple `source`s"
+                .to_string(),
+        ),
+    }
 }
 
 #[allow(dead_code)]

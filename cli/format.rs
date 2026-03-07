@@ -1,7 +1,9 @@
 use std::fmt::Write;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
-use palmscript::{CompiledProgram, OutputKind, OutputValue, Outputs, Value};
+use palmscript::{
+    BacktestResult, CompiledProgram, OutputKind, OutputValue, Outputs, PositionSide, Value,
+};
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
     let mut out = String::new();
@@ -111,6 +113,53 @@ pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
     out
 }
 
+pub fn render_backtest_text(result: &BacktestResult) -> String {
+    let mut out = String::new();
+    let summary = &result.summary;
+
+    out.push_str("Backtest Summary\n");
+    let _ = writeln!(out, "starting_equity={:.2}", summary.starting_equity);
+    let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
+    let _ = writeln!(out, "realized_pnl={:.2}", summary.realized_pnl);
+    let _ = writeln!(out, "unrealized_pnl={:.2}", summary.unrealized_pnl);
+    let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+    let _ = writeln!(out, "trade_count={}", summary.trade_count);
+    let _ = writeln!(out, "winning_trade_count={}", summary.winning_trade_count);
+    let _ = writeln!(out, "losing_trade_count={}", summary.losing_trade_count);
+    let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
+    let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
+    let _ = writeln!(out, "max_gross_exposure={:.2}", summary.max_gross_exposure);
+
+    out.push_str("Recent Trades\n");
+    let recent_trades = result.trades.iter().rev().take(5).collect::<Vec<_>>();
+    for trade in recent_trades.iter().rev() {
+        let _ = writeln!(
+            out,
+            "side={} entry_time={} exit_time={} entry_price={:.2} exit_price={:.2} qty={:.6} pnl={:.2}",
+            fmt_position_side(trade.side),
+            trade.entry.time,
+            trade.exit.time,
+            trade.entry.price,
+            trade.exit.price,
+            trade.quantity,
+            trade.realized_pnl
+        );
+    }
+
+    out.push_str("Open Position\n");
+    if let Some(position) = &result.open_position {
+        let _ = writeln!(out, "side={}", fmt_position_side(position.side));
+        let _ = writeln!(out, "quantity={:.6}", position.quantity);
+        let _ = writeln!(out, "entry_price={:.2}", position.entry_price);
+        let _ = writeln!(out, "market_price={:.2}", position.market_price);
+        let _ = writeln!(out, "unrealized_pnl={:.2}", position.unrealized_pnl);
+    } else {
+        out.push_str("flat\n");
+    }
+
+    out
+}
+
 fn render_instructions(out: &mut String, program: &Program) {
     let _ = writeln!(out, "Instructions");
     for (index, instruction) in program.instructions.iter().enumerate() {
@@ -182,17 +231,26 @@ fn fmt_output_value(value: &OutputValue) -> String {
     }
 }
 
+fn fmt_position_side(side: PositionSide) -> &'static str {
+    match side {
+        PositionSide::Long => "long",
+        PositionSide::Short => "short",
+    }
+}
+
 #[allow(dead_code)]
 fn _output_kind(_kind: OutputKind) {}
 
 #[cfg(test)]
 mod tests {
-    use super::{render_bytecode_text, render_outputs_text};
+    use super::{render_backtest_text, render_bytecode_text, render_outputs_text};
     use palmscript::bytecode::{Constant, LocalInfo, OutputDecl, OutputKind, Program};
     use palmscript::span::{Position, Span};
     use palmscript::types::Type;
     use palmscript::{
-        CompiledProgram, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries,
+        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, Fill, FillAction,
+        OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint, PlotSeries, PositionSide,
+        Trade,
     };
 
     #[test]
@@ -281,5 +339,70 @@ mod tests {
         assert!(rendered.contains("Locals"));
         assert!(rendered.contains("Outputs"));
         assert!(rendered.contains("Instructions"));
+    }
+
+    #[test]
+    fn render_backtest_text_includes_summary_and_recent_trades() {
+        let result = BacktestResult {
+            outputs: Outputs::default(),
+            fills: vec![],
+            trades: vec![Trade {
+                side: PositionSide::Long,
+                quantity: 1.25,
+                entry: Fill {
+                    bar_index: 1,
+                    time: 10.0,
+                    action: FillAction::Buy,
+                    quantity: 1.25,
+                    raw_price: 100.0,
+                    price: 100.0,
+                    notional: 125.0,
+                    fee: 0.5,
+                },
+                exit: Fill {
+                    bar_index: 2,
+                    time: 20.0,
+                    action: FillAction::Sell,
+                    quantity: 1.25,
+                    raw_price: 110.0,
+                    price: 110.0,
+                    notional: 137.5,
+                    fee: 0.5,
+                },
+                realized_pnl: 12.0,
+            }],
+            equity_curve: vec![EquityPoint {
+                bar_index: 0,
+                time: 10.0,
+                cash: 1000.0,
+                equity: 1000.0,
+                position_side: None,
+                quantity: 0.0,
+                mark_price: 100.0,
+                gross_exposure: 0.0,
+            }],
+            summary: BacktestSummary {
+                starting_equity: 1000.0,
+                ending_equity: 1012.0,
+                realized_pnl: 12.0,
+                unrealized_pnl: 0.0,
+                total_return: 0.012,
+                trade_count: 1,
+                winning_trade_count: 1,
+                losing_trade_count: 0,
+                win_rate: 1.0,
+                max_drawdown: 10.0,
+                max_gross_exposure: 125.0,
+            },
+            open_position: None,
+        };
+
+        let rendered = render_backtest_text(&result);
+        assert!(rendered.contains("Backtest Summary"));
+        assert!(rendered.contains("starting_equity=1000.00"));
+        assert!(rendered.contains("Recent Trades"));
+        assert!(rendered.contains("side=long"));
+        assert!(rendered.contains("Open Position"));
+        assert!(rendered.contains("flat"));
     }
 }

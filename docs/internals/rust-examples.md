@@ -10,7 +10,6 @@ cargo run --example rsi
 cargo run --example step_engine
 cargo run --example multi_interval
 cargo run --example monthly_trend
-cargo run --example binance_multi_strategy_backtest
 ```
 
 ## What They Cover

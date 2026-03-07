@@ -19,7 +19,6 @@ cargo run --example rsi
 cargo run --example step_engine
 cargo run --example multi_interval
 cargo run --example monthly_trend
-cargo run --example binance_multi_strategy_backtest
 ```
 
 ## CLI Strategies
@@ -49,5 +48,5 @@ Common commands:
 ./palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 ./palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 ./palmscript run market examples/strategies/exchange_backed_sources.palm --from 1704067200000 --to 1704153600000
-cargo run --example binance_multi_strategy_backtest
+./palmscript run backtest examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
 ```

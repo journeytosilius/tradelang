@@ -10,8 +10,9 @@ Typical development flow:
 
 1. validate a strategy with `palmscript check`
 2. run it in `market` mode
-3. inspect outputs in `json` or `text`
-4. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
+3. backtest it with `palmscript run backtest` when the script emits trading triggers
+4. inspect outputs in `json` or `text`
+5. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
 
 ## Validate Without Running
 
@@ -38,6 +39,25 @@ Market mode compiles the script, resolves the required source-qualified feeds, v
 
 See [Market Mode](market-mode.md) for supported templates and fetch behavior.
 
+## Run A Backtest
+
+```bash
+palmscript run backtest examples/strategies/multi_strategy_backtest.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --fee-bps 10 \
+  --slippage-bps 2
+```
+
+Use backtest mode when:
+
+- the script emits trigger outputs that should be interpreted as trading signals
+- you want PalmScript to fetch exchange-backed candles and run the built-in deterministic portfolio simulator in one command
+
+Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, and simulates fills on the selected execution source.
+
+When the script declares exactly one `source`, backtest mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
+
 ## Output Formats
 
 Market mode supports:
@@ -46,6 +66,8 @@ Market mode supports:
 - `--format text`
 
 `json` is the default.
+
+Backtest mode supports the same output formats.
 
 ## Execution Limits
 
