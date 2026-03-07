@@ -38,6 +38,7 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 #[test]
 fn referenced_docs_examples_compile() {
     let examples = [
+        "examples/strategies/adaptive_trend_backtest.palm",
         "examples/strategies/sma_cross.palm",
         "examples/strategies/volume_breakout.palm",
         "examples/strategies/signal_helpers.palm",
@@ -119,68 +120,75 @@ fn supplemental_interval_docs_example_runs_with_local_feeds() {
 }
 
 #[test]
-fn multi_strategy_docs_example_runs_with_local_feeds() {
-    let path = "examples/strategies/multi_strategy_backtest.palm";
-    let compiled = compile(&read_strategy(path)).expect("multi_strategy_backtest should compile");
-    let outputs = run_with_sources(
-        &compiled,
-        SourceRuntimeConfig {
-            base_interval: palmscript::Interval::Hour4,
-            feeds: vec![
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Hour4,
-                    bars: bars(JAN_1_2024_UTC_MS, 4 * HOUR_MS, 240, 100.0),
-                },
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Day1,
-                    bars: bars(JAN_1_2024_UTC_MS, DAY_MS, 80, 100.0),
-                },
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Week1,
-                    bars: bars(JAN_1_2024_UTC_MS, 7 * DAY_MS, 40, 100.0),
-                },
-            ],
-        },
-        VmLimits::default(),
-    )
-    .expect("multi_strategy_backtest should run");
-    assert!(!outputs.plots.is_empty());
+fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
+    let paths = [
+        "examples/strategies/multi_strategy_backtest.palm",
+        "examples/strategies/adaptive_trend_backtest.palm",
+    ];
 
-    let result = run_backtest_with_sources(
-        &compiled,
-        SourceRuntimeConfig {
-            base_interval: palmscript::Interval::Hour4,
-            feeds: vec![
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Hour4,
-                    bars: bars(JAN_1_2024_UTC_MS, 4 * HOUR_MS, 240, 100.0),
-                },
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Day1,
-                    bars: bars(JAN_1_2024_UTC_MS, DAY_MS, 80, 100.0),
-                },
-                SourceFeed {
-                    source_id: 0,
-                    interval: palmscript::Interval::Week1,
-                    bars: bars(JAN_1_2024_UTC_MS, 7 * DAY_MS, 40, 100.0),
-                },
-            ],
-        },
-        VmLimits::default(),
-        BacktestConfig {
-            execution_source_alias: "spot".to_string(),
-            initial_capital: 10_000.0,
-            fee_bps: 0.0,
-            slippage_bps: 0.0,
-        },
-    )
-    .expect("multi_strategy_backtest should backtest");
-    assert!(!result.equity_curve.is_empty());
+    for path in paths {
+        let compiled =
+            compile(&read_strategy(path)).unwrap_or_else(|_| panic!("{path} should compile"));
+        let outputs = run_with_sources(
+            &compiled,
+            SourceRuntimeConfig {
+                base_interval: palmscript::Interval::Hour4,
+                feeds: vec![
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Hour4,
+                        bars: bars(JAN_1_2024_UTC_MS, 4 * HOUR_MS, 240, 100.0),
+                    },
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Day1,
+                        bars: bars(JAN_1_2024_UTC_MS, DAY_MS, 80, 100.0),
+                    },
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Week1,
+                        bars: bars(JAN_1_2024_UTC_MS, 7 * DAY_MS, 40, 100.0),
+                    },
+                ],
+            },
+            VmLimits::default(),
+        )
+        .unwrap_or_else(|_| panic!("{path} should run"));
+        assert!(!outputs.plots.is_empty(), "{path} should emit plots");
+
+        let result = run_backtest_with_sources(
+            &compiled,
+            SourceRuntimeConfig {
+                base_interval: palmscript::Interval::Hour4,
+                feeds: vec![
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Hour4,
+                        bars: bars(JAN_1_2024_UTC_MS, 4 * HOUR_MS, 240, 100.0),
+                    },
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Day1,
+                        bars: bars(JAN_1_2024_UTC_MS, DAY_MS, 80, 100.0),
+                    },
+                    SourceFeed {
+                        source_id: 0,
+                        interval: palmscript::Interval::Week1,
+                        bars: bars(JAN_1_2024_UTC_MS, 7 * DAY_MS, 40, 100.0),
+                    },
+                ],
+            },
+            VmLimits::default(),
+            BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 10_000.0,
+                fee_bps: 0.0,
+                slippage_bps: 0.0,
+            },
+        )
+        .unwrap_or_else(|_| panic!("{path} should backtest"));
+        assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
+    }
 }
 
 #[test]

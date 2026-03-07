@@ -1,0 +1,48 @@
+interval 4h
+source spot = binance.spot("BTCUSDT")
+use spot 1d
+use spot 1w
+
+// Multi-timeframe trend strategy with adaptive 4h bias and momentum/breakout triggers.
+input fast_len = 13
+input slow_len = 89
+input daily_fast_len = 30
+input daily_slow_len = 80
+input weekly_fast_len = 5
+input weekly_slow_len = 13
+input rsi_len = 14
+input breakout_len = 20
+input kama_len = 30
+const long_rsi_threshold = 55
+const short_rsi_threshold = 45
+const neutral_rsi = 50
+const macd_fast_len = 12
+const macd_slow_len = 26
+const macd_signal_len = 9
+
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let daily_fast = ema(spot.1d.close, daily_fast_len)
+let daily_slow = ema(spot.1d.close, daily_slow_len)
+let weekly_fast = ema(spot.1w.close, weekly_fast_len)
+let weekly_slow = ema(spot.1w.close, weekly_slow_len)
+let rsi_4h = rsi(spot.close, rsi_len)
+let kama_4h = kama(spot.close, kama_len)
+let (macd_line, macd_signal, macd_hist) = macd(spot.close, macd_fast_len, macd_slow_len, macd_signal_len)
+let breakout_high = highest(spot.high, breakout_len)[1]
+let breakout_low = lowest(spot.low, breakout_len)[1]
+
+export trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow) and above(spot.close, kama_4h)
+export trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow) and below(spot.close, kama_4h)
+export breakout_long = above(spot.close, breakout_high)
+export breakout_short = below(spot.close, breakout_low)
+export adaptive_bias = spot.close - kama_4h
+
+entry long = trend_long and (crossover(rsi_4h, long_rsi_threshold) or crossover(macd_hist, 0) or breakout_long)
+exit long = crossunder(fast, slow) or crossunder(rsi_4h, neutral_rsi) or crossunder(spot.close, kama_4h) or breakout_short
+entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
+exit short = crossover(fast, slow) or crossover(rsi_4h, neutral_rsi) or crossover(spot.close, kama_4h) or breakout_long
+
+plot(fast - slow)
+plot(macd_line - macd_signal)
+plot(rsi_4h)

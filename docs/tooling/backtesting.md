@@ -22,6 +22,26 @@ palmscript run backtest examples/strategies/multi_strategy_backtest.palm \
 
 When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
 
+Additional checked-in strategy example:
+
+```bash
+palmscript run backtest examples/strategies/adaptive_trend_backtest.palm \
+  --from 1741305600000 \
+  --to 1772841600000
+```
+
+On Binance spot `BTCUSDT`, that window corresponds to `2025-03-07T00:00:00Z`
+through `2026-03-07T00:00:00Z`. With default backtest settings
+(`initial_capital=10000`, `fee_bps=5`, `slippage_bps=2`), the checked-in
+strategy produced:
+
+- `ending_equity = 12057.12`
+- `total_return = 20.57%`
+- `trade_count = 41`
+- `max_drawdown = 1959.38`
+
+Those numbers are an example snapshot, not a promise of future performance.
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:

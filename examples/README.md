@@ -27,6 +27,7 @@ Checked-in `.palm` strategies live under `examples/strategies/`.
 
 Representative files:
 
+- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe backtest strategy using `kama`, `macd`, `rsi`, and first-class `entry` / `exit` signals
 - `examples/strategies/sma_cross.palm`: single-source market-mode strategy
 - `examples/strategies/weekly_bias.palm`: single-source supplemental-interval strategy
 - `examples/strategies/macd_tuple.palm`: tuple destructuring and `ma_type`
@@ -48,5 +49,6 @@ Common commands:
 ./palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 ./palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
 ./palmscript run market examples/strategies/exchange_backed_sources.palm --from 1704067200000 --to 1704153600000
+./palmscript run backtest examples/strategies/adaptive_trend_backtest.palm --from 1741305600000 --to 1772841600000
 ./palmscript run backtest examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --fee-bps 10 --slippage-bps 2
 ```
