@@ -58,6 +58,7 @@ target/debug/palmscript check examples/strategies/sma_cross.palm
 target/debug/palmscript run market examples/strategies/sma_cross.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/macd_tuple.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
+cargo run --example binance_multi_strategy_backtest
 mkdocs build --strict
 docker build -f Dockerfile.docs -t palmscript-docs .
 ```

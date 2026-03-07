@@ -51,6 +51,16 @@ let result = run_backtest_with_sources(
 println!("ending equity = {}", result.summary.ending_equity);
 ```
 
+Checked-in end-to-end example:
+
+```bash
+cargo run --example binance_multi_strategy_backtest
+```
+
+That example loads [`examples/strategies/multi_strategy_backtest.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/multi_strategy_backtest.palm),
+fetches the required Binance feeds for the last 365 days ending at the latest
+closed 4-hour boundary, and prints the backtest summary plus recent trades.
+
 The result includes:
 
 - raw runtime `outputs`

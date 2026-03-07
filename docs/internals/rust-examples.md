@@ -10,6 +10,7 @@ cargo run --example rsi
 cargo run --example step_engine
 cargo run --example multi_interval
 cargo run --example monthly_trend
+cargo run --example binance_multi_strategy_backtest
 ```
 
 ## What They Cover
@@ -19,3 +20,4 @@ cargo run --example monthly_trend
 - `step_engine`: explicit per-bar stepping with the engine
 - `multi_interval`: higher-interval data usage
 - `monthly_trend`: mixed monthly and daily context
+- `binance_multi_strategy_backtest`: fetches live Binance candles and runs the library backtester on the checked-in composite strategy
