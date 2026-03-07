@@ -5,7 +5,7 @@
 
 use crate::ast::{
     Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl,
-    NodeId, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    NodeId, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -140,6 +140,46 @@ impl<'a> Parser<'a> {
             }
             return self.parse_output_stmt(false);
         }
+        if self.matches_keyword(&TokenKind::Entry) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "signal declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_signal_stmt(true);
+        }
+        if self.matches_keyword(&TokenKind::Exit) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "signal declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_signal_stmt(false);
+        }
+        if self.matches_keyword(&TokenKind::Const) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "`const` declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_binding_stmt(true);
+        }
+        if self.matches_keyword(&TokenKind::Input) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "`input` declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_binding_stmt(false);
+        }
         if self.matches_keyword(&TokenKind::Let) {
             return self.parse_let_stmt();
         }
@@ -211,6 +251,42 @@ impl<'a> Parser<'a> {
                 name,
                 name_span,
                 expr,
+            },
+        })
+    }
+
+    fn parse_binding_stmt(&mut self, is_const: bool) -> Option<Stmt> {
+        let start = self.previous().span;
+        let (name, name_span) = self.expect_ident(if is_const {
+            "expected identifier after `const`"
+        } else {
+            "expected identifier after `input`"
+        })?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            if is_const {
+                "expected `=` after const name"
+            } else {
+                "expected `=` after input name"
+            },
+        )?;
+        let expr = self.parse_expr(0)?;
+        let span = start.merge(expr.span);
+        Some(Stmt {
+            id: self.alloc_id(),
+            span,
+            kind: if is_const {
+                StmtKind::Const {
+                    name,
+                    name_span,
+                    expr,
+                }
+            } else {
+                StmtKind::Input {
+                    name,
+                    name_span,
+                    expr,
+                }
             },
         })
     }
@@ -339,6 +415,38 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_signal_stmt(&mut self, entry: bool) -> Option<Stmt> {
+        let start = self.previous().span;
+        let side = self.advance()?.clone();
+        let role = match side.kind {
+            TokenKind::Long if entry => SignalRole::LongEntry,
+            TokenKind::Long => SignalRole::LongExit,
+            TokenKind::Short if entry => SignalRole::ShortEntry,
+            TokenKind::Short => SignalRole::ShortExit,
+            _ => {
+                self.push_diagnostic(
+                    if entry {
+                        "expected `long` or `short` after `entry`"
+                    } else {
+                        "expected `long` or `short` after `exit`"
+                    },
+                    side.span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after signal side",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::Signal { role, expr },
+        })
+    }
+
     fn parse_if_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
         let condition = self.parse_expr(0)?;
@@ -408,6 +516,29 @@ impl<'a> Parser<'a> {
                 TokenKind::Dot if matches!(lhs.kind, ExprKind::Ident(_)) => {
                     self.parse_dotted_ident(lhs)?
                 }
+                TokenKind::Question => {
+                    let (left_bp, right_bp) = (4, 4);
+                    if left_bp < min_bp {
+                        break;
+                    }
+                    self.advance();
+                    let when_true = self.parse_expr(0)?;
+                    self.expect_kind(
+                        |kind| matches!(kind, TokenKind::Colon),
+                        "expected `:` in conditional expression",
+                    )?;
+                    let when_false = self.parse_expr(right_bp)?;
+                    let span = lhs.span.merge(when_false.span);
+                    Expr {
+                        id: self.alloc_id(),
+                        span,
+                        kind: ExprKind::Conditional {
+                            condition: Box::new(lhs),
+                            when_true: Box::new(when_true),
+                            when_false: Box::new(when_false),
+                        },
+                    }
+                }
                 _ => {
                     let Some((left_bp, right_bp, op)) = self.infix_binding_power() else {
                         break;
@@ -458,7 +589,11 @@ impl<'a> Parser<'a> {
             TokenKind::Na => Some(Expr {
                 id: self.alloc_id(),
                 span: token.span,
-                kind: ExprKind::Na,
+                kind: if matches!(self.peek_kind(), TokenKind::LeftParen) {
+                    ExprKind::Ident("na".to_string())
+                } else {
+                    ExprKind::Na
+                },
             }),
             TokenKind::String(value) => Some(Expr {
                 id: self.alloc_id(),

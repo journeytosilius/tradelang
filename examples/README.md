@@ -32,7 +32,7 @@ Representative files:
 - `examples/strategies/macd_tuple.palm`: tuple destructuring and `ma_type`
 - `examples/strategies/cross_source_spread.palm`: cross-source market-mode strategy
 - `examples/strategies/exchange_backed_sources.palm`: source-aware strategy with `use <alias> <interval>`
-- `examples/strategies/multi_strategy_backtest.palm`: composite trend, momentum, and breakout backtest strategy
+- `examples/strategies/multi_strategy_backtest.palm`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
 
 For runnable commands and workflow guidance, use the linked docs pages above.
 

@@ -4,8 +4,9 @@ PalmScript exposes a deterministic backtester on top of the existing
 source-aware runtime.
 
 The backtester does not change PalmScript syntax or VM semantics. It runs a
-compiled script, consumes trigger events from the runtime outputs, and simulates
-fills, trades, and equity for one configured execution source.
+compiled script, consumes runtime trigger events plus compiled signal-role
+metadata, and simulates fills, trades, and equity for one configured execution
+source.
 
 ## CLI
 
@@ -27,15 +28,15 @@ Use `run_backtest_with_sources` from the library crate:
 
 ```rust
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, Interval, SignalContract, SourceFeed,
-    SourceRuntimeConfig, VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, Interval, SourceFeed, SourceRuntimeConfig,
+    VmLimits,
 };
 
 let source = r#"
 interval 1m
 source spot = binance.spot("BTCUSDT")
-trigger long_entry = spot.close > spot.close[1]
-trigger long_exit = spot.close < spot.close[1]
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
 plot(spot.close)
 "#;
 
@@ -57,7 +58,6 @@ let result = run_backtest_with_sources(
         initial_capital: 10_000.0,
         fee_bps: 5.0,
         slippage_bps: 2.0,
-        signals: SignalContract::default(),
     },
 )
 .expect("backtest succeeds");
@@ -74,17 +74,20 @@ The result includes:
 - aggregate metrics in `summary`
 - any still-open position in `open_position`
 
-## Default Trigger Names
+## Signal Resolution
 
-`SignalContract::default()` maps these trigger names:
+Preferred v1 surface:
 
-- `long_entry`
-- `long_exit`
-- `short_entry`
-- `short_exit`
+- `entry long = ...`
+- `exit long = ...`
+- `entry short = ...`
+- `exit short = ...`
 
-The backtester treats trigger names as an external contract. The compiler and VM
-still treat them as ordinary named trigger outputs.
+Legacy compatibility bridge:
+
+- if no first-class signal declarations are present, the backtester falls back to trigger names `long_entry`, `long_exit`, `short_entry`, and `short_exit`
+- if no entry signals are present after resolution, backtest startup fails validation
+- ordinary `trigger` declarations remain available for non-backtest consumers
 
 ## Execution Model
 

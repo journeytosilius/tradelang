@@ -6,7 +6,7 @@
 
 PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
-The language now includes indicator, signal-helper, event-memory, and early TA-Lib-style builtins such as `crossover`, `highest`, `barssince`, `valuewhen`, `ma`, `apo`, `ppo`, `macd`, `wma`, `avgdev`, `stddev`, `linearreg`, `beta`, `correl`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `willr`, and `minmax` in addition to the core OHLCV series model.
+The language now includes indicator, signal-helper, null-handling, event-memory, and early TA-Lib-style builtins such as `crossover`, `highest`, `highestbars`, `barssince`, `valuewhen`, `na(...)`, `nz`, `coalesce`, `cum`, `ma`, `apo`, `ppo`, `macd`, `wma`, `avgdev`, `stddev`, `linearreg`, `beta`, `correl`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `willr`, and `minmax` in addition to the core OHLCV series model.
 
 The repository currently ships:
 
@@ -25,7 +25,7 @@ PalmScript currently implements:
 - one or more named exchange-backed `source` declarations per executable script
 - source-qualified series such as `bn.close` or `hl.1h.close`
 - source-scoped `use <alias> <interval>` declarations for supplemental intervals
-- top-level expression-bodied `fn` declarations, `let`, tuple destructuring, `export`, and `trigger`
+- top-level expression-bodied `fn` declarations, `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, and first-class `entry` / `exit` signals
 - deterministic three-valued boolean logic, bounded-history indexing, and typed `ma_type.<variant>` enum literals
 - a partially executable TA-Lib-style builtin surface, with additional reserved catalog names exposed through diagnostics and IDE metadata
 - exchange-backed execution through `palmscript run market`

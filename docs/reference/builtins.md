@@ -21,7 +21,8 @@ PalmScript currently exposes these builtin categories:
 - indicators: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), and [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helpers: `above`, `below`, `between`, `outside`
 - crossing helpers: `cross`, `crossover`, `crossunder`
-- series and window helpers: `change`, `highest`, `lowest`, `rising`, `falling`
+- null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
+- series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helpers: `barssince`, `valuewhen`
 - outputs: `plot`
 
@@ -129,6 +130,20 @@ Rules:
 - if any sample in the required window is `na`, the result is `na`
 - the result type is `series<float>`
 
+The `length` argument may be a positive integer literal or a top-level immutable numeric binding declared with `const` or `input`.
+
+### `highestbars(series, length)` and `lowestbars(series, length)`
+
+Rules:
+
+- the first argument must be `series<float>`
+- the second argument follows the same positive-integer rule as `highest` / `lowest`
+- the window includes the current sample
+- the result is the number of bars since the highest or lowest sample in the active window
+- if insufficient history exists, the result is `na`
+- if any sample in the required window is `na`, the result is `na`
+- the result type is `series<float>`
+
 ### `rising(series, length)` and `falling(series, length)`
 
 Rules:
@@ -140,6 +155,48 @@ Rules:
 - if insufficient history exists, the result is `na`
 - if any required sample is `na`, the result is `na`
 - the result type is `series<bool>`
+
+### `cum(value)`
+
+Rules:
+
+- it requires exactly one numeric or `series<float>` argument
+- it returns the cumulative running sum on the argument's update clock
+- if the current input sample is `na`, the current output sample is `na`
+- later non-`na` samples continue accumulating from the prior running total
+- the result type is `series<float>`
+
+## Null Helpers
+
+### `na(value)`
+
+Rules:
+
+- it requires exactly one argument
+- it returns `true` when the current argument sample is `na`
+- it returns `false` when the current argument sample is a concrete scalar value
+- if the argument is series-backed, the result type is `series<bool>`
+- otherwise the result type is `bool`
+
+### `nz(value[, fallback])`
+
+Rules:
+
+- it accepts one or two arguments
+- with one argument, numeric inputs use `0` and boolean inputs use `false` as the fallback
+- with two arguments, the second argument is returned when the first is `na`
+- both arguments must be type-compatible numeric or bool values
+- the result type follows the lifted type of the operands
+
+### `coalesce(value, fallback)`
+
+Rules:
+
+- it requires exactly two arguments
+- it returns the first argument when it is not `na`
+- otherwise it returns the second argument
+- both arguments must be type-compatible numeric or bool values
+- the result type follows the lifted type of the operands
 
 ## Event Memory Helpers
 
@@ -193,6 +250,7 @@ Examples:
 
 - `ema(spot.close, 20)` advances on the base clock
 - `highest(spot.1w.close, 5)` advances on the weekly clock
+- `cum(spot.1w.close - spot.1w.close[1])` advances on the weekly clock
 - `crossover(hl.close, bn.close)` advances when either referenced source series advances
 - `barssince(spot.close > spot.close[1])` advances on the clock of that condition series
 - `valuewhen(trigger_series, hl.1h.close, 0)` advances on the clock of `trigger_series`

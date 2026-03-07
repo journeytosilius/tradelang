@@ -10,8 +10,12 @@ The following forms must appear only at the top level of a script:
 - `source`
 - `use`
 - `fn`
+- `const`
+- `input`
 - `export`
 - `trigger`
+- `entry`
+- `exit`
 
 Top-level `let`, `if`, and expression statements are allowed.
 
@@ -69,7 +73,7 @@ Rules:
 - a function name must not collide with a builtin name
 - parameter names within one function must be unique
 - recursive and cyclic function graphs are rejected
-- function bodies may reference only their parameters and declared source series
+- function bodies may reference their parameters, declared source series, and top-level immutable `const` / `input` bindings
 - function bodies must not call `plot`
 - function bodies must not capture `let` bindings from surrounding statement scopes
 
@@ -103,20 +107,42 @@ Additional rules:
 - tuple arity must match exactly
 - tuple-valued expressions must be destructured before further use
 
-## Outputs
+## `const` And `input`
 
-`export` and `trigger` create named output bindings:
+PalmScript supports top-level immutable bindings for strategy configuration:
 
 ```palmscript
-export trend = ema(spot.close, 20) > ema(spot.close, 50)
-trigger long_entry = spot.close > spot.high[1]
+input fast_len = 21
+const neutral_rsi = 50
 ```
 
 Rules:
 
 - both forms are top-level only
 - duplicate names in the same scope are rejected
-- the declared name becomes a binding after the declaration point
+- both forms are scalar-only in v1: `float`, `bool`, `ma_type`, or `na`
+- `input` is compile-time only in v1 and does not yet accept CLI overrides
+- `input` values must be scalar literals or enum literals
+- `const` values may reference previously declared `const` / `input` bindings and pure scalar builtins
+- windowed builtins and series indexing accept immutable numeric bindings anywhere an integer literal is required
+
+## Outputs
+
+`export`, `trigger`, and first-class strategy signals create top-level outputs:
+
+```palmscript
+export trend = ema(spot.close, 20) > ema(spot.close, 50)
+trigger long_entry = spot.close > spot.high[1]
+entry long = spot.close > spot.high[1]
+```
+
+Rules:
+
+- all forms are top-level only
+- duplicate names in the same scope are rejected
+- `trigger` names become bindings after the declaration point
+- `entry long`, `exit long`, `entry short`, and `exit short` are first-class backtest signal declarations
+- legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 
 ## Conditional Scope
 

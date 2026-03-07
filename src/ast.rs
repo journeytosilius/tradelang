@@ -83,9 +83,27 @@ pub struct BindingName {
     pub span: Span,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalRole {
+    LongEntry,
+    LongExit,
+    ShortEntry,
+    ShortExit,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
+        name: String,
+        name_span: Span,
+        expr: Expr,
+    },
+    Const {
+        name: String,
+        name_span: Span,
+        expr: Expr,
+    },
+    Input {
         name: String,
         name_span: Span,
         expr: Expr,
@@ -102,6 +120,10 @@ pub enum StmtKind {
     Trigger {
         name: String,
         name_span: Span,
+        expr: Expr,
+    },
+    Signal {
+        role: SignalRole,
         expr: Expr,
     },
     If {
@@ -146,6 +168,11 @@ pub enum ExprKind {
         op: BinaryOp,
         left: Box<Expr>,
         right: Box<Expr>,
+    },
+    Conditional {
+        condition: Box<Expr>,
+        when_true: Box<Expr>,
+        when_false: Box<Expr>,
     },
     Call {
         callee: String,

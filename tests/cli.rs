@@ -219,7 +219,7 @@ fn run_market_supports_text_output() {
     let script = write_file(
         dir.path(),
         "market.palm",
-        "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nexport rising = bn.close > bn.close[1]\ntrigger long = bn.close > bn.open\nplot(bn.close)",
+        "interval 1m\nsource bn = binance.spot(\"BTCUSDT\")\nexport rising = bn.close > bn.close[1]\ntrigger bullish = bn.close > bn.open\nplot(bn.close)",
     );
 
     let mut cmd = palmscript_cmd();

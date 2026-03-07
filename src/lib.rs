@@ -27,9 +27,9 @@ pub mod vm;
 
 pub use backtest::{
     run_backtest_with_sources, BacktestConfig, BacktestError, BacktestResult, BacktestSummary,
-    EquityPoint, Fill, FillAction, PositionSide, PositionSnapshot, SignalContract, Trade,
+    EquityPoint, Fill, FillAction, PositionSide, PositionSnapshot, Trade,
 };
-pub use bytecode::{OutputDecl, OutputKind};
+pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};

@@ -90,10 +90,30 @@ pub enum OutputKind {
     Trigger,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SignalRole {
+    LongEntry,
+    LongExit,
+    ShortEntry,
+    ShortExit,
+}
+
+impl SignalRole {
+    pub const fn canonical_name(self) -> &'static str {
+        match self {
+            Self::LongEntry => "long_entry",
+            Self::LongExit => "long_exit",
+            Self::ShortEntry => "short_entry",
+            Self::ShortExit => "short_exit",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutputDecl {
     pub name: String,
     pub kind: OutputKind,
+    pub signal_role: Option<SignalRole>,
     pub ty: Type,
     pub slot: u16,
 }

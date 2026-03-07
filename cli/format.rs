@@ -318,6 +318,7 @@ mod tests {
             outputs: vec![OutputDecl {
                 name: "trend".to_string(),
                 kind: OutputKind::ExportSeries,
+                signal_role: None,
                 ty: Type::SeriesBool,
                 slot: 1,
             }],

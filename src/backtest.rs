@@ -4,7 +4,7 @@
 //! outputs, then deterministically translates those trigger events into fills,
 //! trades, and an equity curve for one configured execution source.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -17,32 +17,12 @@ use crate::runtime::{run_with_sources, Bar, SourceRuntimeConfig, VmLimits};
 const BPS_SCALE: f64 = 10_000.0;
 const EPSILON: f64 = 1e-9;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SignalContract {
-    pub long_entry: String,
-    pub long_exit: String,
-    pub short_entry: String,
-    pub short_exit: String,
-}
-
-impl Default for SignalContract {
-    fn default() -> Self {
-        Self {
-            long_entry: "long_entry".to_string(),
-            long_exit: "long_exit".to_string(),
-            short_entry: "short_entry".to_string(),
-            short_exit: "short_exit".to_string(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BacktestConfig {
     pub execution_source_alias: String,
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
-    pub signals: SignalContract,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -141,13 +121,9 @@ pub enum BacktestError {
     InvalidFeeBps { value: f64 },
     #[error("backtest slippage_bps must be finite and >= 0, found {value}")]
     InvalidSlippageBps { value: f64 },
-    #[error("signal contract must contain four distinct trigger names")]
-    DuplicateSignalNames,
-    #[error(
-        "none of the configured signal triggers were found; configured={configured:?}, available={available:?}"
-    )]
-    MissingSignalOutputs {
-        configured: Vec<String>,
+    #[error("backtest requires entry/exit signals for long and short; missing={missing:?}, available={available:?}")]
+    MissingSignalRoles {
+        missing: Vec<String>,
         available: Vec<String>,
     },
     #[error("conflicting long and short entry signals before execution bar at {time}")]
@@ -177,6 +153,11 @@ struct SignalBatch {
 }
 
 #[derive(Clone, Debug)]
+struct ResolvedSignals {
+    kinds_by_output_id: HashMap<usize, SignalKind>,
+}
+
+#[derive(Clone, Debug)]
 struct PositionState {
     side: PositionSide,
     quantity: f64,
@@ -200,8 +181,7 @@ pub fn run_backtest_with_sources(
 ) -> Result<BacktestResult, BacktestError> {
     validate_config(&config)?;
     let execution_source_id = execution_source_id(compiled, &config.execution_source_alias)?;
-    let available_triggers = available_trigger_names(compiled);
-    validate_signal_contract(&config.signals, &available_triggers)?;
+    let resolved_signals = resolve_signals(compiled)?;
 
     let execution_bars = execution_bars(
         &runtime,
@@ -209,7 +189,7 @@ pub fn run_backtest_with_sources(
         &config.execution_source_alias,
     )?;
     let outputs = run_with_sources(compiled, runtime, vm_limits)?;
-    let signal_batches = collect_signal_batches(&outputs, &config.signals);
+    let signal_batches = collect_signal_batches(&outputs, &resolved_signals);
     simulate_backtest(outputs, execution_bars, &config, signal_batches)
 }
 
@@ -228,17 +208,6 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
         return Err(BacktestError::InvalidSlippageBps {
             value: config.slippage_bps,
         });
-    }
-    let mut names = BTreeSet::new();
-    for name in [
-        &config.signals.long_entry,
-        &config.signals.long_exit,
-        &config.signals.short_entry,
-        &config.signals.short_exit,
-    ] {
-        if !names.insert(name.as_str()) {
-            return Err(BacktestError::DuplicateSignalNames);
-        }
     }
     Ok(())
 }
@@ -265,26 +234,37 @@ fn available_trigger_names(compiled: &CompiledProgram) -> Vec<String> {
         .collect()
 }
 
-fn validate_signal_contract(
-    signals: &SignalContract,
-    available: &[String],
-) -> Result<(), BacktestError> {
-    let configured = vec![
-        signals.long_entry.clone(),
-        signals.long_exit.clone(),
-        signals.short_entry.clone(),
-        signals.short_exit.clone(),
-    ];
-    if configured
+fn resolve_signals(compiled: &CompiledProgram) -> Result<ResolvedSignals, BacktestError> {
+    let has_first_class = compiled
+        .program
+        .outputs
         .iter()
-        .any(|name| available.iter().any(|candidate| candidate == name))
-    {
-        return Ok(());
+        .any(|decl| decl.signal_role.is_some());
+    let mut kinds_by_output_id = HashMap::new();
+
+    for (output_id, decl) in compiled.program.outputs.iter().enumerate() {
+        if !matches!(decl.kind, crate::bytecode::OutputKind::Trigger) {
+            continue;
+        }
+        let kind = if has_first_class {
+            decl.signal_role.map(signal_kind_for_role)
+        } else {
+            legacy_signal_kind(&decl.name)
+        };
+        if let Some(kind) = kind {
+            kinds_by_output_id.insert(output_id, kind);
+        }
     }
-    Err(BacktestError::MissingSignalOutputs {
-        configured,
-        available: available.to_vec(),
-    })
+
+    let missing = missing_signal_roles(&kinds_by_output_id);
+    if !missing.is_empty() {
+        return Err(BacktestError::MissingSignalRoles {
+            missing,
+            available: available_trigger_names(compiled),
+        });
+    }
+
+    Ok(ResolvedSignals { kinds_by_output_id })
 }
 
 fn execution_bars(
@@ -304,10 +284,10 @@ fn execution_bars(
         })
 }
 
-fn collect_signal_batches(outputs: &Outputs, signals: &SignalContract) -> Vec<SignalBatch> {
+fn collect_signal_batches(outputs: &Outputs, signals: &ResolvedSignals) -> Vec<SignalBatch> {
     let mut grouped = BTreeMap::<i64, PendingSignals>::new();
     for event in &outputs.trigger_events {
-        let Some(kind) = signal_kind(&event.name, signals) else {
+        let Some(kind) = signals.kinds_by_output_id.get(&event.output_id).copied() else {
             continue;
         };
         let time_key = event.time.and_then(time_key);
@@ -331,17 +311,39 @@ fn collect_signal_batches(outputs: &Outputs, signals: &SignalContract) -> Vec<Si
         .collect()
 }
 
-fn signal_kind(name: &str, signals: &SignalContract) -> Option<SignalKind> {
-    if name == signals.long_entry {
-        Some(SignalKind::LongEntry)
-    } else if name == signals.long_exit {
-        Some(SignalKind::LongExit)
-    } else if name == signals.short_entry {
-        Some(SignalKind::ShortEntry)
-    } else if name == signals.short_exit {
-        Some(SignalKind::ShortExit)
+fn signal_kind_for_role(role: crate::bytecode::SignalRole) -> SignalKind {
+    match role {
+        crate::bytecode::SignalRole::LongEntry => SignalKind::LongEntry,
+        crate::bytecode::SignalRole::LongExit => SignalKind::LongExit,
+        crate::bytecode::SignalRole::ShortEntry => SignalKind::ShortEntry,
+        crate::bytecode::SignalRole::ShortExit => SignalKind::ShortExit,
+    }
+}
+
+fn legacy_signal_kind(name: &str) -> Option<SignalKind> {
+    match name {
+        "long_entry" => Some(SignalKind::LongEntry),
+        "long_exit" => Some(SignalKind::LongExit),
+        "short_entry" => Some(SignalKind::ShortEntry),
+        "short_exit" => Some(SignalKind::ShortExit),
+        _ => None,
+    }
+}
+
+fn missing_signal_roles(kinds_by_output_id: &HashMap<usize, SignalKind>) -> Vec<String> {
+    let mut present = [false; 4];
+    for kind in kinds_by_output_id.values() {
+        match kind {
+            SignalKind::LongEntry => present[0] = true,
+            SignalKind::LongExit => present[1] = true,
+            SignalKind::ShortEntry => present[2] = true,
+            SignalKind::ShortExit => present[3] = true,
+        }
+    }
+    if present[0] || present[2] {
+        Vec::new()
     } else {
-        None
+        vec!["long_entry".to_string(), "short_entry".to_string()]
     }
 }
 

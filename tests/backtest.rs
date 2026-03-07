@@ -1,6 +1,6 @@
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
-    SignalContract, SourceFeed, SourceRuntimeConfig, VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval, SourceFeed,
+    SourceRuntimeConfig, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -23,7 +23,6 @@ fn config(alias: &str) -> BacktestConfig {
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
-        signals: SignalContract::default(),
     }
 }
 
@@ -89,7 +88,7 @@ fn rejects_unknown_execution_source_alias() {
 }
 
 #[test]
-fn rejects_contract_when_no_configured_signals_exist() {
+fn rejects_when_required_backtest_signals_are_missing() {
     let compiled = compile(
         "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ntrigger continuation = true\nplot(spot.close)",
     )
@@ -104,7 +103,7 @@ fn rejects_contract_when_no_configured_signals_exist() {
     };
     let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
         .expect_err("expected missing signals error");
-    assert!(matches!(err, BacktestError::MissingSignalOutputs { .. }));
+    assert!(matches!(err, BacktestError::MissingSignalRoles { .. }));
 }
 
 #[test]
@@ -157,6 +156,46 @@ plot(spot.close)",
     approx_eq(result.summary.max_drawdown, 333.33333333333326);
     approx_eq(result.summary.max_gross_exposure, 750.0);
     approx_eq(result.equity_curve[2].equity, 750.0);
+}
+
+#[test]
+fn first_class_signal_declarations_drive_backtests() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+entry short = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    9.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    8.0,
+                    8.0,
+                ),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 2);
+    assert_eq!(result.trades.len(), 1);
 }
 
 #[test]

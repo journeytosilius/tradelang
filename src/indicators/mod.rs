@@ -20,11 +20,11 @@ pub(crate) mod wma;
 
 pub(crate) use cmo::CmoState;
 pub(crate) use ema::EmaState;
-pub(crate) use event::{BarsSinceState, ValueWhenState};
+pub(crate) use event::{BarsSinceState, CumState, ValueWhenState};
 pub(crate) use extrema::{
-    calculate_aroon, calculate_aroonosc, calculate_max_index, calculate_min_index,
-    calculate_min_max, calculate_min_max_index, calculate_willr, FallingState, HighestState,
-    LowestState, RisingState,
+    calculate_aroon, calculate_aroonosc, calculate_highest_bars, calculate_lowest_bars,
+    calculate_max_index, calculate_min_index, calculate_min_max, calculate_min_max_index,
+    calculate_willr, FallingState, HighestState, LowestState, RisingState,
 };
 pub(crate) use macd::MacdState;
 pub(crate) use math::{
@@ -54,6 +54,7 @@ pub(crate) enum IndicatorState {
     Falling(FallingState),
     BarsSince(BarsSinceState),
     ValueWhen(ValueWhenState),
+    Cum(CumState),
     Macd(MacdState),
     PriceOscillator(PriceOscillatorState),
     Obv(ObvState),

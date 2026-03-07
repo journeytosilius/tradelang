@@ -86,6 +86,20 @@ fn parses_na_literal() {
 }
 
 #[test]
+fn parses_na_predicate_call() {
+    compile(&with_interval(
+        "if na(close[1]) { plot(1) } else { plot(0) }",
+    ))
+    .expect("na(value) should compile");
+}
+
+#[test]
+fn parses_ternary_conditional_expression() {
+    compile(&with_interval("plot(close > close[1] ? 1 : 0)"))
+        .expect("ternary conditional should compile");
+}
+
+#[test]
 fn supports_newline_and_semicolon_separators() {
     compile(&with_interval("let x = close;\nplot(x)")).expect("mixed separators should compile");
 }
@@ -178,6 +192,14 @@ fn rejects_function_body_captures() {
     assert!(
         message.contains("function bodies may only reference parameters or declared source series")
     );
+}
+
+#[test]
+fn allows_function_body_const_and_input_captures() {
+    compile(&with_interval(
+        "input length = 5\nconst threshold = 2\nfn helper(x) = x > threshold ? x : ema(x, length)\nplot(helper(close))",
+    ))
+    .expect("functions should capture const/input bindings");
 }
 
 #[test]
@@ -275,6 +297,14 @@ fn parses_trigger_statements() {
 }
 
 #[test]
+fn parses_const_input_and_signal_statements() {
+    compile(&with_interval(
+        "input length = 14\nconst limit = 50\nentry long = close > ema(close, length)\nexit long = close < ema(close, length)\nentry short = close < ema(close, length)\nexit short = close > ema(close, length)\nplot(limit)",
+    ))
+    .expect("const/input/signal statements should compile");
+}
+
+#[test]
 fn reserves_export_and_trigger_keywords() {
     let message = compile_err(&with_interval(
         "let export = true\nlet trigger = false\nplot(1)",
@@ -299,6 +329,20 @@ fn rejects_trigger_inside_blocks() {
 }
 
 #[test]
+fn rejects_const_input_and_signal_inside_blocks() {
+    let message = compile_err(&with_interval("if true { const x = 1 } else { plot(0) }"));
+    assert!(message.contains("`const` declarations are only allowed at the top level"));
+
+    let message = compile_err(&with_interval("if true { input x = 1 } else { plot(0) }"));
+    assert!(message.contains("`input` declarations are only allowed at the top level"));
+
+    let message = compile_err(&with_interval(
+        "if true { entry long = close > open } else { plot(0) }",
+    ));
+    assert!(message.contains("signal declarations are only allowed at the top level"));
+}
+
+#[test]
 fn rejects_void_exports() {
     let message = compile_err(&with_interval("export x = plot(close)\nplot(1)"));
     assert!(message
@@ -309,6 +353,12 @@ fn rejects_void_exports() {
 fn rejects_numeric_triggers() {
     let message = compile_err(&with_interval("trigger x = 1\nplot(1)"));
     assert!(message.contains("trigger requires bool, series<bool>, or na"));
+}
+
+#[test]
+fn rejects_non_literal_input_values() {
+    let message = compile_err(&with_interval("input x = 1 + 1\nplot(x)"));
+    assert!(message.contains("`input` expressions may only use scalar literals or enum literals"));
 }
 
 #[test]

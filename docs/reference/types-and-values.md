@@ -80,6 +80,12 @@ Current tuple support limits:
 - arithmetic or comparisons where an operand is already `na`
 - explicit use of the `na` literal
 
+PalmScript also exposes `na(value)` as a builtin predicate distinct from the bare `na` literal:
+
+- `na` by itself is the missing-value literal
+- `na(expr)` returns `bool` or `series<bool>` depending on the argument
+- `nz(value[, fallback])` and `coalesce(value, fallback)` are the primary null-handling helpers
+
 ## Series And Scalar Combination
 
 PalmScript allows scalar/series mixing in expressions when the underlying operator accepts the operand categories.
@@ -117,6 +123,6 @@ Output declarations normalize their value types as follows:
 
 - `export` over numeric, series numeric, or `na` yields `series<float>`
 - `export` over bool or series bool yields `series<bool>`
-- `trigger` always yields `series<bool>`
+- `trigger`, `entry`, and `exit` outputs always yield `series<bool>`
 
 See [Outputs](outputs.md) for the exact output behavior.

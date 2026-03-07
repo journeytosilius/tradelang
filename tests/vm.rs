@@ -783,6 +783,36 @@ fn event_memory_helpers_track_matches() {
 }
 
 #[test]
+fn null_conditional_and_state_helpers_execute() {
+    let bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 12.0]);
+
+    assert_eq!(
+        plot_values("plot(nz(close[1]))", &bars),
+        vec![Some(0.0), Some(10.0), Some(11.0), Some(9.0)]
+    );
+    assert_eq!(
+        plot_values("plot(coalesce(close[2], 7))", &bars),
+        vec![Some(7.0), Some(7.0), Some(10.0), Some(11.0)]
+    );
+    assert_eq!(
+        plot_values("plot(na(close[1]) ? 1 : 0)", &bars),
+        vec![Some(1.0), Some(0.0), Some(0.0), Some(0.0)]
+    );
+    assert_eq!(
+        plot_values("plot(cum(close - close[1]))", &bars),
+        vec![None, Some(1.0), Some(-1.0), Some(2.0)]
+    );
+    assert_eq!(
+        plot_values("plot(highestbars(close, 3))", &bars)[3],
+        Some(0.0)
+    );
+    assert_eq!(
+        plot_values("plot(lowestbars(close, 3))", &bars)[3],
+        Some(1.0)
+    );
+}
+
+#[test]
 fn valuewhen_preserves_bool_source_type() {
     let compiled = palmscript::compile(&with_interval(
         "export remembered = valuewhen(close > close[1], close > open, 0)\nplot(0)",

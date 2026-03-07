@@ -10,12 +10,13 @@ use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
     apply_unary_math, calculate_aroon, calculate_aroonosc, calculate_avgdev, calculate_beta,
-    calculate_bop, calculate_cci, calculate_correl, calculate_linear_regression,
-    calculate_max_index, calculate_min_index, calculate_min_max, calculate_min_max_index,
-    calculate_stddev, calculate_sum, calculate_trange, calculate_var, calculate_willr,
-    calculate_wma, BarsSinceState, CmoState, EmaState, FallingState, HighestState, IndicatorState,
-    LowestState, MacdState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
-    RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    calculate_bop, calculate_cci, calculate_correl, calculate_highest_bars,
+    calculate_linear_regression, calculate_lowest_bars, calculate_max_index, calculate_min_index,
+    calculate_min_max, calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange,
+    calculate_var, calculate_willr, calculate_wma, BarsSinceState, CmoState, CumState, EmaState,
+    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, OscillatorKind,
+    PriceOscillatorState, RegressionOutput, RisingState, RsiState, SmaState, UnaryMathTransform,
+    ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -306,6 +307,20 @@ impl<'a> VmEngine<'a> {
         Ok(buffer.get(offset))
     }
 
+    fn materialize_value(&self, value: Value, pc: usize) -> Result<Value, RuntimeError> {
+        match value {
+            Value::SeriesRef(slot) => self.load_series_value(slot, 0),
+            other @ (Value::Tuple2(_) | Value::Tuple3(_) | Value::Void) => {
+                Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "scalar-value",
+                    found: other.type_name(),
+                })
+            }
+            other => Ok(other),
+        }
+    }
+
     pub fn neg(&self, value: Value, pc: usize) -> Result<Value, RuntimeError> {
         match value {
             Value::NA => Ok(Value::NA),
@@ -466,6 +481,12 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Falling => self.call_falling(callsite, arity, args, pc),
             BuiltinId::BarsSince => self.call_barssince(callsite, arity, args, pc),
             BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
+            BuiltinId::Nz => self.call_nz(arity, args, pc),
+            BuiltinId::NaFunc => self.call_na(arity, args, pc),
+            BuiltinId::Coalesce => self.call_coalesce(arity, args, pc),
+            BuiltinId::Cum => self.call_cum(callsite, arity, args, pc),
+            BuiltinId::HighestBars => self.call_highest_bars(arity, args, pc),
+            BuiltinId::LowestBars => self.call_lowest_bars(arity, args, pc),
             BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
             BuiltinId::Trange => self.call_trange(arity, args, pc),
             BuiltinId::Wma => self.call_wma(arity, args, pc),
@@ -1404,6 +1425,133 @@ impl<'a> VmEngine<'a> {
         };
         self.indicator_state.insert(key, state);
         Ok(result)
+    }
+
+    fn call_nz(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "nz",
+                expected: 2,
+                found: arity,
+            });
+        }
+        self.call_coalesce(2, args, pc)
+    }
+
+    fn call_na(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "na",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let value = self.materialize_value(args.into_iter().next().unwrap_or(Value::NA), pc)?;
+        Ok(Value::Bool(matches!(value, Value::NA)))
+    }
+
+    fn call_coalesce(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "coalesce",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let left = self.materialize_value(args[0].clone(), pc)?;
+        if !matches!(left, Value::NA) {
+            return Ok(left);
+        }
+        self.materialize_value(args[1].clone(), pc)
+    }
+
+    fn call_cum(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "cum",
+                expected: 1,
+                found: arity,
+            });
+        }
+        let key = (BuiltinId::Cum, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Cum(CumState::new()));
+        let input = self.materialize_value(args.into_iter().next().unwrap_or(Value::NA), pc)?;
+        let result = match &mut state {
+            IndicatorState::Cum(state) => state.update(input, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_highest_bars(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_bar_offset(arity, args, pc, BuiltinId::HighestBars)
+    }
+
+    fn call_lowest_bars(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_extrema_bar_offset(arity, args, pc, BuiltinId::LowestBars)
+    }
+
+    fn call_extrema_bar_offset(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        self.consume_steps(window.max(1), pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        match builtin {
+            BuiltinId::HighestBars => calculate_highest_bars(buffer, window, pc),
+            BuiltinId::LowestBars => calculate_lowest_bars(buffer, window, pc),
+            _ => unreachable!(),
+        }
     }
 
     fn call_valuewhen(

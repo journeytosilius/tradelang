@@ -6,10 +6,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, Stmt, StmtKind, UnaryOp,
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, SignalRole as AstSignalRole, Stmt,
+    StmtKind, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
-use crate::bytecode::{Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program};
+use crate::bytecode::{
+    Constant, Instruction, LocalInfo, OpCode, OutputDecl, OutputKind, Program,
+    SignalRole as CompiledSignalRole,
+};
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
@@ -157,6 +161,10 @@ struct Analysis {
     resolved_let_slots: HashMap<NodeId, u16>,
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
+    immutable_slots: HashMap<NodeId, u16>,
+    immutable_bindings: HashMap<String, ExprInfo>,
+    immutable_binding_slots: HashMap<String, u16>,
+    immutable_values: HashMap<String, Value>,
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
@@ -203,6 +211,7 @@ impl<'a> Analyzer<'a> {
         analyzer.validate_strategy_intervals(ast);
         analyzer.collect_functions(ast);
         analyzer.collect_source_series(ast);
+        analyzer.collect_immutable_bindings(ast);
         analyzer.validate_function_bodies();
         analyzer.validate_function_cycles();
         analyzer
@@ -455,6 +464,264 @@ impl<'a> Analyzer<'a> {
         }
     }
 
+    fn collect_immutable_bindings(&mut self, ast: &Ast) {
+        for stmt in &ast.statements {
+            match &stmt.kind {
+                StmtKind::Const { name, expr, .. } => {
+                    self.analyze_immutable_stmt(stmt.id, name, expr, true, stmt.span);
+                }
+                StmtKind::Input { name, expr, .. } => {
+                    self.analyze_immutable_stmt(stmt.id, name, expr, false, stmt.span);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn analyze_immutable_stmt(
+        &mut self,
+        stmt_id: NodeId,
+        name: &str,
+        expr: &Expr,
+        is_const: bool,
+        span: Span,
+    ) {
+        if self.scopes[0].contains_key(name) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("duplicate binding `{name}` in the same scope"),
+                span,
+            ));
+            return;
+        }
+
+        let info = self.analyze_immutable_expr(expr, is_const);
+        let Some(ty) = info.concrete() else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                if is_const {
+                    "`const` expressions must resolve to a scalar value"
+                } else {
+                    "`input` expressions must resolve to a scalar value"
+                },
+                expr.span,
+            ));
+            return;
+        };
+        if ty.is_series() || matches!(ty, Type::Void) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                if is_const {
+                    "`const` expressions must resolve to a scalar value"
+                } else {
+                    "`input` expressions must resolve to a scalar value"
+                },
+                expr.span,
+            ));
+            return;
+        }
+
+        let slot = self.define_symbol(name.to_string(), info, false, None);
+        self.analysis.immutable_slots.insert(stmt_id, slot);
+        self.analysis
+            .immutable_bindings
+            .insert(name.to_string(), info);
+        self.analysis
+            .immutable_binding_slots
+            .insert(name.to_string(), slot);
+        if let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) {
+            self.analysis
+                .immutable_values
+                .insert(name.to_string(), value);
+        } else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                if is_const {
+                    "failed to evaluate `const` expression at compile time"
+                } else {
+                    "failed to evaluate `input` expression at compile time"
+                },
+                expr.span,
+            ));
+        }
+    }
+
+    fn analyze_immutable_expr(&mut self, expr: &Expr, is_const: bool) -> ExprInfo {
+        match &expr.kind {
+            ExprKind::Number(_) => ExprInfo::scalar(Type::F64),
+            ExprKind::Bool(_) => ExprInfo::scalar(Type::Bool),
+            ExprKind::Na => ExprInfo {
+                ty: InferredType::Na,
+                update_mask: 0,
+            },
+            ExprKind::EnumVariant {
+                namespace,
+                variant,
+                variant_span,
+                ..
+            } => match resolve_enum_variant(namespace, variant) {
+                Some(_) => ExprInfo::scalar(Type::MaType),
+                None => {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("unknown enum variant `{}.{}`", namespace, variant),
+                        *variant_span,
+                    ));
+                    ExprInfo::scalar(Type::MaType)
+                }
+            },
+            ExprKind::Ident(name) => match self.analysis.immutable_bindings.get(name).copied() {
+                Some(info) => info,
+                None => {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        if is_const {
+                            format!("`const` expressions may only reference previously declared `const` or `input` bindings; found `{name}`")
+                        } else {
+                            format!("`input` expressions may only use scalar literals or enum literals; found `{name}`")
+                        },
+                        expr.span,
+                    ));
+                    ExprInfo::scalar(Type::F64)
+                }
+            },
+            ExprKind::Unary { op, expr: inner } => {
+                if !is_const {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`input` expressions may only use scalar literals or enum literals",
+                        expr.span,
+                    ));
+                }
+                let inner_info = self.analyze_immutable_expr(inner, is_const);
+                ExprInfo {
+                    ty: infer_unary(*op, inner_info.ty, inner.span, &mut self.diagnostics),
+                    update_mask: 0,
+                }
+            }
+            ExprKind::Binary { op, left, right } => {
+                if !is_const {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`input` expressions may only use scalar literals or enum literals",
+                        expr.span,
+                    ));
+                }
+                let left_info = self.analyze_immutable_expr(left, is_const);
+                let right_info = self.analyze_immutable_expr(right, is_const);
+                ExprInfo {
+                    ty: infer_binary(
+                        *op,
+                        left_info.ty,
+                        right_info.ty,
+                        left.span.merge(right.span),
+                        &mut self.diagnostics,
+                    ),
+                    update_mask: 0,
+                }
+            }
+            ExprKind::Conditional {
+                condition,
+                when_true,
+                when_false,
+            } => {
+                if !is_const {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`input` expressions may only use scalar literals or enum literals",
+                        expr.span,
+                    ));
+                }
+                let condition_info = self.analyze_immutable_expr(condition, is_const);
+                if !condition_info.ty.allow_bool() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "conditional expression condition must be bool, series<bool>, or na",
+                        condition.span,
+                    ));
+                }
+                let true_info = self.analyze_immutable_expr(when_true, is_const);
+                let false_info = self.analyze_immutable_expr(when_false, is_const);
+                ExprInfo {
+                    ty: infer_conditional(
+                        true_info.ty,
+                        false_info.ty,
+                        expr.span,
+                        &mut self.diagnostics,
+                    ),
+                    update_mask: 0,
+                }
+            }
+            ExprKind::Call { callee, args, .. } => {
+                if !is_const {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`input` expressions may only use scalar literals or enum literals",
+                        expr.span,
+                    ));
+                    for arg in args {
+                        self.analyze_immutable_expr(arg, is_const);
+                    }
+                    return ExprInfo::scalar(Type::F64);
+                }
+                let Some(builtin) = BuiltinId::from_name(callee) else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("`const` expressions may only call pure scalar builtins; found `{callee}`"),
+                        expr.span,
+                    ));
+                    for arg in args {
+                        self.analyze_immutable_expr(arg, is_const);
+                    }
+                    return ExprInfo::scalar(Type::F64);
+                };
+                if !builtin_allowed_in_const(builtin) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("`const` expressions may only call pure scalar builtins; found `{callee}`"),
+                        expr.span,
+                    ));
+                }
+                let arg_info: Vec<ExprInfo> = args
+                    .iter()
+                    .map(|arg| self.analyze_immutable_expr(arg, is_const))
+                    .collect();
+                let info = analyze_helper_builtin(
+                    builtin,
+                    callee,
+                    args,
+                    &arg_info,
+                    &self.analysis.immutable_values,
+                    expr.span,
+                    &mut self.diagnostics,
+                );
+                if info.update_mask != 0 || info.concrete().is_some_and(Type::is_series) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`const` expressions must resolve to a scalar value",
+                        expr.span,
+                    ));
+                }
+                ExprInfo {
+                    ty: info.ty,
+                    update_mask: 0,
+                }
+            }
+            ExprKind::String(_) | ExprKind::SourceSeries { .. } | ExprKind::Index { .. } => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    if is_const {
+                        "`const` expressions may only use scalar literals, enum literals, immutable bindings, and pure scalar builtins"
+                    } else {
+                        "`input` expressions may only use scalar literals or enum literals"
+                    },
+                    expr.span,
+                ));
+                ExprInfo::scalar(Type::F64)
+            }
+        }
+    }
+
     fn validate_function_cycles(&mut self) {
         let mut visiting = HashSet::new();
         let mut visited = HashSet::new();
@@ -495,6 +762,15 @@ impl<'a> Analyzer<'a> {
             ExprKind::Binary { left, right, .. } => {
                 self.validate_function_expr(left, params);
                 self.validate_function_expr(right, params);
+            }
+            ExprKind::Conditional {
+                condition,
+                when_true,
+                when_false,
+            } => {
+                self.validate_function_expr(condition, params);
+                self.validate_function_expr(when_true, params);
+                self.validate_function_expr(when_false, params);
             }
             ExprKind::Call { callee, args, .. } => {
                 match BuiltinId::from_name(callee) {
@@ -686,11 +962,32 @@ impl<'a> Analyzer<'a> {
                     .resolved_let_tuple_slots
                     .insert(stmt.id, slots);
             }
+            StmtKind::Const { name, expr, .. } | StmtKind::Input { name, expr, .. } => {
+                let info = self.analyze_expr(expr);
+                let Some(slot) = self.analysis.immutable_slots.get(&stmt.id).copied() else {
+                    return;
+                };
+                let Some(expected) = self.analysis.immutable_bindings.get(name).copied() else {
+                    return;
+                };
+                if info.ty != expected.ty {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("binding `{name}` changed type during semantic analysis"),
+                        expr.span,
+                    ));
+                    return;
+                }
+                self.analysis.resolved_let_slots.insert(stmt.id, slot);
+            }
             StmtKind::Export { name, expr, .. } => {
-                self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries);
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None);
             }
             StmtKind::Trigger { name, expr, .. } => {
-                self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger);
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger, None);
+            }
+            StmtKind::Signal { role, expr } => {
+                self.analyze_signal_stmt(stmt, *role, expr);
             }
             StmtKind::If {
                 condition,
@@ -718,7 +1015,26 @@ impl<'a> Analyzer<'a> {
         }
     }
 
-    fn analyze_output_stmt(&mut self, stmt: &Stmt, name: &str, expr: &Expr, kind: OutputKind) {
+    fn analyze_signal_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {
+        let compiled_role = compiled_signal_role(role);
+        let canonical = compiled_role.canonical_name();
+        self.analyze_output_stmt(
+            stmt,
+            canonical,
+            expr,
+            OutputKind::Trigger,
+            Some(compiled_role),
+        );
+    }
+
+    fn analyze_output_stmt(
+        &mut self,
+        stmt: &Stmt,
+        name: &str,
+        expr: &Expr,
+        kind: OutputKind,
+        signal_role: Option<CompiledSignalRole>,
+    ) {
         let expr_info = self.analyze_expr(expr);
         match kind {
             OutputKind::ExportSeries => {
@@ -735,7 +1051,11 @@ impl<'a> Analyzer<'a> {
                 if !expr_info.ty.allow_bool() {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
-                        "trigger requires bool, series<bool>, or na",
+                        if signal_role.is_some() {
+                            "signal declarations require bool, series<bool>, or na"
+                        } else {
+                            "trigger requires bool, series<bool>, or na"
+                        },
                         expr.span,
                     ));
                     return;
@@ -766,6 +1086,7 @@ impl<'a> Analyzer<'a> {
         self.analysis.outputs.push(OutputDecl {
             name: name.to_string(),
             kind,
+            signal_role,
             ty,
             slot,
         });
@@ -841,6 +1162,11 @@ impl<'a> Analyzer<'a> {
             }
             ExprKind::Unary { op, expr: inner } => self.analyze_unary(*op, inner),
             ExprKind::Binary { op, left, right } => self.analyze_binary(*op, left, right),
+            ExprKind::Conditional {
+                condition,
+                when_true,
+                when_false,
+            } => self.analyze_conditional(expr.span, condition, when_true, when_false),
             ExprKind::Call { callee, args, .. } => self.analyze_call(expr, callee, args),
             ExprKind::Index { target, index } => self.analyze_index(target, index, expr.span),
         };
@@ -870,6 +1196,31 @@ impl<'a> Analyzer<'a> {
         ExprInfo {
             ty,
             update_mask: left_info.update_mask | right_info.update_mask,
+        }
+    }
+
+    fn analyze_conditional(
+        &mut self,
+        span: Span,
+        condition: &Expr,
+        when_true: &Expr,
+        when_false: &Expr,
+    ) -> ExprInfo {
+        let condition_info = self.analyze_expr(condition);
+        if !condition_info.ty.allow_bool() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "conditional expression condition must be bool, series<bool>, or na",
+                condition.span,
+            ));
+        }
+        let true_info = self.analyze_expr(when_true);
+        let false_info = self.analyze_expr(when_false);
+        ExprInfo {
+            ty: infer_conditional(true_info.ty, false_info.ty, span, &mut self.diagnostics),
+            update_mask: condition_info.update_mask
+                | true_info.update_mask
+                | false_info.update_mask,
         }
     }
 
@@ -990,6 +1341,7 @@ impl<'a> Analyzer<'a> {
                     callee,
                     args,
                     &arg_info,
+                    &self.analysis.immutable_values,
                     span,
                     &mut self.diagnostics,
                 )
@@ -999,7 +1351,7 @@ impl<'a> Analyzer<'a> {
 
     fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> ExprInfo {
         let target_info = self.analyze_expr(target);
-        let Some(_) = literal_window(index) else {
+        let Some(_) = literal_window(index, &self.analysis.immutable_values) else {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 "series indexing requires a non-negative integer literal",
@@ -1113,8 +1465,8 @@ impl<'a> Analyzer<'a> {
             .find_map(|scope| scope.get(name).copied())
     }
 
-    fn is_function_visible_name(&self, _name: &str) -> bool {
-        false
+    fn is_function_visible_name(&self, name: &str) -> bool {
+        self.analysis.immutable_bindings.contains_key(name)
     }
 }
 
@@ -1133,7 +1485,12 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
         function: &'a FunctionDecl,
         arg_shapes: Vec<FunctionArgShape>,
     ) -> Self {
-        let mut root = HashMap::new();
+        let mut root: HashMap<String, AnalyzerSymbol> = parent
+            .analysis
+            .immutable_bindings
+            .iter()
+            .map(|(name, info)| (name.clone(), AnalyzerSymbol { info: *info }))
+            .collect();
 
         let mut param_bindings = Vec::with_capacity(function.params.len());
         for (param, arg_shape) in function.params.iter().zip(arg_shapes) {
@@ -1219,6 +1576,33 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
             },
             ExprKind::SourceSeries { interval, .. } => {
                 ExprInfo::series(interval.map_or(BASE_UPDATE_MASK, Interval::mask))
+            }
+            ExprKind::Conditional {
+                condition,
+                when_true,
+                when_false,
+            } => {
+                let condition_info = self.analyze_expr(condition);
+                if !condition_info.ty.allow_bool() {
+                    self.parent.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "conditional expression condition must be bool, series<bool>, or na",
+                        condition.span,
+                    ));
+                }
+                let true_info = self.analyze_expr(when_true);
+                let false_info = self.analyze_expr(when_false);
+                ExprInfo {
+                    ty: infer_conditional(
+                        true_info.ty,
+                        false_info.ty,
+                        expr.span,
+                        &mut self.parent.diagnostics,
+                    ),
+                    update_mask: condition_info.update_mask
+                        | true_info.update_mask
+                        | false_info.update_mask,
+                }
             }
             ExprKind::Unary { op, expr: inner } => {
                 let inner_info = self.analyze_expr(inner);
@@ -1360,6 +1744,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     callee,
                     args,
                     &arg_info,
+                    &self.parent.analysis.immutable_values,
                     span,
                     &mut self.parent.diagnostics,
                 )
@@ -1369,7 +1754,7 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
 
     fn analyze_index(&mut self, target: &Expr, index: &Expr, span: Span) -> ExprInfo {
         let target_info = self.analyze_expr(target);
-        let Some(_) = literal_window(index) else {
+        let Some(_) = literal_window(index, &self.parent.analysis.immutable_values) else {
             self.parent.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 "series indexing requires a non-negative integer literal",
@@ -1410,9 +1795,12 @@ fn collect_source_series_stmt(
 ) {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::Const { expr, .. }
+        | StmtKind::Input { expr, .. }
         | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
+        | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
         StmtKind::If {
             condition,
@@ -1447,6 +1835,15 @@ fn collect_source_series_refs(
         ExprKind::Binary { left, right, .. } => {
             collect_source_series_refs(left, refs);
             collect_source_series_refs(right, refs);
+        }
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => {
+            collect_source_series_refs(condition, refs);
+            collect_source_series_refs(when_true, refs);
+            collect_source_series_refs(when_false, refs);
         }
         ExprKind::Call { args, .. } => {
             for arg in args {
@@ -1483,9 +1880,12 @@ fn source_ref_span(ast: &Ast, source: &str, target: Option<Interval>) -> Option<
 fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> Option<Span> {
     match &stmt.kind {
         StmtKind::Let { expr, .. }
+        | StmtKind::Const { expr, .. }
+        | StmtKind::Input { expr, .. }
         | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
         | StmtKind::Trigger { expr, .. }
+        | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
         StmtKind::If {
             condition,
@@ -1517,6 +1917,13 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         ExprKind::Unary { expr, .. } => expr_source_ref_span(expr, source, target),
         ExprKind::Binary { left, right, .. } => expr_source_ref_span(left, source, target)
             .or_else(|| expr_source_ref_span(right, source, target)),
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => expr_source_ref_span(condition, source, target)
+            .or_else(|| expr_source_ref_span(when_true, source, target))
+            .or_else(|| expr_source_ref_span(when_false, source, target)),
         ExprKind::Call { args, .. } => args
             .iter()
             .find_map(|arg| expr_source_ref_span(arg, source, target)),
@@ -1556,6 +1963,15 @@ fn collect_called_user_functions<'a>(
         ExprKind::Binary { left, right, .. } => {
             collect_called_user_functions(left, functions_by_name, calls);
             collect_called_user_functions(right, functions_by_name, calls);
+        }
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => {
+            collect_called_user_functions(condition, functions_by_name, calls);
+            collect_called_user_functions(when_true, functions_by_name, calls);
+            collect_called_user_functions(when_false, functions_by_name, calls);
         }
         ExprKind::Call { callee, args, .. } => {
             if functions_by_name.contains_key(callee) {
@@ -1706,11 +2122,77 @@ fn infer_binary(
     }
 }
 
+fn infer_conditional(
+    when_true: InferredType,
+    when_false: InferredType,
+    span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> InferredType {
+    match (when_true, when_false) {
+        (InferredType::Concrete(Type::F64), InferredType::Concrete(Type::Bool))
+        | (InferredType::Concrete(Type::Bool), InferredType::Concrete(Type::F64)) => {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "conditional expression branches must resolve to compatible types",
+                span,
+            ));
+            InferredType::Concrete(Type::F64)
+        }
+        (InferredType::Na, other) | (other, InferredType::Na) => other,
+        (InferredType::Concrete(Type::SeriesF64), _)
+        | (_, InferredType::Concrete(Type::SeriesF64)) => {
+            if !(when_true.is_numeric_like() && when_false.is_numeric_like()) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "conditional expression branches must resolve to compatible types",
+                    span,
+                ));
+            }
+            InferredType::Concrete(Type::SeriesF64)
+        }
+        (InferredType::Concrete(Type::SeriesBool), _)
+        | (_, InferredType::Concrete(Type::SeriesBool)) => {
+            if !(when_true.allow_bool() && when_false.allow_bool()) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "conditional expression branches must resolve to compatible types",
+                    span,
+                ));
+            }
+            InferredType::Concrete(Type::SeriesBool)
+        }
+        (InferredType::Concrete(Type::F64), InferredType::Concrete(Type::F64)) => {
+            InferredType::Concrete(Type::F64)
+        }
+        (InferredType::Concrete(Type::Bool), InferredType::Concrete(Type::Bool)) => {
+            InferredType::Concrete(Type::Bool)
+        }
+        (InferredType::Concrete(Type::MaType), InferredType::Concrete(Type::MaType)) => {
+            InferredType::Concrete(Type::MaType)
+        }
+        (InferredType::Tuple2(left), InferredType::Tuple2(right)) if left == right => {
+            InferredType::Tuple2(left)
+        }
+        (InferredType::Tuple3(left), InferredType::Tuple3(right)) if left == right => {
+            InferredType::Tuple3(left)
+        }
+        _ => {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "conditional expression branches must resolve to compatible types",
+                span,
+            ));
+            InferredType::Concrete(Type::F64)
+        }
+    }
+}
+
 fn analyze_helper_builtin(
     builtin: BuiltinId,
     callee: &str,
     args: &[Expr],
     arg_info: &[ExprInfo],
+    immutable_values: &HashMap<String, Value>,
     span: Span,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> ExprInfo {
@@ -1742,7 +2224,22 @@ fn analyze_helper_builtin(
                     args[0].span,
                 ));
             }
-            validate_positive_window_literal(callee, &args[1], diagnostics);
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::HighestBars | BuiltinKind::LowestBars => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
                 update_mask: series_info.update_mask,
@@ -1757,7 +2254,7 @@ fn analyze_helper_builtin(
                     args[0].span,
                 ));
             }
-            validate_positive_window_literal(callee, &args[1], diagnostics);
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesBool),
                 update_mask: series_info.update_mask,
@@ -1772,7 +2269,7 @@ fn analyze_helper_builtin(
                     args[0].span,
                 ));
             }
-            validate_positive_window_literal(callee, &args[1], diagnostics);
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
             if !matches!(arg_info[2].ty, InferredType::Concrete(Type::MaType)) {
                 diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
@@ -1795,10 +2292,10 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() >= 2 {
-                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
             }
             if args.len() >= 3 {
-                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+                validate_min_window_literal(callee, &args[2], immutable_values, 2, diagnostics);
             }
             if args.len() == 4 && !matches!(arg_info[3].ty, InferredType::Concrete(Type::MaType)) {
                 diagnostics.push(Diagnostic::new(
@@ -1821,9 +2318,9 @@ fn analyze_helper_builtin(
                     args[0].span,
                 ));
             }
-            validate_positive_window_literal(callee, &args[1], diagnostics);
-            validate_positive_window_literal(callee, &args[2], diagnostics);
-            validate_positive_window_literal(callee, &args[3], diagnostics);
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
+            validate_positive_window_literal(callee, &args[2], immutable_values, diagnostics);
+            validate_positive_window_literal(callee, &args[3], immutable_values, diagnostics);
             ExprInfo {
                 ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
                 update_mask: series_info.update_mask,
@@ -1879,7 +2376,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 2 {
-                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -1901,7 +2398,13 @@ fn analyze_helper_builtin(
                 } else {
                     2
                 };
-                validate_min_window_literal(callee, &args[1], minimum, diagnostics);
+                validate_min_window_literal(
+                    callee,
+                    &args[1],
+                    immutable_values,
+                    minimum,
+                    diagnostics,
+                );
             }
             if args.len() == 3 && !arg_info[2].ty.is_scalar_numeric() {
                 diagnostics.push(Diagnostic::new(
@@ -1925,7 +2428,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 2 {
-                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
@@ -1950,7 +2453,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 3 {
-                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+                validate_min_window_literal(callee, &args[2], immutable_values, 2, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
@@ -1975,7 +2478,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 3 {
-                validate_min_window_literal(callee, &args[2], 1, diagnostics);
+                validate_min_window_literal(callee, &args[2], immutable_values, 1, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2000,7 +2503,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 3 {
-                validate_min_window_literal(callee, &args[2], 2, diagnostics);
+                validate_min_window_literal(callee, &args[2], immutable_values, 2, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2033,7 +2536,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 4 {
-                validate_min_window_literal(callee, &args[3], 2, diagnostics);
+                validate_min_window_literal(callee, &args[3], immutable_values, 2, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2097,7 +2600,7 @@ fn analyze_helper_builtin(
                     args[0].span,
                 ));
             }
-            validate_positive_window_literal(callee, &args[1], diagnostics);
+            validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
                 update_mask: series_info.update_mask,
@@ -2113,7 +2616,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 2 {
-                validate_positive_window_literal(callee, &args[1], diagnostics);
+                validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2132,6 +2635,85 @@ fn analyze_helper_builtin(
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
                 update_mask: condition_info.update_mask,
+            }
+        }
+        BuiltinKind::NullCheck => ExprInfo {
+            ty: if arg_info[0].concrete().is_some_and(Type::is_series) {
+                InferredType::Concrete(Type::SeriesBool)
+            } else if matches!(arg_info[0].ty, InferredType::Na) {
+                InferredType::Na
+            } else {
+                InferredType::Concrete(Type::Bool)
+            },
+            update_mask: arg_info[0].update_mask,
+        },
+        BuiltinKind::NullCoalesce => {
+            let fallback = if matches!(builtin, BuiltinId::Nz) {
+                if args.len() == 2 {
+                    arg_info[1]
+                } else {
+                    default_nz_fallback(arg_info[0].ty, args[0].span, diagnostics)
+                }
+            } else {
+                arg_info[1]
+            };
+            if !matches!(
+                (arg_info[0].ty, fallback.ty),
+                (InferredType::Na, _)
+                    | (_, InferredType::Na)
+                    | (
+                        InferredType::Concrete(Type::F64),
+                        InferredType::Concrete(Type::F64)
+                    )
+                    | (
+                        InferredType::Concrete(Type::SeriesF64),
+                        InferredType::Concrete(Type::SeriesF64)
+                    )
+                    | (
+                        InferredType::Concrete(Type::F64),
+                        InferredType::Concrete(Type::SeriesF64)
+                    )
+                    | (
+                        InferredType::Concrete(Type::SeriesF64),
+                        InferredType::Concrete(Type::F64)
+                    )
+                    | (
+                        InferredType::Concrete(Type::Bool),
+                        InferredType::Concrete(Type::Bool)
+                    )
+                    | (
+                        InferredType::Concrete(Type::SeriesBool),
+                        InferredType::Concrete(Type::SeriesBool)
+                    )
+                    | (
+                        InferredType::Concrete(Type::Bool),
+                        InferredType::Concrete(Type::SeriesBool)
+                    )
+                    | (
+                        InferredType::Concrete(Type::SeriesBool),
+                        InferredType::Concrete(Type::Bool)
+                    )
+            ) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires compatible numeric or bool arguments"),
+                    span,
+                ));
+            }
+            coalesce_result(arg_info[0], fallback)
+        }
+        BuiltinKind::Cumulative => {
+            let input = arg_info[0];
+            if !input.ty.is_numeric_like() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires numeric or series numeric input"),
+                    args[0].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: input.update_mask,
             }
         }
         BuiltinKind::ValueWhen => {
@@ -2156,7 +2738,13 @@ fn analyze_helper_builtin(
                     args[1].span,
                 ));
             }
-            validate_non_negative_literal(callee, "occurrence", &args[2], diagnostics);
+            validate_non_negative_literal(
+                callee,
+                "occurrence",
+                &args[2],
+                immutable_values,
+                diagnostics,
+            );
             ExprInfo {
                 ty: match source_info.ty {
                     InferredType::Concrete(Type::SeriesBool) => {
@@ -2232,6 +2820,15 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             ty: InferredType::Concrete(Type::SeriesBool),
             update_mask: 0,
         },
+        BuiltinKind::NullCheck => bool_result(arg_info),
+        BuiltinKind::NullCoalesce => {
+            let left = arg_info
+                .first()
+                .copied()
+                .unwrap_or_else(|| ExprInfo::scalar(Type::F64));
+            let right = arg_info.get(1).copied().unwrap_or(left);
+            coalesce_result(left, right)
+        }
         BuiltinKind::ValueWhen => ExprInfo::series(0),
         BuiltinKind::IndicatorTuple => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
@@ -2250,6 +2847,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::PriceTransform => numeric_result(arg_info),
         BuiltinKind::CurrentOhlc => ExprInfo::series(0),
         BuiltinKind::BarsSince
+        | BuiltinKind::Cumulative
         | BuiltinKind::Indicator
         | BuiltinKind::MovingAverage
         | BuiltinKind::MaOscillator
@@ -2257,6 +2855,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::Roc
         | BuiltinKind::Highest
         | BuiltinKind::Lowest
+        | BuiltinKind::HighestBars
+        | BuiltinKind::LowestBars
         | BuiltinKind::RollingSingleInput
         | BuiltinKind::RollingSingleInputFactor
         | BuiltinKind::RollingDoubleInput
@@ -2316,6 +2916,30 @@ fn bool_result(arg_info: &[ExprInfo]) -> ExprInfo {
     }
 }
 
+fn coalesce_result(left: ExprInfo, right: ExprInfo) -> ExprInfo {
+    ExprInfo {
+        ty: match (left.ty, right.ty) {
+            (InferredType::Concrete(Type::SeriesBool), _)
+            | (_, InferredType::Concrete(Type::SeriesBool)) => {
+                InferredType::Concrete(Type::SeriesBool)
+            }
+            (InferredType::Concrete(Type::Bool), InferredType::Concrete(Type::Bool)) => {
+                InferredType::Concrete(Type::Bool)
+            }
+            (InferredType::Concrete(Type::SeriesF64), _)
+            | (_, InferredType::Concrete(Type::SeriesF64)) => {
+                InferredType::Concrete(Type::SeriesF64)
+            }
+            (InferredType::Concrete(Type::F64), InferredType::Concrete(Type::F64)) => {
+                InferredType::Concrete(Type::F64)
+            }
+            (InferredType::Na, other) | (other, InferredType::Na) => other,
+            _ => InferredType::Concrete(Type::F64),
+        },
+        update_mask: left.update_mask | right.update_mask,
+    }
+}
+
 fn numeric_result(arg_info: &[ExprInfo]) -> ExprInfo {
     let update_mask = arg_info
         .iter()
@@ -2338,8 +2962,225 @@ fn numeric_result(arg_info: &[ExprInfo]) -> ExprInfo {
     }
 }
 
-fn validate_positive_window_literal(callee: &str, expr: &Expr, diagnostics: &mut Vec<Diagnostic>) {
-    match literal_window(expr) {
+fn default_nz_fallback(
+    ty: InferredType,
+    span: Span,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> ExprInfo {
+    match ty {
+        InferredType::Concrete(Type::Bool) => ExprInfo::scalar(Type::Bool),
+        InferredType::Concrete(Type::SeriesBool) => ExprInfo {
+            ty: InferredType::Concrete(Type::SeriesBool),
+            update_mask: 0,
+        },
+        InferredType::Concrete(Type::F64 | Type::SeriesF64) | InferredType::Na => ExprInfo {
+            ty: match ty {
+                InferredType::Concrete(Type::SeriesF64) => InferredType::Concrete(Type::SeriesF64),
+                InferredType::Na => InferredType::Na,
+                _ => InferredType::Concrete(Type::F64),
+            },
+            update_mask: 0,
+        },
+        _ => {
+            diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "nz requires numeric or bool input",
+                span,
+            ));
+            ExprInfo::scalar(Type::F64)
+        }
+    }
+}
+
+fn builtin_allowed_in_const(builtin: BuiltinId) -> bool {
+    matches!(
+        builtin.kind(),
+        BuiltinKind::UnaryMathTransform
+            | BuiltinKind::NumericBinary
+            | BuiltinKind::Relation2
+            | BuiltinKind::Relation3
+            | BuiltinKind::NullCheck
+            | BuiltinKind::NullCoalesce
+    )
+}
+
+fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
+    match role {
+        AstSignalRole::LongEntry => CompiledSignalRole::LongEntry,
+        AstSignalRole::LongExit => CompiledSignalRole::LongExit,
+        AstSignalRole::ShortEntry => CompiledSignalRole::ShortEntry,
+        AstSignalRole::ShortExit => CompiledSignalRole::ShortExit,
+    }
+}
+
+fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<Value> {
+    match &expr.kind {
+        ExprKind::Number(value) => Some(Value::F64(*value)),
+        ExprKind::Bool(value) => Some(Value::Bool(*value)),
+        ExprKind::Na => Some(Value::NA),
+        ExprKind::Ident(name) => values.get(name).cloned(),
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => resolve_enum_variant(namespace, variant),
+        ExprKind::Unary { op, expr } => {
+            let value = eval_immutable_expr(expr, values)?;
+            match (op, value) {
+                (UnaryOp::Neg, Value::F64(value)) => Some(Value::F64(-value)),
+                (UnaryOp::Neg, Value::NA) => Some(Value::NA),
+                (UnaryOp::Not, Value::Bool(value)) => Some(Value::Bool(!value)),
+                (UnaryOp::Not, Value::NA) => Some(Value::NA),
+                _ => None,
+            }
+        }
+        ExprKind::Binary { op, left, right } => {
+            let left = eval_immutable_expr(left, values)?;
+            let right = eval_immutable_expr(right, values)?;
+            eval_immutable_binary(*op, left, right)
+        }
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => match eval_immutable_expr(condition, values)? {
+            Value::Bool(true) => eval_immutable_expr(when_true, values),
+            Value::Bool(false) | Value::NA => eval_immutable_expr(when_false, values),
+            _ => None,
+        },
+        ExprKind::Call { callee, args, .. } => {
+            let builtin = BuiltinId::from_name(callee)?;
+            if !builtin_allowed_in_const(builtin) {
+                return None;
+            }
+            let args: Vec<Value> = args
+                .iter()
+                .map(|arg| eval_immutable_expr(arg, values))
+                .collect::<Option<_>>()?;
+            eval_immutable_builtin(builtin, &args)
+        }
+        ExprKind::String(_) | ExprKind::SourceSeries { .. } | ExprKind::Index { .. } => None,
+    }
+}
+
+fn eval_immutable_binary(op: BinaryOp, left: Value, right: Value) -> Option<Value> {
+    match op {
+        BinaryOp::Add => match (left, right) {
+            (Value::F64(left), Value::F64(right)) => Some(Value::F64(left + right)),
+            (Value::NA, _) | (_, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+        BinaryOp::Sub => match (left, right) {
+            (Value::F64(left), Value::F64(right)) => Some(Value::F64(left - right)),
+            (Value::NA, _) | (_, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+        BinaryOp::Mul => match (left, right) {
+            (Value::F64(left), Value::F64(right)) => Some(Value::F64(left * right)),
+            (Value::NA, _) | (_, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+        BinaryOp::Div => match (left, right) {
+            (Value::F64(left), Value::F64(right)) => Some(Value::F64(left / right)),
+            (Value::NA, _) | (_, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+        BinaryOp::Eq => Some(Value::Bool(eq_values_const(&left, &right)?)),
+        BinaryOp::Ne => Some(Value::Bool(!eq_values_const(&left, &right)?)),
+        BinaryOp::Lt => compare_f64_const(left, right, |left, right| left < right),
+        BinaryOp::Le => compare_f64_const(left, right, |left, right| left <= right),
+        BinaryOp::Gt => compare_f64_const(left, right, |left, right| left > right),
+        BinaryOp::Ge => compare_f64_const(left, right, |left, right| left >= right),
+        BinaryOp::And => match (left, right) {
+            (Value::Bool(left), Value::Bool(right)) => Some(Value::Bool(left && right)),
+            (Value::Bool(false), Value::NA) | (Value::NA, Value::Bool(false)) => {
+                Some(Value::Bool(false))
+            }
+            (Value::Bool(true), Value::NA)
+            | (Value::NA, Value::Bool(true))
+            | (Value::NA, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+        BinaryOp::Or => match (left, right) {
+            (Value::Bool(left), Value::Bool(right)) => Some(Value::Bool(left || right)),
+            (Value::Bool(true), Value::NA) | (Value::NA, Value::Bool(true)) => {
+                Some(Value::Bool(true))
+            }
+            (Value::Bool(false), Value::NA)
+            | (Value::NA, Value::Bool(false))
+            | (Value::NA, Value::NA) => Some(Value::NA),
+            _ => None,
+        },
+    }
+}
+
+fn eval_immutable_builtin(builtin: BuiltinId, args: &[Value]) -> Option<Value> {
+    match builtin {
+        BuiltinId::Add => eval_immutable_binary(BinaryOp::Add, args[0].clone(), args[1].clone()),
+        BuiltinId::Sub => eval_immutable_binary(BinaryOp::Sub, args[0].clone(), args[1].clone()),
+        BuiltinId::Mult => eval_immutable_binary(BinaryOp::Mul, args[0].clone(), args[1].clone()),
+        BuiltinId::Div => eval_immutable_binary(BinaryOp::Div, args[0].clone(), args[1].clone()),
+        BuiltinId::Above => {
+            compare_f64_const(args[0].clone(), args[1].clone(), |left, right| left > right)
+        }
+        BuiltinId::Below => {
+            compare_f64_const(args[0].clone(), args[1].clone(), |left, right| left < right)
+        }
+        BuiltinId::Between => {
+            let low = expect_const_f64(&args[1])?;
+            let value = expect_const_f64(&args[0])?;
+            let high = expect_const_f64(&args[2])?;
+            Some(Value::Bool(low < value && value < high))
+        }
+        BuiltinId::Outside => {
+            let value = expect_const_f64(&args[0])?;
+            let low = expect_const_f64(&args[1])?;
+            let high = expect_const_f64(&args[2])?;
+            Some(Value::Bool(value < low || value > high))
+        }
+        BuiltinId::Nz | BuiltinId::Coalesce => Some(match &args[0] {
+            Value::NA => args[1].clone(),
+            other => other.clone(),
+        }),
+        BuiltinId::NaFunc => Some(Value::Bool(matches!(args[0], Value::NA))),
+        _ => None,
+    }
+}
+
+fn expect_const_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::F64(value) => Some(*value),
+        _ => None,
+    }
+}
+
+fn compare_f64_const(
+    left: Value,
+    right: Value,
+    predicate: impl FnOnce(f64, f64) -> bool,
+) -> Option<Value> {
+    match (left, right) {
+        (Value::F64(left), Value::F64(right)) => Some(Value::Bool(predicate(left, right))),
+        (Value::NA, _) | (_, Value::NA) => Some(Value::NA),
+        _ => None,
+    }
+}
+
+fn eq_values_const(left: &Value, right: &Value) -> Option<bool> {
+    match (left, right) {
+        (Value::F64(left), Value::F64(right)) => Some(left == right),
+        (Value::Bool(left), Value::Bool(right)) => Some(left == right),
+        (Value::MaType(left), Value::MaType(right)) => Some(left == right),
+        (Value::NA, Value::NA) => Some(true),
+        _ => None,
+    }
+}
+
+fn validate_positive_window_literal(
+    callee: &str,
+    expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
+    diagnostics: &mut Vec<Diagnostic>,
+) {
+    match literal_window(expr, immutable_values) {
         Some(window) if window > 0 => {}
         Some(_) => diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
@@ -2357,10 +3198,11 @@ fn validate_positive_window_literal(callee: &str, expr: &Expr, diagnostics: &mut
 fn validate_min_window_literal(
     callee: &str,
     expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
     minimum: usize,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    match literal_window(expr) {
+    match literal_window(expr, immutable_values) {
         Some(window) if window >= minimum => {}
         Some(_) => diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
@@ -2379,9 +3221,10 @@ fn validate_non_negative_literal(
     callee: &str,
     noun: &str,
     expr: &Expr,
+    immutable_values: &HashMap<String, Value>,
     diagnostics: &mut Vec<Diagnostic>,
 ) {
-    if literal_window(expr).is_none() {
+    if literal_window(expr, immutable_values).is_none() {
         diagnostics.push(Diagnostic::new(
             DiagnosticKind::Type,
             format!("{callee} {noun} must be a non-negative integer literal"),
@@ -2427,9 +3270,15 @@ fn expected_arity_message(callee: &str, arity: BuiltinArity) -> String {
     }
 }
 
-fn literal_window(expr: &Expr) -> Option<usize> {
-    match expr.kind {
-        ExprKind::Number(value) if value >= 0.0 && value.fract() == 0.0 => Some(value as usize),
+fn literal_window(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Option<usize> {
+    match &expr.kind {
+        ExprKind::Number(value) if *value >= 0.0 && value.fract() == 0.0 => Some(*value as usize),
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::F64(value)) if *value >= 0.0 && value.fract() == 0.0 => {
+                Some(*value as usize)
+            }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -2606,6 +3455,20 @@ impl<'a> Compiler<'a> {
                     );
                 }
             }
+            StmtKind::Const { name, expr, .. } | StmtKind::Input { name, expr, .. } => {
+                self.emit_expr(expr, expr_info, user_calls);
+                let slot = self.analysis.resolved_let_slots[&stmt.id];
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(slot)
+                        .with_span(stmt.span),
+                );
+                let local = &self.program.locals[slot as usize];
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+            }
             StmtKind::Export { name, expr, .. } | StmtKind::Trigger { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_output_slots[&stmt.id];
@@ -2619,6 +3482,15 @@ impl<'a> Compiler<'a> {
                     .last_mut()
                     .unwrap()
                     .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
+            }
+            StmtKind::Signal { expr, .. } => {
+                self.emit_expr(expr, expr_info, user_calls);
+                let slot = self.analysis.resolved_output_slots[&stmt.id];
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(slot)
+                        .with_span(stmt.span),
+                );
             }
             StmtKind::If {
                 condition,
@@ -2767,13 +3639,28 @@ impl<'a> Compiler<'a> {
                 };
                 self.emit(Instruction::new(opcode).with_span(expr.span));
             }
+            ExprKind::Conditional {
+                condition,
+                when_true,
+                when_false,
+            } => {
+                self.emit_expr(condition, expr_info, user_calls);
+                let jump_if_false = self.emit_placeholder(OpCode::JumpIfFalse, condition.span);
+                self.emit_expr(when_true, expr_info, user_calls);
+                let jump_over_else = self.emit_placeholder(OpCode::Jump, expr.span);
+                self.patch_jump(jump_if_false, self.program.instructions.len());
+                self.emit_expr(when_false, expr_info, user_calls);
+                self.patch_jump(jump_over_else, self.program.instructions.len());
+            }
             ExprKind::Call { callee, args, .. } => {
                 self.emit_call(expr, callee, args, expr_info, user_calls);
             }
             ExprKind::Index { target, index } => {
-                let required_history = literal_window(index).unwrap_or_default() + 1;
+                let required_history =
+                    literal_window(index, &self.analysis.immutable_values).unwrap_or_default() + 1;
                 self.emit_series_ref(target, required_history.max(2), expr_info, user_calls);
-                let offset = literal_window(index).unwrap_or_default() as u16;
+                let offset = literal_window(index, &self.analysis.immutable_values)
+                    .unwrap_or_default() as u16;
                 self.emit(
                     Instruction::new(OpCode::SeriesGet)
                         .with_a(offset)
@@ -2809,7 +3696,7 @@ impl<'a> Compiler<'a> {
                 return;
             };
 
-            let mut scope = HashMap::new();
+            let mut scope = self.scopes.first().cloned().unwrap_or_default();
             for ((param, arg), binding) in function
                 .params
                 .iter()
@@ -2922,7 +3809,13 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Aroon
             | BuiltinId::AroonOsc
             | BuiltinId::Bop
-            | BuiltinId::Cci => {
+            | BuiltinId::Cci
+            | BuiltinId::Nz
+            | BuiltinId::NaFunc
+            | BuiltinId::Coalesce
+            | BuiltinId::Cum
+            | BuiltinId::HighestBars
+            | BuiltinId::LowestBars => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3097,6 +3990,39 @@ impl<'a> Compiler<'a> {
         callsite: u16,
     ) {
         match builtin.kind() {
+            BuiltinKind::NullCheck | BuiltinKind::NullCoalesce => {
+                for arg in args {
+                    self.emit_expr(arg, expr_info, user_calls);
+                }
+                if matches!(builtin, BuiltinId::Nz) && args.len() == 1 {
+                    let fallback = expr_info
+                        .get(&args[0].id)
+                        .and_then(|info| info.concrete())
+                        .unwrap_or(Type::F64);
+                    match fallback {
+                        Type::Bool | Type::SeriesBool => {
+                            let index = self.push_constant(Value::Bool(false));
+                            self.emit(
+                                Instruction::new(OpCode::LoadConst)
+                                    .with_a(index)
+                                    .with_span(expr.span),
+                            );
+                        }
+                        _ => self.emit_f64_constant(0.0, expr.span),
+                    }
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(if matches!(builtin, BuiltinId::Nz) && args.len() == 1 {
+                            2
+                        } else {
+                            args.len() as u16
+                        })
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::UnaryMathTransform => {
                 self.emit_expr(&args[0], expr_info, user_calls);
                 self.emit(
@@ -3108,7 +4034,7 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::Indicator | BuiltinKind::Highest | BuiltinKind::Lowest => {
-                let required_history = literal_window(&args[1])
+                let required_history = literal_window(&args[1], &self.analysis.immutable_values)
                     .map(|window| {
                         if matches!(builtin, BuiltinId::Highest | BuiltinId::Lowest) {
                             window
@@ -3123,6 +4049,29 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(args.len() as u16)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::HighestBars | BuiltinKind::LowestBars => {
+                let required_history =
+                    literal_window(&args[1], &self.analysis.immutable_values).unwrap_or(2);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_expr(&args[1], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::Cumulative => {
+                self.emit_expr(&args[0], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(1)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
@@ -3143,7 +4092,7 @@ impl<'a> Compiler<'a> {
                 };
                 let required_history = args
                     .get(1)
-                    .and_then(literal_window)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
                     .unwrap_or(default_window);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(1) {
@@ -3168,7 +4117,7 @@ impl<'a> Compiler<'a> {
                 };
                 let required_history = args
                     .get(1)
-                    .and_then(literal_window)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
                     .unwrap_or(default_window);
                 self.emit_series_ref(
                     &args[0],
@@ -3201,7 +4150,7 @@ impl<'a> Compiler<'a> {
                 };
                 let required_history = args
                     .get(1)
-                    .and_then(literal_window)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
                     .unwrap_or(default_window);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(1) {
@@ -3218,7 +4167,11 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::RollingHighLowTuple => {
-                let required_history = args.get(2).and_then(literal_window).unwrap_or(14) + 1;
+                let required_history = args
+                    .get(2)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(14)
+                    + 1;
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(2) {
@@ -3242,7 +4195,7 @@ impl<'a> Compiler<'a> {
                 };
                 let required_history = args
                     .get(2)
-                    .and_then(literal_window)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
                     .unwrap_or(default_window);
                 let required_steps = match builtin {
                     BuiltinId::Beta => required_history + 1,
@@ -3267,7 +4220,7 @@ impl<'a> Compiler<'a> {
             BuiltinKind::RollingHighLow => {
                 let required_history = args
                     .get(2)
-                    .and_then(literal_window)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
                     .map(|window| {
                         if matches!(builtin, BuiltinId::AroonOsc) {
                             window + 1
@@ -3298,7 +4251,10 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::RollingHighLowClose => {
-                let required_history = args.get(3).and_then(literal_window).unwrap_or(14);
+                let required_history = args
+                    .get(3)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(14);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
@@ -3329,7 +4285,8 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::MovingAverage => {
-                let required_history = literal_window(&args[1]).unwrap_or(2);
+                let required_history =
+                    literal_window(&args[1], &self.analysis.immutable_values).unwrap_or(2);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_expr(&args[1], expr_info, user_calls);
                 self.emit_expr(&args[2], expr_info, user_calls);
@@ -3342,8 +4299,14 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::MaOscillator => {
-                let fast = args.get(1).and_then(literal_window).unwrap_or(12);
-                let slow = args.get(2).and_then(literal_window).unwrap_or(26);
+                let fast = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(12);
+                let slow = args
+                    .get(2)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(26);
                 self.emit_series_ref(&args[0], fast.max(slow).max(2), expr_info, user_calls);
                 if let Some(fast_expr) = args.get(1) {
                     self.emit_expr(fast_expr, expr_info, user_calls);
@@ -3374,7 +4337,8 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::IndicatorTuple => {
-                let required_history = literal_window(&args[2]).unwrap_or(2) + 1;
+                let required_history =
+                    literal_window(&args[2], &self.analysis.immutable_values).unwrap_or(2) + 1;
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_expr(&args[1], expr_info, user_calls);
                 self.emit_expr(&args[2], expr_info, user_calls);
@@ -3388,7 +4352,7 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::Rising | BuiltinKind::Falling => {
-                let required_history = literal_window(&args[1])
+                let required_history = literal_window(&args[1], &self.analysis.immutable_values)
                     .map(|window| window + 1)
                     .unwrap_or(2);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
@@ -3437,7 +4401,7 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::Change => {
-                let required_history = literal_window(&args[1])
+                let required_history = literal_window(&args[1], &self.analysis.immutable_values)
                     .map(|window| window + 1)
                     .unwrap_or(2);
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
@@ -3451,7 +4415,11 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::Roc => {
-                let required_history = args.get(1).and_then(literal_window).unwrap_or(10) + 1;
+                let required_history = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(10)
+                    + 1;
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(1) {
                     self.emit_expr(window, expr_info, user_calls);
@@ -3511,7 +4479,9 @@ impl<'a> Compiler<'a> {
         expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
-        let required_history = window.and_then(literal_window).unwrap_or(default_window);
+        let required_history = window
+            .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+            .unwrap_or(default_window);
         let callsite = self.next_callsite();
         self.emit_series_ref(series, required_history.max(2), expr_info, user_calls);
         if let Some(window) = window {
@@ -3537,7 +4507,9 @@ impl<'a> Compiler<'a> {
         expr_info: &HashMap<NodeId, ExprInfo>,
         user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
     ) {
-        let required_history = window.and_then(literal_window).unwrap_or(default_window);
+        let required_history = window
+            .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+            .unwrap_or(default_window);
         let callsite = self.next_callsite();
         self.emit_series_ref(target, required_history.max(2), expr_info, user_calls);
         if let Some(window) = window {
@@ -3717,7 +4689,15 @@ impl<'a> Compiler<'a> {
     }
 
     fn rebuild_scopes(&mut self) {
-        self.scopes = vec![HashMap::new()];
+        let mut root = HashMap::new();
+        for (name, info) in &self.analysis.immutable_bindings {
+            let Some(&slot) = self.analysis.immutable_binding_slots.get(name) else {
+                continue;
+            };
+            let ty = info.concrete().unwrap_or(Type::F64);
+            root.insert(name.clone(), CompilerSymbol { slot, ty });
+        }
+        self.scopes = vec![root];
     }
 
     fn lookup_symbol(&self, name: &str) -> Option<CompilerSymbol> {

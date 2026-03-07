@@ -433,6 +433,35 @@ fn resolve_stmt(
             );
             scope.insert(name.clone(), index);
         }
+        StmtKind::Const {
+            name,
+            name_span,
+            expr,
+        }
+        | StmtKind::Input {
+            name,
+            name_span,
+            expr,
+        } => {
+            resolve_expr(context, expr, scope);
+            let detail = context
+                .expr_info
+                .get(&expr.id)
+                .map(render_expr_info)
+                .unwrap_or_else(|| "unknown".to_string());
+            let index = push_definition(
+                context,
+                DefinitionTarget {
+                    name: name.clone(),
+                    kind: SymbolKind::Let,
+                    span: stmt.span,
+                    selection_span: *name_span,
+                    detail: Some(detail),
+                    navigable: true,
+                },
+            );
+            scope.insert(name.clone(), index);
+        }
         StmtKind::LetTuple { names, expr } => {
             resolve_expr(context, expr, scope);
             let detail = context
@@ -497,6 +526,9 @@ fn resolve_stmt(
                 },
             );
             scope.insert(name.clone(), index);
+        }
+        StmtKind::Signal { expr, .. } => {
+            resolve_expr(context, expr, scope);
         }
         StmtKind::If {
             condition,
@@ -578,6 +610,15 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
             resolve_expr(context, left, scope);
             resolve_expr(context, right, scope);
         }
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => {
+            resolve_expr(context, condition, scope);
+            resolve_expr(context, when_true, scope);
+            resolve_expr(context, when_false, scope);
+        }
         ExprKind::Call {
             callee,
             callee_span,
@@ -635,6 +676,23 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             detail: context.expr_info.get(&expr.id).map(render_expr_info),
             children: Vec::new(),
         }),
+        StmtKind::Const {
+            name,
+            name_span,
+            expr,
+        }
+        | StmtKind::Input {
+            name,
+            name_span,
+            expr,
+        } => context.document_symbols.push(DocumentSymbolInfo {
+            name: name.clone(),
+            kind: SymbolKind::Let,
+            span: stmt.span,
+            selection_span: *name_span,
+            detail: context.expr_info.get(&expr.id).map(render_expr_info),
+            children: Vec::new(),
+        }),
         StmtKind::Export {
             name,
             name_span,
@@ -657,6 +715,7 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             detail: Some("series<bool>".to_string()),
             children: Vec::new(),
         }),
+        StmtKind::Signal { .. } => {}
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -921,6 +980,12 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Let { name, expr, .. } => {
             lines.push(format!("{prefix}let {name} = {}", format_expr(expr, 0)));
         }
+        StmtKind::Const { name, expr, .. } => {
+            lines.push(format!("{prefix}const {name} = {}", format_expr(expr, 0)));
+        }
+        StmtKind::Input { name, expr, .. } => {
+            lines.push(format!("{prefix}input {name} = {}", format_expr(expr, 0)));
+        }
         StmtKind::LetTuple { names, expr } => {
             let bindings = names
                 .iter()
@@ -937,6 +1002,15 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         }
         StmtKind::Trigger { name, expr, .. } => {
             lines.push(format!("{prefix}trigger {name} = {}", format_expr(expr, 0)));
+        }
+        StmtKind::Signal { role, expr } => {
+            let header = match role {
+                crate::ast::SignalRole::LongEntry => "entry long",
+                crate::ast::SignalRole::LongExit => "exit long",
+                crate::ast::SignalRole::ShortEntry => "entry short",
+                crate::ast::SignalRole::ShortExit => "exit short",
+            };
+            lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
         }
         StmtKind::Expr(expr) => {
             lines.push(format!("{prefix}{}", format_expr(expr, 0)));
@@ -1074,6 +1148,19 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
                 format_expr(right, right_bp)
             );
             maybe_parenthesize(rendered, left_bp, parent_bp)
+        }
+        ExprKind::Conditional {
+            condition,
+            when_true,
+            when_false,
+        } => {
+            let rendered = format!(
+                "{} ? {} : {}",
+                format_expr(condition, 4),
+                format_expr(when_true, 0),
+                format_expr(when_false, 4)
+            );
+            maybe_parenthesize(rendered, 4, parent_bp)
         }
         ExprKind::Call { callee, args, .. } => {
             let args = args

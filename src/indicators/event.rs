@@ -22,6 +22,13 @@ pub(crate) struct ValueWhenState {
     matches: VecDeque<Value>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct CumState {
+    total: f64,
+    initialized: bool,
+    cached_output: Value,
+}
+
 impl BarsSinceState {
     pub(crate) fn new() -> Self {
         Self {
@@ -141,9 +148,44 @@ impl ValueWhenState {
     }
 }
 
+impl CumState {
+    pub(crate) fn new() -> Self {
+        Self {
+            total: 0.0,
+            initialized: false,
+            cached_output: Value::NA,
+        }
+    }
+
+    pub(crate) fn update(&mut self, value: Value, pc: usize) -> Result<Value, RuntimeError> {
+        match value {
+            Value::F64(value) => {
+                self.total += value;
+                self.initialized = true;
+                self.cached_output = Value::F64(self.total);
+            }
+            Value::NA => {
+                self.cached_output = Value::NA;
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+        if self.initialized {
+            Ok(self.cached_output.clone())
+        } else {
+            Ok(Value::NA)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{BarsSinceState, ValueWhenState};
+    use super::{BarsSinceState, CumState, ValueWhenState};
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -196,5 +238,13 @@ mod tests {
         source.push(Value::Bool(false));
         cond.push(Value::Bool(false));
         assert_eq!(state.update(&cond, &source, 0).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn cum_accumulates_numeric_values_and_skips_state_reset_on_na() {
+        let mut state = CumState::new();
+        assert_eq!(state.update(Value::F64(2.0), 0).unwrap(), Value::F64(2.0));
+        assert_eq!(state.update(Value::NA, 0).unwrap(), Value::NA);
+        assert_eq!(state.update(Value::F64(3.0), 0).unwrap(), Value::F64(5.0));
     }
 }

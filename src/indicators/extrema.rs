@@ -206,6 +206,28 @@ pub(crate) fn calculate_min_max_index(
     })
 }
 
+pub(crate) fn calculate_highest_bars(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::F64((buffer.version() as usize - 1 - window.max_index) as f64),
+        None => Value::NA,
+    })
+}
+
+pub(crate) fn calculate_lowest_bars(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::F64((buffer.version() as usize - 1 - window.min_index) as f64),
+        None => Value::NA,
+    })
+}
+
 pub(crate) fn calculate_aroon(
     high: &SeriesBuffer,
     low: &SeriesBuffer,
@@ -520,8 +542,9 @@ fn na_tuple2() -> Value {
 mod tests {
     use super::{
         calculate_aroon, calculate_aroonosc, calculate_falling, calculate_highest,
-        calculate_lowest, calculate_max_index, calculate_min_index, calculate_min_max,
-        calculate_min_max_index, calculate_rising, calculate_willr,
+        calculate_highest_bars, calculate_lowest, calculate_lowest_bars, calculate_max_index,
+        calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_rising,
+        calculate_willr,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -601,6 +624,23 @@ mod tests {
         assert_eq!(
             calculate_min_max_index(&buffer, 3, 0).unwrap(),
             Value::Tuple2([Box::new(Value::F64(2.0)), Box::new(Value::F64(1.0))])
+        );
+    }
+
+    #[test]
+    fn bar_offset_helpers_return_recent_offsets() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [4.0, 7.0, 2.0, 6.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        assert_eq!(
+            calculate_highest_bars(&buffer, 4, 0).unwrap(),
+            Value::F64(2.0)
+        );
+        assert_eq!(
+            calculate_lowest_bars(&buffer, 4, 0).unwrap(),
+            Value::F64(1.0)
         );
     }
 

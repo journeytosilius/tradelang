@@ -55,6 +55,11 @@ pub enum BuiltinKind {
     Falling,
     BarsSince,
     ValueWhen,
+    NullCheck,
+    NullCoalesce,
+    Cumulative,
+    HighestBars,
+    LowestBars,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -144,10 +149,16 @@ pub enum BuiltinId {
     AroonOsc = 81,
     Bop = 82,
     Cci = 83,
+    Nz = 84,
+    NaFunc = 85,
+    Coalesce = 86,
+    Cum = 87,
+    HighestBars = 88,
+    LowestBars = 89,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 84] = [
+    pub const RESERVED: [Self; 90] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -232,9 +243,15 @@ impl BuiltinId {
         Self::AroonOsc,
         Self::Bop,
         Self::Cci,
+        Self::Nz,
+        Self::NaFunc,
+        Self::Coalesce,
+        Self::Cum,
+        Self::HighestBars,
+        Self::LowestBars,
     ];
 
-    pub const CALLABLE: [Self; 78] = [
+    pub const CALLABLE: [Self; 84] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -313,6 +330,12 @@ impl BuiltinId {
         Self::AroonOsc,
         Self::Bop,
         Self::Cci,
+        Self::Nz,
+        Self::NaFunc,
+        Self::Coalesce,
+        Self::Cum,
+        Self::HighestBars,
+        Self::LowestBars,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -401,6 +424,12 @@ impl BuiltinId {
             "aroonosc" => Some(Self::AroonOsc),
             "bop" => Some(Self::Bop),
             "cci" => Some(Self::Cci),
+            "nz" => Some(Self::Nz),
+            "na" => Some(Self::NaFunc),
+            "coalesce" => Some(Self::Coalesce),
+            "cum" => Some(Self::Cum),
+            "highestbars" => Some(Self::HighestBars),
+            "lowestbars" => Some(Self::LowestBars),
             _ => None,
         }
     }
@@ -491,6 +520,12 @@ impl BuiltinId {
             81 => Some(Self::AroonOsc),
             82 => Some(Self::Bop),
             83 => Some(Self::Cci),
+            84 => Some(Self::Nz),
+            85 => Some(Self::NaFunc),
+            86 => Some(Self::Coalesce),
+            87 => Some(Self::Cum),
+            88 => Some(Self::HighestBars),
+            89 => Some(Self::LowestBars),
             _ => None,
         }
     }
@@ -581,6 +616,12 @@ impl BuiltinId {
             Self::AroonOsc => "aroonosc",
             Self::Bop => "bop",
             Self::Cci => "cci",
+            Self::Nz => "nz",
+            Self::NaFunc => "na",
+            Self::Coalesce => "coalesce",
+            Self::Cum => "cum",
+            Self::HighestBars => "highestbars",
+            Self::LowestBars => "lowestbars",
         }
     }
 
@@ -645,6 +686,12 @@ impl BuiltinId {
             Self::Falling => BuiltinKind::Falling,
             Self::BarsSince => BuiltinKind::BarsSince,
             Self::ValueWhen => BuiltinKind::ValueWhen,
+            Self::Nz => BuiltinKind::NullCoalesce,
+            Self::NaFunc => BuiltinKind::NullCheck,
+            Self::Coalesce => BuiltinKind::NullCoalesce,
+            Self::Cum => BuiltinKind::Cumulative,
+            Self::HighestBars => BuiltinKind::HighestBars,
+            Self::LowestBars => BuiltinKind::LowestBars,
         }
     }
 
@@ -673,7 +720,9 @@ impl BuiltinId {
             | Self::Sinh
             | Self::Sqrt
             | Self::Tan
-            | Self::Tanh => BuiltinArity::Exact(1),
+            | Self::Tanh
+            | Self::NaFunc
+            | Self::Cum => BuiltinArity::Exact(1),
             Self::Sma
             | Self::Ema
             | Self::Rsi
@@ -685,6 +734,8 @@ impl BuiltinId {
             | Self::Change
             | Self::Highest
             | Self::Lowest
+            | Self::HighestBars
+            | Self::LowestBars
             | Self::Rising
             | Self::Falling
             | Self::Add
@@ -729,6 +780,8 @@ impl BuiltinId {
             Self::Apo | Self::Ppo => BuiltinArity::Range { min: 1, max: 4 },
             Self::Stddev | Self::Var => BuiltinArity::Range { min: 1, max: 3 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
+            Self::Nz => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Coalesce => BuiltinArity::Exact(2),
         }
     }
 
@@ -759,6 +812,12 @@ impl BuiltinId {
             Self::Falling => "falling(series, length)",
             Self::BarsSince => "barssince(condition)",
             Self::ValueWhen => "valuewhen(condition, source, occurrence)",
+            Self::Nz => "nz(value[, fallback])",
+            Self::NaFunc => "na(value)",
+            Self::Coalesce => "coalesce(value, fallback)",
+            Self::Cum => "cum(value)",
+            Self::HighestBars => "highestbars(series, length)",
+            Self::LowestBars => "lowestbars(series, length)",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -852,6 +911,12 @@ impl BuiltinId {
             Self::Falling => "True when the current sample is strictly less than every prior sample in the trailing window.",
             Self::BarsSince => "Bars since the last true condition on the condition's update clock.",
             Self::ValueWhen => "Captured source value from the Nth most recent true condition.",
+            Self::Nz => "Replace na with a fallback value.",
+            Self::NaFunc => "True when the current sample is na.",
+            Self::Coalesce => "Return the first non-na value.",
+            Self::Cum => "Cumulative sum over time.",
+            Self::HighestBars => "Bars since the highest value within a trailing window.",
+            Self::LowestBars => "Bars since the lowest value within a trailing window.",
             Self::Ma => "TA-Lib moving average with typed ma_type selection.",
             Self::Apo => "Absolute price oscillator using a typed moving-average family.",
             Self::Ppo => "Percentage price oscillator using a typed moving-average family.",

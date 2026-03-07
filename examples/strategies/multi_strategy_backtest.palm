@@ -4,28 +4,43 @@ use spot 1d
 use spot 1w
 
 // Composite single-source strategy that combines trend, momentum, and breakout signals.
-let fast = ema(spot.close, 21)
-let slow = ema(spot.close, 55)
-let daily_fast = ema(spot.1d.close, 20)
-let daily_slow = ema(spot.1d.close, 50)
-let weekly_fast = ema(spot.1w.close, 8)
-let weekly_slow = ema(spot.1w.close, 21)
-let rsi_4h = rsi(spot.close, 14)
-let (macd_line, macd_signal, macd_hist) = macd(spot.close, 12, 26, 9)
-let breakout_high = highest(spot.high, 20)[1]
-let breakout_low = lowest(spot.low, 20)[1]
+input fast_len = 21
+input slow_len = 55
+input daily_fast_len = 20
+input daily_slow_len = 50
+input weekly_fast_len = 8
+input weekly_slow_len = 21
+input rsi_len = 14
+input breakout_len = 20
+const macd_fast_len = 12
+const macd_slow_len = 26
+const macd_signal_len = 9
+const long_rsi_threshold = 55
+const short_rsi_threshold = 45
+const neutral_rsi = 50
+
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let daily_fast = ema(spot.1d.close, daily_fast_len)
+let daily_slow = ema(spot.1d.close, daily_slow_len)
+let weekly_fast = ema(spot.1w.close, weekly_fast_len)
+let weekly_slow = ema(spot.1w.close, weekly_slow_len)
+let rsi_4h = rsi(spot.close, rsi_len)
+let (macd_line, macd_signal, macd_hist) = macd(spot.close, macd_fast_len, macd_slow_len, macd_signal_len)
+let breakout_high = highest(spot.high, breakout_len)[1]
+let breakout_low = lowest(spot.low, breakout_len)[1]
 
 export trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(weekly_fast, weekly_slow)
 export trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow)
-export momentum_long = above(rsi_4h, 55) and above(macd_hist, 0)
-export momentum_short = below(rsi_4h, 45) and below(macd_hist, 0)
+export momentum_long = above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0)
+export momentum_short = below(rsi_4h, short_rsi_threshold) and below(macd_hist, 0)
 export breakout_long = above(spot.close, breakout_high)
 export breakout_short = below(spot.close, breakout_low)
 
-trigger long_entry = trend_long and (crossover(rsi_4h, 55) or crossover(macd_hist, 0) or breakout_long)
-trigger long_exit = crossunder(fast, slow) or crossunder(rsi_4h, 50) or breakout_short
-trigger short_entry = trend_short and (crossunder(rsi_4h, 45) or crossunder(macd_hist, 0) or breakout_short)
-trigger short_exit = crossover(fast, slow) or crossover(rsi_4h, 50) or breakout_long
+entry long = trend_long and (crossover(rsi_4h, long_rsi_threshold) or crossover(macd_hist, 0) or breakout_long)
+exit long = crossunder(fast, slow) or crossunder(rsi_4h, neutral_rsi) or breakout_short
+entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
+exit short = crossover(fast, slow) or crossover(rsi_4h, neutral_rsi) or breakout_long
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

@@ -9,6 +9,7 @@ PalmScript exposes three output-producing constructs:
 - `plot(value)`
 - `export name = expr`
 - `trigger name = expr`
+- `entry long = expr`, `exit long = expr`, `entry short = expr`, `exit short = expr`
 
 `plot` is a builtin call. `export` and `trigger` are declarations.
 
@@ -62,26 +63,38 @@ Runtime event rule:
 - a trigger event is emitted for a step only when the current trigger sample is `true`
 - `false` and `na` do not emit trigger events
 
-## Backtester Trigger Contract
+## First-Class Strategy Signals
 
-The PalmScript language does not attach trading semantics directly to `trigger`.
+PalmScript exposes first-class strategy signal declarations for the built-in backtester:
 
-The library backtester interprets trigger names externally. Its default signal
-contract is:
+```palmscript
+entry long = spot.close > spot.high[1]
+exit long = spot.close < ema(spot.close, 20)
+entry short = spot.close < spot.low[1]
+exit short = spot.close > ema(spot.close, 20)
+```
+
+Rules:
+
+- the four declarations are top-level only
+- each expression must evaluate to `bool`, `series<bool>`, or `na`
+- they compile to trigger outputs with explicit signal-role metadata
+- runtime event emission follows the same `true`/`false`/`na` rules as ordinary triggers
+
+## Legacy Trigger Compatibility
+
+Legacy backtest scripts that use trigger names are still supported temporarily:
 
 - `trigger long_entry = ...`
 - `trigger long_exit = ...`
 - `trigger short_entry = ...`
 - `trigger short_exit = ...`
 
-Rules for that contract:
+Compatibility rules:
 
-- trigger names are matched by the backtester, not by the compiler or VM
-- scripts may still declare additional triggers for alerts or other consumers
-- if no configured trigger names match the compiled trigger outputs, the
-  backtester fails validation
-- trigger events are observed on the runtime step clock, then scheduled onto the
-  next eligible execution-source bar by the backtester
+- if a script declares any first-class `entry` / `exit` signals, the backtester uses those roles directly
+- if a script declares no first-class signals, the backtester falls back to the legacy trigger names above
+- ordinary `trigger` declarations remain valid for alerting or non-backtest consumers
 
 See [Backtesting](../tooling/backtesting.md) for the Rust API and execution
 model.

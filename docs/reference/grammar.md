@@ -27,15 +27,23 @@ param_list             ::= ident ("," ident)*
 
 ```text
 stmt                   ::= let_stmt
+                         | const_stmt
+                         | input_stmt
                          | export_stmt
                          | trigger_stmt
+                         | signal_stmt
                          | if_stmt
                          | expr_stmt
 
 let_stmt               ::= "let" ident "=" expr
                          | "let" "(" ident ("," ident)+ ")" "=" expr
+const_stmt             ::= "const" ident "=" expr
+input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+signal_stmt            ::= "entry" signal_side "=" expr
+                         | "exit" signal_side "=" expr
+signal_side            ::= "long" | "short"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -46,7 +54,8 @@ block                  ::= "{" separator* stmt* "}"
 ## Expressions
 
 ```text
-expr                   ::= or_expr
+expr                   ::= conditional_expr
+conditional_expr       ::= or_expr ("?" expr ":" conditional_expr)?
 or_expr                ::= and_expr ("or" and_expr)*
 and_expr               ::= cmp_expr ("and" cmp_expr)*
 cmp_expr               ::= add_expr (cmp_op add_expr)*
@@ -103,7 +112,7 @@ PalmScript parses binary operators with the following precedence, from lowest to
 6. unary `-`, unary `!`
 7. call `(...)`, indexing `[...]`, and source/field qualification with `.`
 
-Operators within one precedence level associate left-to-right.
+Operators within one precedence level associate left-to-right, except the ternary conditional which associates right-to-left.
 
 ## Required Semantic Restrictions
 
@@ -111,14 +120,15 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `export`, and `trigger` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, and `exit` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
 - string literals are accepted lexically but are semantically valid only inside `source` declarations
 - only identifiers may be called
-- series indexing must use a non-negative integer literal
+- series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
 - `ma_type.<variant>` is the first typed enum namespace and is reserved for TA-Lib moving-average selectors
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
+- user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

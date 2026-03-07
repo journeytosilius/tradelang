@@ -3,7 +3,7 @@ use std::path::Path;
 
 use palmscript::{
     compile, fetch_source_runtime_config, run_backtest_with_sources, run_with_sources,
-    BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, SignalContract, VmLimits,
+    BacktestConfig, CompiledProgram, ExchangeEndpoints, RuntimeError, VmLimits,
 };
 
 use crate::args::{
@@ -86,7 +86,6 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             initial_capital: args.initial_capital,
             fee_bps: args.fee_bps,
             slippage_bps: args.slippage_bps,
-            signals: SignalContract::default(),
         },
     )
     .map_err(|err| format!("backtest mode error: {err}"))?;
