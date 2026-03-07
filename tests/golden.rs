@@ -514,6 +514,42 @@ fn golden_ma_builtin_with_typed_enum_matches_weighted_window() {
 }
 
 #[test]
+fn golden_ma_builtin_supports_dema_enum() {
+    let compiled = compile(&with_interval(
+        "plot(sub(ma(close, 3, ma_type.dema), dema(close, 3)))",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][8]["value"],
+        serde_json::json!(0.0)
+    );
+}
+
+#[test]
+fn golden_apo_supports_trima_ma_type() {
+    let compiled = compile(&with_interval(
+        "plot(sub(apo(close, 3, 5, ma_type.trima), sub(trima(close, 3), trima(close, 5))))",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][6]["value"],
+        serde_json::json!(0.0)
+    );
+}
+
+#[test]
 fn golden_macd_tuple_destructuring_shape_matches() {
     let compiled = compile(&with_interval(
         "let (line, signal, hist) = macd(close, 3, 5, 2)\nplot(hist)",

@@ -29,13 +29,14 @@ Implemented TA-Lib-style builtins:
 - `apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 - `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 - `macd(series, fast_length, slow_length, signal_length)`
+- `macdfix(series[, signal_length=9])`
 - unary math transforms: `acos`, `asin`, `atan`, `ceil`, `cos`, `cosh`, `exp`, `floor`, `ln`, `log10`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`
 - math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`, `maxindex`, `minindex`, `minmax`, `minmaxindex`
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
-- overlap helpers: `midpoint`, `midprice`, `wma`
+- overlap helpers: `bbands`, `dema`, `ema`, `kama`, `ma`, `midpoint`, `midprice`, `sma`, `t3`, `tema`, `trima`, `wma`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
-- momentum helpers: `apo`, `ppo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `rocp`, `rocr`, `rocr100`, `willr`
-- volume and volatility helpers: `obv`, `trange`
+- momentum helpers: `adx`, `adxr`, `apo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `dx`, `imi`, `mfi`, `minus_di`, `minus_dm`, `mom`, `plus_di`, `plus_dm`, `ppo`, `roc`, `rocp`, `rocr`, `rocr100`, `trix`, `willr`
+- volume and volatility helpers: `ad`, `adosc`, `atr`, `natr`, `obv`, `trange`
 
 Current `ma_type` variants:
 
@@ -49,7 +50,7 @@ Current `ma_type` variants:
 - `ma_type.mama`
 - `ma_type.t3`
 
-Only `sma`, `ema`, and `wma` are currently executable through `ma(...)`, `apo(...)`, and `ppo(...)`. The remaining variants are reserved in the typed surface so later TA-Lib batches can extend behavior without changing syntax.
+All `ma_type` variants except `ma_type.mama` are currently executable through `ma(...)`, `apo(...)`, and `ppo(...)`. `ma_type.mama` remains reserved for the later Hilbert/MAMA batch.
 
 Current TA-Lib defaults now honored in the executable surface:
 
@@ -62,9 +63,15 @@ Current TA-Lib defaults now honored in the executable surface:
 - `beta` defaults to `length=5` and uses TA-Lib's return-based beta calculation
 - `correl` defaults to `length=30`
 - `apo` and `ppo` default to `fast_length=12`, `slow_length=26`, and `ma_type.sma`
+- `macdfix` defaults to `signal_length=9`
+- `bbands` defaults to `length=5`, `deviations_up=2`, `deviations_down=2`, and `ma_type.sma`
 - `aroon` and `aroonosc` default to `length=14`
+- `atr`, `natr`, `plus_dm`, `minus_dm`, `plus_di`, `minus_di`, `dx`, `adx`, `adxr`, `mfi`, and `imi` default to `length=14`
+- `adosc` defaults to `fast_length=3` and `slow_length=10`
 - `cci` defaults to `length=14`
 - `cmo` defaults to `length=14`
+- `dema`, `tema`, `trima`, `kama`, and `trix` default to `length=30`
+- `t3` defaults to `length=5` and `volume_factor=0.7`
 - `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
 - `willr` defaults to `length=14`
 

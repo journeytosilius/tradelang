@@ -5,7 +5,7 @@ use crate::talib::MaType;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;
 
-use super::{sma, wma, EmaState};
+use super::MovingAverageState;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum OscillatorKind {
@@ -14,22 +14,10 @@ pub(crate) enum OscillatorKind {
 }
 
 #[derive(Clone, Debug)]
-enum OscillatorMode {
-    Stateless,
-    Ema {
-        fast_state: EmaState,
-        slow_state: EmaState,
-    },
-}
-
-#[derive(Clone, Debug)]
 pub(crate) struct PriceOscillatorState {
-    builtin: &'static str,
-    ma_type: MaType,
-    fast_period: usize,
-    slow_period: usize,
     kind: OscillatorKind,
-    mode: OscillatorMode,
+    fast_state: MovingAverageState,
+    slow_state: MovingAverageState,
     last_seen_version: u64,
     cached_output: Value,
 }
@@ -43,20 +31,14 @@ impl PriceOscillatorState {
         kind: OscillatorKind,
     ) -> Self {
         let (fast_period, slow_period) = normalize_periods(fast_period, slow_period);
-        let mode = match ma_type {
-            MaType::Ema => OscillatorMode::Ema {
-                fast_state: EmaState::new(fast_period),
-                slow_state: EmaState::new(slow_period),
-            },
-            _ => OscillatorMode::Stateless,
-        };
         Self {
-            builtin,
-            ma_type,
-            fast_period,
-            slow_period,
             kind,
-            mode,
+            fast_state: MovingAverageState::new(ma_type, fast_period).unwrap_or_else(|_| {
+                panic!("{builtin} does not support ma_type {}", ma_type.as_str())
+            }),
+            slow_state: MovingAverageState::new(ma_type, slow_period).unwrap_or_else(|_| {
+                panic!("{builtin} does not support ma_type {}", ma_type.as_str())
+            }),
             last_seen_version: 0,
             cached_output: Value::NA,
         }
@@ -88,33 +70,9 @@ impl PriceOscillatorState {
             }
         }
 
-        let output = match &mut self.mode {
-            OscillatorMode::Stateless => {
-                let fast = calculate_ma(
-                    self.builtin,
-                    price_buffer,
-                    self.fast_period,
-                    self.ma_type,
-                    pc,
-                )?;
-                let slow = calculate_ma(
-                    self.builtin,
-                    price_buffer,
-                    self.slow_period,
-                    self.ma_type,
-                    pc,
-                )?;
-                oscillator_value(fast, slow, self.kind)
-            }
-            OscillatorMode::Ema {
-                fast_state,
-                slow_state,
-            } => {
-                let fast = fast_state.update(price_buffer, pc)?;
-                let slow = slow_state.update(price_buffer, pc)?;
-                oscillator_value(fast, slow, self.kind)
-            }
-        };
+        let fast = self.fast_state.update(price_buffer, pc)?;
+        let slow = self.slow_state.update(price_buffer, pc)?;
+        let output = oscillator_value(fast, slow, self.kind);
 
         self.cached_output = output.clone();
         Ok(output)
@@ -126,27 +84,6 @@ fn normalize_periods(fast_period: usize, slow_period: usize) -> (usize, usize) {
         (slow_period, fast_period)
     } else {
         (fast_period, slow_period)
-    }
-}
-
-fn calculate_ma(
-    builtin: &'static str,
-    buffer: &SeriesBuffer,
-    window: usize,
-    ma_type: MaType,
-    pc: usize,
-) -> Result<Value, RuntimeError> {
-    match ma_type {
-        MaType::Sma => sma::calculate(buffer, window, pc),
-        MaType::Wma => wma::calculate(buffer, window, pc),
-        MaType::Ema => Err(RuntimeError::UnsupportedMaType {
-            builtin,
-            ma_type: ma_type.as_str(),
-        }),
-        other => Err(RuntimeError::UnsupportedMaType {
-            builtin,
-            ma_type: other.as_str(),
-        }),
     }
 }
 

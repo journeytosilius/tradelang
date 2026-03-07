@@ -57,6 +57,7 @@ class Case:
     family: str
     function: str
     dataset: str = "oscillating_ohlcv_v1"
+    epsilon: float = EPSILON
     input_fields: tuple[str, ...] = ()
     int_options: tuple[int, ...] = ()
     float_options: tuple[float, ...] = ()
@@ -210,6 +211,14 @@ class TalibOracle:
             return [self.call_ma_oscillator(function, inputs[0], int_options[0], int_options[1], ma_type or "sma")]
         if family == "macd":
             return self.call_macd(inputs[0], *int_options)
+        if family == "macdfix":
+            return self.call_macdfix(inputs[0], int_options[0])
+        if family == "bands":
+            return self.call_bbands(inputs[0], int_options[0], float_options[0], float_options[1], ma_type or "sma")
+        if family == "window_ohlcv":
+            return [self.call_window_ohlcv(function, inputs[0], inputs[1], inputs[2], inputs[3], int_options[0])]
+        if family == "window_ohlcv_fastslow":
+            return [self.call_window_ohlcv_fastslow(function, inputs[0], inputs[1], inputs[2], inputs[3], int_options[0], int_options[1])]
         raise RuntimeError(f"unsupported oracle family {family}")
 
     def call_unary(self, function: str, input0: list[float]) -> list[float | None]:
@@ -305,6 +314,51 @@ class TalibOracle:
         self, input0: list[float], fast_period: int, slow_period: int, signal_period: int
     ) -> list[list[float | None]]:
         return self._call_1in_3out_3int("MACD", input0, fast_period, slow_period, signal_period)
+
+    def call_macdfix(self, input0: list[float], signal_period: int) -> list[list[float | None]]:
+        return self._call_1in_3out_1int("MACDFIX", input0, signal_period)
+
+    def call_bbands(
+        self,
+        input0: list[float],
+        time_period: int,
+        deviations_up: float,
+        deviations_down: float,
+        ma_type: str,
+    ) -> list[list[float | None]]:
+        return self._call_1in_3out_1int_2real_1int(
+            "BBANDS",
+            input0,
+            time_period,
+            deviations_up,
+            deviations_down,
+            TA_MATYPE[ma_type],
+        )
+
+    def call_window_ohlcv(
+        self,
+        function: str,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        input3: list[float],
+        time_period: int,
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_4in_1out_1int(c_name, input0, input1, input2, input3, time_period)
+
+    def call_window_ohlcv_fastslow(
+        self,
+        function: str,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        input3: list[float],
+        fast_period: int,
+        slow_period: int,
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_4in_1out_2int(c_name, input0, input1, input2, input3, fast_period, slow_period)
 
     def _call_1in_1out_0opt(self, c_name: str, input0: list[float]) -> list[float | None]:
         lookback = self._lookup_void(f"TA_{c_name}_Lookback")
@@ -420,6 +474,51 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_3out(func, lookback, [input0], [opt0, opt1, opt2])
+
+    def _call_1in_3out_1int(
+        self, c_name: str, input0: list[float], opt0: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_3out(func, lookback, [input0], [opt0])
+
+    def _call_1in_3out_1int_2real_1int(
+        self,
+        c_name: str,
+        input0: list[float],
+        opt0: int,
+        opt1: float,
+        opt2: float,
+        opt3: int,
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int_real_real_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_3out(func, lookback, [input0], [opt0, opt1, opt2, opt3])
 
     def _call_1in_2out_1int(
         self, c_name: str, input0: list[float], opt0: int
@@ -564,6 +663,58 @@ class TalibOracle:
         ]
         return self._invoke_1out(func, lookback, [input0, input1, input2, input3])
 
+    def _call_4in_1out_1int(
+        self,
+        c_name: str,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        input3: list[float],
+        opt0: int,
+    ) -> list[float | None]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0, input1, input2, input3], [opt0])
+
+    def _call_4in_1out_2int(
+        self,
+        c_name: str,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        input3: list[float],
+        opt0: int,
+        opt1: int,
+    ) -> list[float | None]:
+        lookback = self._lookup_2int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0, input1, input2, input3], [opt0, opt1])
+
     def _invoke_1out(
         self,
         func: ctypes._CFuncPtr,
@@ -700,6 +851,12 @@ class TalibOracle:
         func.restype = ctypes.c_int
         return func
 
+    def _lookup_int_real_real_int(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_int]
+        func.restype = ctypes.c_int
+        return func
+
     def _check(self, rc: int, name: str) -> None:
         if rc != SUCCESS:
             raise RuntimeError(f"{name} returned error code {rc}")
@@ -737,7 +894,7 @@ def render_fixture_document(dataset: list[Bar], oracle: TalibOracle) -> dict:
                 "name": case.name,
                 "dataset": case.dataset,
                 "script": case.script,
-                "epsilon": EPSILON,
+                "epsilon": case.epsilon,
                 "expected_exports": {
                     export_name: output for export_name, output in zip(case.export_names, outputs)
                 },
@@ -883,6 +1040,46 @@ def fixture_cases() -> list[Case]:
             ),
             Case("obv_close_volume", script_for_single_export("value", "obv(close, volume)"), ("value",), "binary", "obv", input_fields=("close", "volume")),
             Case("trange", script_for_single_export("value", "trange(high, low, close)"), ("value",), "ternary", "trange", input_fields=("high", "low", "close")),
+            Case("atr_default", script_for_single_export("value", "atr(high, low, close)"), ("value",), "window_high_low_close", "atr", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("natr_default", script_for_single_export("value", "natr(high, low, close)"), ("value",), "window_high_low_close", "natr", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("plus_dm_default", script_for_single_export("value", "plus_dm(high, low)"), ("value",), "window_high_low", "plus_dm", input_fields=("high", "low"), int_options=(14,)),
+            Case("minus_dm_default", script_for_single_export("value", "minus_dm(high, low)"), ("value",), "window_high_low", "minus_dm", input_fields=("high", "low"), int_options=(14,)),
+            Case("plus_di_default", script_for_single_export("value", "plus_di(high, low, close)"), ("value",), "window_high_low_close", "plus_di", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("minus_di_default", script_for_single_export("value", "minus_di(high, low, close)"), ("value",), "window_high_low_close", "minus_di", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("dx_default", script_for_single_export("value", "dx(high, low, close)"), ("value",), "window_high_low_close", "dx", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("adx_default", script_for_single_export("value", "adx(high, low, close)"), ("value",), "window_high_low_close", "adx", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("adxr_default", script_for_single_export("value", "adxr(high, low, close)"), ("value",), "window_high_low_close", "adxr", input_fields=("high", "low", "close"), int_options=(14,)),
+            Case("ad_default", script_for_single_export("value", "ad(high, low, close, volume)"), ("value",), "quaternary", "ad", input_fields=("high", "low", "close", "volume")),
+            Case("adosc_default", script_for_single_export("value", "adosc(high, low, close, volume)"), ("value",), "window_ohlcv_fastslow", "adosc", input_fields=("high", "low", "close", "volume"), int_options=(3, 10)),
+            Case("mfi_default", script_for_single_export("value", "mfi(high, low, close, volume)"), ("value",), "window_ohlcv", "mfi", input_fields=("high", "low", "close", "volume"), int_options=(14,)),
+            Case("imi_default", script_for_single_export("value", "imi(open, close)"), ("value",), "window_double", "imi", input_fields=("open", "close"), int_options=(14,)),
+            Case(
+                "macdfix_default",
+                "interval 1m\nlet (line, signal, hist) = macdfix(close)\nexport macd_line = line\nexport macd_signal = signal\nexport macd_hist = hist\nplot(0)",
+                ("macd_line", "macd_signal", "macd_hist"),
+                "macdfix",
+                "macdfix",
+                epsilon=5e-3,
+                input_fields=("close",),
+                int_options=(9,),
+            ),
+            Case(
+                "bbands_default",
+                "interval 1m\nlet (u, m, l) = bbands(close)\nexport upper = u\nexport middle = m\nexport lower = l\nplot(0)",
+                ("upper", "middle", "lower"),
+                "bands",
+                "bbands",
+                input_fields=("close",),
+                int_options=(5,),
+                float_options=(2.0, 2.0),
+                ma_type="sma",
+            ),
+            Case("dema_default", script_for_single_export("value", "dema(close)"), ("value",), "window", "dema", input_fields=("close",), int_options=(30,)),
+            Case("tema_default", script_for_single_export("value", "tema(close)"), ("value",), "window", "tema", input_fields=("close",), int_options=(30,)),
+            Case("trima_default", script_for_single_export("value", "trima(close)"), ("value",), "window", "trima", input_fields=("close",), int_options=(30,)),
+            Case("kama_default", script_for_single_export("value", "kama(close)"), ("value",), "window", "kama", epsilon=5e-3, input_fields=("close",), int_options=(30,)),
+            Case("t3_default", script_for_single_export("value", "t3(close)"), ("value",), "window_factor", "t3", epsilon=5e-3, input_fields=("close",), int_options=(5,), float_options=(0.7,)),
+            Case("trix_default", script_for_single_export("value", "trix(close)"), ("value",), "window", "trix", input_fields=("close",), int_options=(30,)),
         ]
     )
     return cases

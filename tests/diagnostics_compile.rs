@@ -558,10 +558,10 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
         ),
         (
             "type_unimplemented_talib_builtin_reports_reserved_catalog",
-            with_interval("plot(adx(close, 14))"),
+            with_interval("let (sine, lead) = ht_sine(close)\nplot(0)"),
             vec![expected(
                 DiagnosticKind::Type,
-                "builtin `adx` is reserved by the TA-Lib catalog but is not implemented yet",
+                "builtin `ht_sine` is reserved by the TA-Lib catalog but is not implemented yet",
             )],
         ),
         (

@@ -3,7 +3,9 @@
 //! Indicator math lives here so the VM keeps direct opcode dispatch while the
 //! per-indicator logic stays modular and independently testable.
 
+pub(crate) mod advanced_ma;
 pub(crate) mod cmo;
+pub(crate) mod directional;
 pub(crate) mod ema;
 pub(crate) mod event;
 pub(crate) mod extrema;
@@ -18,7 +20,9 @@ pub(crate) mod volatility;
 pub(crate) mod volume;
 pub(crate) mod wma;
 
+pub(crate) use advanced_ma::{BbandsState, MovingAverageState, T3State, TrixState};
 pub(crate) use cmo::CmoState;
+pub(crate) use directional::{DirectionalKind, DirectionalState, DmKind, DmState};
 pub(crate) use ema::EmaState;
 pub(crate) use event::{BarsSinceState, CumState, ValueWhenState};
 pub(crate) use extrema::{
@@ -30,7 +34,7 @@ pub(crate) use macd::MacdState;
 pub(crate) use math::{
     apply_unary as apply_unary_math, calculate_avgdev, calculate_sum, UnaryMathTransform,
 };
-pub(crate) use momentum::{calculate_bop, calculate_cci};
+pub(crate) use momentum::{calculate_bop, calculate_cci, calculate_imi, calculate_mfi};
 pub(crate) use oscillator::{OscillatorKind, PriceOscillatorState};
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
@@ -39,7 +43,7 @@ pub(crate) use statistics::{
     RegressionOutput,
 };
 pub(crate) use volatility::calculate_trange;
-pub(crate) use volume::ObvState;
+pub(crate) use volume::{AdOscState, AdState, ObvState};
 pub(crate) use wma::calculate as calculate_wma;
 
 #[derive(Clone, Debug)]
@@ -56,6 +60,14 @@ pub(crate) enum IndicatorState {
     ValueWhen(ValueWhenState),
     Cum(CumState),
     Macd(MacdState),
-    PriceOscillator(PriceOscillatorState),
+    PriceOscillator(Box<PriceOscillatorState>),
     Obv(ObvState),
+    Ad(AdState),
+    AdOsc(AdOscState),
+    Trix(TrixState),
+    T3(Box<T3State>),
+    Bbands(Box<BbandsState>),
+    Dm(DmState),
+    Directional(DirectionalState),
+    MovingAverage(Box<MovingAverageState>),
 }

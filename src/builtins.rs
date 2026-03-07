@@ -60,6 +60,10 @@ pub enum BuiltinKind {
     Cumulative,
     HighestBars,
     LowestBars,
+    IndicatorTupleSignal,
+    Bands,
+    RollingQuadInputWindow,
+    RollingQuadInputDoubleWindow,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -155,10 +159,31 @@ pub enum BuiltinId {
     Cum = 87,
     HighestBars = 88,
     LowestBars = 89,
+    Atr = 90,
+    Natr = 91,
+    PlusDm = 92,
+    MinusDm = 93,
+    PlusDi = 94,
+    MinusDi = 95,
+    Dx = 96,
+    Adx = 97,
+    Adxr = 98,
+    Ad = 99,
+    Adosc = 100,
+    Mfi = 101,
+    Imi = 102,
+    Macdfix = 103,
+    Bbands = 104,
+    Dema = 105,
+    Tema = 106,
+    Trima = 107,
+    Kama = 108,
+    T3 = 109,
+    Trix = 110,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 90] = [
+    pub const RESERVED: [Self; 111] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -249,9 +274,30 @@ impl BuiltinId {
         Self::Cum,
         Self::HighestBars,
         Self::LowestBars,
+        Self::Atr,
+        Self::Natr,
+        Self::PlusDm,
+        Self::MinusDm,
+        Self::PlusDi,
+        Self::MinusDi,
+        Self::Dx,
+        Self::Adx,
+        Self::Adxr,
+        Self::Ad,
+        Self::Adosc,
+        Self::Mfi,
+        Self::Imi,
+        Self::Macdfix,
+        Self::Bbands,
+        Self::Dema,
+        Self::Tema,
+        Self::Trima,
+        Self::Kama,
+        Self::T3,
+        Self::Trix,
     ];
 
-    pub const CALLABLE: [Self; 84] = [
+    pub const CALLABLE: [Self; 105] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -336,6 +382,27 @@ impl BuiltinId {
         Self::Cum,
         Self::HighestBars,
         Self::LowestBars,
+        Self::Atr,
+        Self::Natr,
+        Self::PlusDm,
+        Self::MinusDm,
+        Self::PlusDi,
+        Self::MinusDi,
+        Self::Dx,
+        Self::Adx,
+        Self::Adxr,
+        Self::Ad,
+        Self::Adosc,
+        Self::Mfi,
+        Self::Imi,
+        Self::Macdfix,
+        Self::Bbands,
+        Self::Dema,
+        Self::Tema,
+        Self::Trima,
+        Self::Kama,
+        Self::T3,
+        Self::Trix,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -430,6 +497,27 @@ impl BuiltinId {
             "cum" => Some(Self::Cum),
             "highestbars" => Some(Self::HighestBars),
             "lowestbars" => Some(Self::LowestBars),
+            "atr" => Some(Self::Atr),
+            "natr" => Some(Self::Natr),
+            "plus_dm" => Some(Self::PlusDm),
+            "minus_dm" => Some(Self::MinusDm),
+            "plus_di" => Some(Self::PlusDi),
+            "minus_di" => Some(Self::MinusDi),
+            "dx" => Some(Self::Dx),
+            "adx" => Some(Self::Adx),
+            "adxr" => Some(Self::Adxr),
+            "ad" => Some(Self::Ad),
+            "adosc" => Some(Self::Adosc),
+            "mfi" => Some(Self::Mfi),
+            "imi" => Some(Self::Imi),
+            "macdfix" => Some(Self::Macdfix),
+            "bbands" => Some(Self::Bbands),
+            "dema" => Some(Self::Dema),
+            "tema" => Some(Self::Tema),
+            "trima" => Some(Self::Trima),
+            "kama" => Some(Self::Kama),
+            "t3" => Some(Self::T3),
+            "trix" => Some(Self::Trix),
             _ => None,
         }
     }
@@ -526,6 +614,27 @@ impl BuiltinId {
             87 => Some(Self::Cum),
             88 => Some(Self::HighestBars),
             89 => Some(Self::LowestBars),
+            90 => Some(Self::Atr),
+            91 => Some(Self::Natr),
+            92 => Some(Self::PlusDm),
+            93 => Some(Self::MinusDm),
+            94 => Some(Self::PlusDi),
+            95 => Some(Self::MinusDi),
+            96 => Some(Self::Dx),
+            97 => Some(Self::Adx),
+            98 => Some(Self::Adxr),
+            99 => Some(Self::Ad),
+            100 => Some(Self::Adosc),
+            101 => Some(Self::Mfi),
+            102 => Some(Self::Imi),
+            103 => Some(Self::Macdfix),
+            104 => Some(Self::Bbands),
+            105 => Some(Self::Dema),
+            106 => Some(Self::Tema),
+            107 => Some(Self::Trima),
+            108 => Some(Self::Kama),
+            109 => Some(Self::T3),
+            110 => Some(Self::Trix),
             _ => None,
         }
     }
@@ -622,6 +731,27 @@ impl BuiltinId {
             Self::Cum => "cum",
             Self::HighestBars => "highestbars",
             Self::LowestBars => "lowestbars",
+            Self::Atr => "atr",
+            Self::Natr => "natr",
+            Self::PlusDm => "plus_dm",
+            Self::MinusDm => "minus_dm",
+            Self::PlusDi => "plus_di",
+            Self::MinusDi => "minus_di",
+            Self::Dx => "dx",
+            Self::Adx => "adx",
+            Self::Adxr => "adxr",
+            Self::Ad => "ad",
+            Self::Adosc => "adosc",
+            Self::Mfi => "mfi",
+            Self::Imi => "imi",
+            Self::Macdfix => "macdfix",
+            Self::Bbands => "bbands",
+            Self::Dema => "dema",
+            Self::Tema => "tema",
+            Self::Trima => "trima",
+            Self::Kama => "kama",
+            Self::T3 => "t3",
+            Self::Trix => "trix",
         }
     }
 
@@ -692,6 +822,24 @@ impl BuiltinId {
             Self::Cum => BuiltinKind::Cumulative,
             Self::HighestBars => BuiltinKind::HighestBars,
             Self::LowestBars => BuiltinKind::LowestBars,
+            Self::Macdfix => BuiltinKind::IndicatorTupleSignal,
+            Self::Bbands => BuiltinKind::Bands,
+            Self::Dema | Self::Tema | Self::Trima | Self::Kama | Self::Trix => {
+                BuiltinKind::RollingSingleInput
+            }
+            Self::T3 => BuiltinKind::RollingSingleInputFactor,
+            Self::PlusDm | Self::MinusDm => BuiltinKind::RollingHighLow,
+            Self::Atr
+            | Self::Natr
+            | Self::PlusDi
+            | Self::MinusDi
+            | Self::Dx
+            | Self::Adx
+            | Self::Adxr => BuiltinKind::RollingHighLowClose,
+            Self::Ad => BuiltinKind::CurrentOhlc,
+            Self::Mfi => BuiltinKind::RollingQuadInputWindow,
+            Self::Adosc => BuiltinKind::RollingQuadInputDoubleWindow,
+            Self::Imi => BuiltinKind::RollingDoubleInput,
         }
     }
 
@@ -747,11 +895,22 @@ impl BuiltinId {
             Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
-            Self::Cmo => BuiltinArity::Range { min: 1, max: 2 },
-            Self::Aroon | Self::AroonOsc => BuiltinArity::Range { min: 2, max: 3 },
-            Self::Cci => BuiltinArity::Range { min: 3, max: 4 },
+            Self::Cmo | Self::Dema | Self::Tema | Self::Trima | Self::Kama | Self::Trix => {
+                BuiltinArity::Range { min: 1, max: 2 }
+            }
+            Self::Aroon | Self::AroonOsc | Self::PlusDm | Self::MinusDm | Self::Imi => {
+                BuiltinArity::Range { min: 2, max: 3 }
+            }
+            Self::Cci
+            | Self::Atr
+            | Self::Natr
+            | Self::PlusDi
+            | Self::MinusDi
+            | Self::Dx
+            | Self::Adx
+            | Self::Adxr => BuiltinArity::Range { min: 3, max: 4 },
             Self::Avgprice => BuiltinArity::Exact(4),
-            Self::Bop => BuiltinArity::Exact(4),
+            Self::Bop | Self::Ad => BuiltinArity::Exact(4),
             Self::Typprice
             | Self::Wclprice
             | Self::Ma
@@ -761,6 +920,8 @@ impl BuiltinId {
             | Self::Trange => BuiltinArity::Exact(3),
             Self::Willr => BuiltinArity::Range { min: 3, max: 4 },
             Self::Macd => BuiltinArity::Exact(4),
+            Self::Mfi => BuiltinArity::Range { min: 4, max: 5 },
+            Self::Adosc => BuiltinArity::Range { min: 4, max: 6 },
             Self::Max
             | Self::Min
             | Self::Sum
@@ -778,10 +939,12 @@ impl BuiltinId {
             | Self::Tsf => BuiltinArity::Range { min: 1, max: 2 },
             Self::Beta | Self::Correl => BuiltinArity::Range { min: 2, max: 3 },
             Self::Apo | Self::Ppo => BuiltinArity::Range { min: 1, max: 4 },
-            Self::Stddev | Self::Var => BuiltinArity::Range { min: 1, max: 3 },
+            Self::Stddev | Self::Var | Self::T3 => BuiltinArity::Range { min: 1, max: 3 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
             Self::Nz => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Macdfix => BuiltinArity::Range { min: 1, max: 2 },
             Self::Coalesce => BuiltinArity::Exact(2),
+            Self::Bbands => BuiltinArity::Range { min: 1, max: 5 },
         }
     }
 
@@ -818,6 +981,29 @@ impl BuiltinId {
             Self::Cum => "cum(value)",
             Self::HighestBars => "highestbars(series, length)",
             Self::LowestBars => "lowestbars(series, length)",
+            Self::Atr => "atr(high, low, close[, length=14])",
+            Self::Natr => "natr(high, low, close[, length=14])",
+            Self::PlusDm => "plus_dm(high, low[, length=14])",
+            Self::MinusDm => "minus_dm(high, low[, length=14])",
+            Self::PlusDi => "plus_di(high, low, close[, length=14])",
+            Self::MinusDi => "minus_di(high, low, close[, length=14])",
+            Self::Dx => "dx(high, low, close[, length=14])",
+            Self::Adx => "adx(high, low, close[, length=14])",
+            Self::Adxr => "adxr(high, low, close[, length=14])",
+            Self::Ad => "ad(high, low, close, volume)",
+            Self::Adosc => "adosc(high, low, close, volume[, fast_length=3[, slow_length=10]])",
+            Self::Mfi => "mfi(high, low, close, volume[, length=14])",
+            Self::Imi => "imi(open, close[, length=14])",
+            Self::Macdfix => "macdfix(series[, signal_length=9])",
+            Self::Bbands => {
+                "bbands(series[, length=5[, deviations_up=2.0[, deviations_down=2.0[, ma_type=ma_type.sma]]]])"
+            }
+            Self::Dema => "dema(series[, length=30])",
+            Self::Tema => "tema(series[, length=30])",
+            Self::Trima => "trima(series[, length=30])",
+            Self::Kama => "kama(series[, length=30])",
+            Self::T3 => "t3(series[, length=5[, volume_factor=0.7]])",
+            Self::Trix => "trix(series[, length=30])",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -917,6 +1103,29 @@ impl BuiltinId {
             Self::Cum => "Cumulative sum over time.",
             Self::HighestBars => "Bars since the highest value within a trailing window.",
             Self::LowestBars => "Bars since the lowest value within a trailing window.",
+            Self::Atr => "Average true range over a trailing high-low-close window.",
+            Self::Natr => "Normalized average true range scaled by 100.",
+            Self::PlusDm => "Positive directional movement with Wilder smoothing.",
+            Self::MinusDm => "Negative directional movement with Wilder smoothing.",
+            Self::PlusDi => "Positive directional indicator.",
+            Self::MinusDi => "Negative directional indicator.",
+            Self::Dx => "Directional movement index.",
+            Self::Adx => "Average directional movement index.",
+            Self::Adxr => "Average directional movement index rating.",
+            Self::Ad => "Chaikin accumulation/distribution line.",
+            Self::Adosc => "Chaikin accumulation/distribution oscillator.",
+            Self::Mfi => "Money flow index.",
+            Self::Imi => "Intraday momentum index.",
+            Self::Macdfix => {
+                "MACD tuple with fixed 12/26 EMA lengths and configurable signal length."
+            }
+            Self::Bbands => "Bollinger Bands tuple (upper, middle, lower).",
+            Self::Dema => "Double exponential moving average.",
+            Self::Tema => "Triple exponential moving average.",
+            Self::Trima => "Triangular moving average.",
+            Self::Kama => "Kaufman adaptive moving average.",
+            Self::T3 => "T3 moving average.",
+            Self::Trix => "TRIX one-bar rate of change of a triple EMA.",
             Self::Ma => "TA-Lib moving average with typed ma_type selection.",
             Self::Apo => "Absolute price oscillator using a typed moving-average family.",
             Self::Ppo => "Percentage price oscillator using a typed moving-average family.",
@@ -987,7 +1196,7 @@ mod tests {
             assert_eq!(BuiltinId::from_u16(builtin as u16), Some(builtin));
         }
         assert_eq!(BuiltinId::from_name("missing"), None);
-        assert_eq!(BuiltinId::from_u16(99), None);
+        assert_eq!(BuiltinId::from_u16(111), None);
     }
 
     #[test]

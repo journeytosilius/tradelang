@@ -61,6 +61,31 @@ Rules:
 - `aroonosc` returns `aroon_up - aroon_down`
 - tuple-valued outputs must be destructured before further use
 
+## `plus_dm(high, low[, length=14])`, `minus_dm(high, low[, length=14])`, `plus_di(high, low, close[, length=14])`, `minus_di(high, low, close[, length=14])`, `dx(high, low, close[, length=14])`, `adx(high, low, close[, length=14])`, and `adxr(high, low, close[, length=14])`
+
+Rules:
+
+- all price arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be a positive integer literal
+- `plus_dm` and `minus_dm` return Wilder-smoothed directional movement
+- `plus_di` and `minus_di` return Wilder directional indicators
+- `dx` returns the absolute directional spread scaled by 100
+- `adx` returns the Wilder average of `dx`
+- `adxr` returns the average of the current `adx` and the lagged `adx`
+- the result type is `series<float>`
+
+## `atr(high, low, close[, length=14])` and `natr(high, low, close[, length=14])`
+
+Rules:
+
+- all arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be a positive integer literal
+- `atr` seeds from the initial average true range and then applies Wilder smoothing
+- `natr` returns `(atr / close) * 100`
+- the result type is `series<float>`
+
 ## `willr(high, low, close[, length=14])`
 
 Rules:
@@ -72,14 +97,27 @@ Rules:
 - the result type is `series<float>`
 - if the trailing high-low range is `0`, `willr` returns `0`
 
-## `obv(series, volume)`
+## `mfi(high, low, close, volume[, length=14])` and `imi(open, close[, length=14])`
 
 Rules:
 
-- both arguments must be `series<float>`
-- the first output sample seeds from the current `volume`
-- later samples add or subtract the current `volume` based on whether `series` rose or fell from the prior bar
-- if the current price or volume sample is `na`, the result is `na`
+- all arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be a positive integer literal
+- `mfi` uses typical price and money flow over a trailing window
+- `imi` uses trailing intraday open-close movement over the requested window
+- the result type is `series<float>`
+
+## `ad(high, low, close, volume)`, `adosc(high, low, close, volume[, fast_length=3[, slow_length=10]])`, and `obv(series, volume)`
+
+Rules:
+
+- all arguments must be `series<float>`
+- `ad` returns the cumulative accumulation/distribution line
+- `adosc` returns the difference between fast and slow EMAs of the accumulation/distribution line
+- omitted `fast_length` and `slow_length` use the TA-Lib defaults `3` and `10`
+- `obv` seeds from the current `volume` and later adds or subtracts volume based on price direction
+- if the required price or volume sample is `na`, the result is `na`
 - the result type is `series<float>`
 
 ## `trange(high, low, close)`

@@ -87,6 +87,96 @@ pub(crate) fn calculate_cci(
     }
 }
 
+pub(crate) fn calculate_imi(
+    open: &SeriesBuffer,
+    close: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    if open.len() < window || close.len() < window {
+        return Ok(Value::NA);
+    }
+
+    let mut up_sum = 0.0;
+    let mut down_sum = 0.0;
+    for (open_value, close_value) in open.iter_recent(window).zip(close.iter_recent(window)) {
+        let Some(open) = expect_value(open_value, pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(close) = expect_value(close_value, pc)? else {
+            return Ok(Value::NA);
+        };
+        let delta = close - open;
+        if delta >= 0.0 {
+            up_sum += delta;
+        } else {
+            down_sum -= delta;
+        }
+    }
+
+    let total = up_sum + down_sum;
+    if total == 0.0 {
+        Ok(Value::F64(0.0))
+    } else {
+        Ok(Value::F64((up_sum / total) * 100.0))
+    }
+}
+
+pub(crate) fn calculate_mfi(
+    high: &SeriesBuffer,
+    low: &SeriesBuffer,
+    close: &SeriesBuffer,
+    volume: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    if high.len() < window + 1
+        || low.len() < window + 1
+        || close.len() < window + 1
+        || volume.len() < window + 1
+    {
+        return Ok(Value::NA);
+    }
+
+    let mut positive = 0.0;
+    let mut negative = 0.0;
+    for offset in 0..window {
+        let Some(current_tp) =
+            typical_price(&high.get(offset), &low.get(offset), &close.get(offset), pc)?
+        else {
+            return Ok(Value::NA);
+        };
+        let Some(previous_tp) = typical_price(
+            &high.get(offset + 1),
+            &low.get(offset + 1),
+            &close.get(offset + 1),
+            pc,
+        )?
+        else {
+            return Ok(Value::NA);
+        };
+        let Some(current_volume) = expect_buffer_value(volume, offset, pc)? else {
+            return Ok(Value::NA);
+        };
+        let raw_flow = current_tp * current_volume;
+        if current_tp > previous_tp {
+            positive += raw_flow;
+        } else if current_tp < previous_tp {
+            negative += raw_flow;
+        }
+    }
+
+    if negative == 0.0 {
+        return Ok(Value::F64(100.0));
+    }
+    let total = positive + negative;
+    if total == 0.0 {
+        Ok(Value::F64(0.0))
+    } else {
+        Ok(Value::F64((positive / total) * 100.0))
+    }
+}
+
 fn typical_price(
     high: &Value,
     low: &Value,
@@ -135,7 +225,7 @@ fn expect_value(value: &Value, pc: usize) -> Result<Option<f64>, RuntimeError> {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_bop, calculate_cci};
+    use super::{calculate_bop, calculate_cci, calculate_imi, calculate_mfi};
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -176,5 +266,44 @@ mod tests {
         }
 
         assert_f64_eq(calculate_cci(&high, &low, &close, 3, 0).unwrap(), 100.0);
+    }
+
+    #[test]
+    fn imi_returns_midpoint_for_balanced_window() {
+        let mut open = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+        for (o, c) in [(10.0, 11.0), (11.0, 10.0), (12.0, 13.0)] {
+            open.push(Value::F64(o));
+            close.push(Value::F64(c));
+        }
+
+        assert_f64_eq(
+            calculate_imi(&open, &close, 3, 0).unwrap(),
+            66.66666666666666,
+        );
+    }
+
+    #[test]
+    fn mfi_returns_value_after_window_and_prior_bar() {
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+        let mut volume = SeriesBuffer::new(8);
+        for (h, l, c, v) in [
+            (10.0, 9.0, 9.5, 100.0),
+            (11.0, 10.0, 10.5, 110.0),
+            (12.0, 11.0, 11.5, 120.0),
+            (13.0, 12.0, 12.5, 130.0),
+        ] {
+            high.push(Value::F64(h));
+            low.push(Value::F64(l));
+            close.push(Value::F64(c));
+            volume.push(Value::F64(v));
+        }
+
+        assert!(matches!(
+            calculate_mfi(&high, &low, &close, &volume, 3, 0).unwrap(),
+            Value::F64(_)
+        ));
     }
 }

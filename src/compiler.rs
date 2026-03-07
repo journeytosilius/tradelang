@@ -2326,6 +2326,61 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::IndicatorTupleSignal => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() == 2 {
+                validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::Bands => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                validate_positive_window_literal(callee, &args[1], immutable_values, diagnostics);
+            }
+            if args.len() >= 3 && !arg_info[2].ty.is_scalar_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} deviations_up must be a numeric scalar value"),
+                    args[2].span,
+                ));
+            }
+            if args.len() >= 4 && !arg_info[3].ty.is_scalar_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} deviations_down must be a numeric scalar value"),
+                    args[3].span,
+                ));
+            }
+            if args.len() == 5 && !matches!(arg_info[4].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the fifth argument"),
+                    args[4].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::UnaryMathTransform
         | BuiltinKind::NumericBinary
         | BuiltinKind::PriceTransform => {
@@ -2376,7 +2431,25 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 2 {
-                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
+                let minimum = if matches!(
+                    builtin,
+                    BuiltinId::Dema
+                        | BuiltinId::Tema
+                        | BuiltinId::Trima
+                        | BuiltinId::Kama
+                        | BuiltinId::Trix
+                ) {
+                    1
+                } else {
+                    2
+                };
+                validate_min_window_literal(
+                    callee,
+                    &args[1],
+                    immutable_values,
+                    minimum,
+                    diagnostics,
+                );
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2393,7 +2466,7 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() >= 2 {
-                let minimum = if matches!(builtin, BuiltinId::Var) {
+                let minimum = if matches!(builtin, BuiltinId::Var | BuiltinId::T3) {
                     1
                 } else {
                     2
@@ -2503,7 +2576,18 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 3 {
-                validate_min_window_literal(callee, &args[2], immutable_values, 2, diagnostics);
+                let minimum = if matches!(builtin, BuiltinId::PlusDm | BuiltinId::MinusDm) {
+                    1
+                } else {
+                    2
+                };
+                validate_min_window_literal(
+                    callee,
+                    &args[2],
+                    immutable_values,
+                    minimum,
+                    diagnostics,
+                );
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -2536,11 +2620,94 @@ fn analyze_helper_builtin(
                 ));
             }
             if args.len() == 4 {
-                validate_min_window_literal(callee, &args[3], immutable_values, 2, diagnostics);
+                let minimum = if matches!(
+                    builtin,
+                    BuiltinId::Atr
+                        | BuiltinId::Natr
+                        | BuiltinId::PlusDi
+                        | BuiltinId::MinusDi
+                        | BuiltinId::Dx
+                        | BuiltinId::Adx
+                        | BuiltinId::Adxr
+                ) {
+                    1
+                } else {
+                    2
+                };
+                validate_min_window_literal(
+                    callee,
+                    &args[3],
+                    immutable_values,
+                    minimum,
+                    diagnostics,
+                );
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
                 update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
+            }
+        }
+        BuiltinKind::RollingQuadInputWindow => {
+            let update_mask = arg_info
+                .iter()
+                .fold(0, |mask, info| mask | info.update_mask);
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(4).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                3 => "fourth",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            if args.len() == 5 {
+                validate_min_window_literal(callee, &args[4], immutable_values, 1, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask,
+            }
+        }
+        BuiltinKind::RollingQuadInputDoubleWindow => {
+            let update_mask = arg_info
+                .iter()
+                .fold(0, |mask, info| mask | info.update_mask);
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(4).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                3 => "fourth",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            if args.len() >= 5 {
+                validate_min_window_literal(callee, &args[4], immutable_values, 1, diagnostics);
+            }
+            if args.len() == 6 {
+                validate_min_window_literal(callee, &args[5], immutable_values, 1, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask,
             }
         }
         BuiltinKind::Relation2 => {
@@ -2834,6 +3001,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
+        BuiltinKind::IndicatorTupleSignal | BuiltinKind::Bands => ExprInfo {
+            ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+            update_mask: 0,
+        },
         BuiltinKind::RollingSingleInputTuple => ExprInfo {
             ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
@@ -2862,6 +3033,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::RollingDoubleInput
         | BuiltinKind::RollingHighLow
         | BuiltinKind::RollingHighLowClose
+        | BuiltinKind::RollingQuadInputWindow
+        | BuiltinKind::RollingQuadInputDoubleWindow
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
@@ -3815,7 +3988,28 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Coalesce
             | BuiltinId::Cum
             | BuiltinId::HighestBars
-            | BuiltinId::LowestBars => {
+            | BuiltinId::LowestBars
+            | BuiltinId::Atr
+            | BuiltinId::Natr
+            | BuiltinId::PlusDm
+            | BuiltinId::MinusDm
+            | BuiltinId::PlusDi
+            | BuiltinId::MinusDi
+            | BuiltinId::Dx
+            | BuiltinId::Adx
+            | BuiltinId::Adxr
+            | BuiltinId::Ad
+            | BuiltinId::Adosc
+            | BuiltinId::Mfi
+            | BuiltinId::Imi
+            | BuiltinId::Macdfix
+            | BuiltinId::Bbands
+            | BuiltinId::Dema
+            | BuiltinId::Tema
+            | BuiltinId::Trima
+            | BuiltinId::Kama
+            | BuiltinId::T3
+            | BuiltinId::Trix => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -4083,6 +4277,11 @@ impl<'a> Compiler<'a> {
                     BuiltinId::Wma | BuiltinId::MaxIndex | BuiltinId::MinIndex => 30,
                     BuiltinId::Avgdev => 14,
                     BuiltinId::Cmo => 14,
+                    BuiltinId::Dema
+                    | BuiltinId::Tema
+                    | BuiltinId::Trima
+                    | BuiltinId::Kama
+                    | BuiltinId::Trix => 30,
                     BuiltinId::LinearReg
                     | BuiltinId::LinearRegAngle
                     | BuiltinId::LinearRegIntercept
@@ -4093,7 +4292,20 @@ impl<'a> Compiler<'a> {
                 let required_history = args
                     .get(1)
                     .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
-                    .unwrap_or(default_window);
+                    .map(|window| {
+                        if matches!(builtin, BuiltinId::Kama) {
+                            window + 1
+                        } else {
+                            window
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        if matches!(builtin, BuiltinId::Kama) {
+                            default_window + 1
+                        } else {
+                            default_window
+                        }
+                    });
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 if let Some(window) = args.get(1) {
                     self.emit_expr(window, expr_info, user_calls);
@@ -4110,7 +4322,7 @@ impl<'a> Compiler<'a> {
             }
             BuiltinKind::RollingSingleInputFactor => {
                 let default_window = 5usize;
-                let minimum = if matches!(builtin, BuiltinId::Var) {
+                let minimum = if matches!(builtin, BuiltinId::Var | BuiltinId::T3) {
                     1
                 } else {
                     2
@@ -4133,7 +4345,12 @@ impl<'a> Compiler<'a> {
                 if let Some(deviations) = args.get(2) {
                     self.emit_expr(deviations, expr_info, user_calls);
                 } else {
-                    self.emit_f64_constant(1.0, expr.span);
+                    let default_factor = if matches!(builtin, BuiltinId::T3) {
+                        0.7
+                    } else {
+                        1.0
+                    };
+                    self.emit_f64_constant(default_factor, expr.span);
                 }
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
@@ -4191,6 +4408,7 @@ impl<'a> Compiler<'a> {
                 let default_window = match builtin {
                     BuiltinId::Beta => 5usize,
                     BuiltinId::Correl => 30usize,
+                    BuiltinId::Imi => 14usize,
                     _ => unreachable!(),
                 };
                 let required_history = args
@@ -4199,7 +4417,7 @@ impl<'a> Compiler<'a> {
                     .unwrap_or(default_window);
                 let required_steps = match builtin {
                     BuiltinId::Beta => required_history + 1,
-                    BuiltinId::Correl => required_history,
+                    BuiltinId::Correl | BuiltinId::Imi => required_history,
                     _ => unreachable!(),
                 };
                 self.emit_series_ref(&args[0], required_steps.max(2), expr_info, user_calls);
@@ -4254,7 +4472,38 @@ impl<'a> Compiler<'a> {
                 let required_history = args
                     .get(3)
                     .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
-                    .unwrap_or(14);
+                    .map(|window| {
+                        if matches!(
+                            builtin,
+                            BuiltinId::Atr
+                                | BuiltinId::Natr
+                                | BuiltinId::PlusDi
+                                | BuiltinId::MinusDi
+                                | BuiltinId::Dx
+                                | BuiltinId::Adx
+                                | BuiltinId::Adxr
+                        ) {
+                            window + 1
+                        } else {
+                            window
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        if matches!(
+                            builtin,
+                            BuiltinId::Atr
+                                | BuiltinId::Natr
+                                | BuiltinId::PlusDi
+                                | BuiltinId::MinusDi
+                                | BuiltinId::Dx
+                                | BuiltinId::Adx
+                                | BuiltinId::Adxr
+                        ) {
+                            15
+                        } else {
+                            14
+                        }
+                    });
                 self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
                 self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
@@ -4347,6 +4596,120 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(4)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::IndicatorTupleSignal => {
+                let signal = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(9);
+                self.emit_series_ref(&args[0], (26 + signal).max(2), expr_info, user_calls);
+                if let Some(signal_expr) = args.get(1) {
+                    self.emit_expr(signal_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(9.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::Bands => {
+                let required_history = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(5)
+                    + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(5.0, expr.span);
+                }
+                if let Some(deviations_up) = args.get(2) {
+                    self.emit_expr(deviations_up, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(2.0, expr.span);
+                }
+                if let Some(deviations_down) = args.get(3) {
+                    self.emit_expr(deviations_down, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(2.0, expr.span);
+                }
+                if let Some(ma_type) = args.get(4) {
+                    self.emit_expr(ma_type, expr_info, user_calls);
+                } else {
+                    let index = self.push_constant(Value::MaType(MaType::Sma));
+                    self.emit(
+                        Instruction::new(OpCode::LoadConst)
+                            .with_a(index)
+                            .with_span(expr.span),
+                    );
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingQuadInputWindow => {
+                let required_history = args
+                    .get(4)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(14)
+                    + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[3], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(4) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(14.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingQuadInputDoubleWindow => {
+                let fast = args
+                    .get(4)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(3);
+                let slow = args
+                    .get(5)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(10);
+                let required_history = fast.max(slow).max(2);
+                self.emit_series_ref(&args[0], required_history, expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history, expr_info, user_calls);
+                self.emit_series_ref(&args[2], required_history, expr_info, user_calls);
+                self.emit_series_ref(&args[3], required_history, expr_info, user_calls);
+                if let Some(fast) = args.get(4) {
+                    self.emit_expr(fast, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(3.0, expr.span);
+                }
+                if let Some(slow) = args.get(5) {
+                    self.emit_expr(slow, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(10.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(6)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

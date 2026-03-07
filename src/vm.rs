@@ -10,13 +10,14 @@ use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
     apply_unary_math, calculate_aroon, calculate_aroonosc, calculate_avgdev, calculate_beta,
-    calculate_bop, calculate_cci, calculate_correl, calculate_highest_bars,
-    calculate_linear_regression, calculate_lowest_bars, calculate_max_index, calculate_min_index,
-    calculate_min_max, calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange,
-    calculate_var, calculate_willr, calculate_wma, BarsSinceState, CmoState, CumState, EmaState,
-    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, OscillatorKind,
-    PriceOscillatorState, RegressionOutput, RisingState, RsiState, SmaState, UnaryMathTransform,
-    ValueWhenState,
+    calculate_bop, calculate_cci, calculate_correl, calculate_highest_bars, calculate_imi,
+    calculate_linear_regression, calculate_lowest_bars, calculate_max_index, calculate_mfi,
+    calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
+    calculate_sum, calculate_trange, calculate_var, calculate_willr, calculate_wma, AdOscState,
+    AdState, BarsSinceState, BbandsState, CmoState, CumState, DirectionalKind, DirectionalState,
+    DmKind, DmState, EmaState, FallingState, HighestState, IndicatorState, LowestState, MacdState,
+    MovingAverageState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
+    RisingState, RsiState, SmaState, TrixState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -487,6 +488,39 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Cum => self.call_cum(callsite, arity, args, pc),
             BuiltinId::HighestBars => self.call_highest_bars(arity, args, pc),
             BuiltinId::LowestBars => self.call_lowest_bars(arity, args, pc),
+            BuiltinId::Atr => self.call_directional(callsite, arity, args, pc, BuiltinId::Atr),
+            BuiltinId::Natr => self.call_directional(callsite, arity, args, pc, BuiltinId::Natr),
+            BuiltinId::PlusDm => self.call_dm(callsite, arity, args, pc, BuiltinId::PlusDm),
+            BuiltinId::MinusDm => self.call_dm(callsite, arity, args, pc, BuiltinId::MinusDm),
+            BuiltinId::PlusDi => {
+                self.call_directional(callsite, arity, args, pc, BuiltinId::PlusDi)
+            }
+            BuiltinId::MinusDi => {
+                self.call_directional(callsite, arity, args, pc, BuiltinId::MinusDi)
+            }
+            BuiltinId::Dx => self.call_directional(callsite, arity, args, pc, BuiltinId::Dx),
+            BuiltinId::Adx => self.call_directional(callsite, arity, args, pc, BuiltinId::Adx),
+            BuiltinId::Adxr => self.call_directional(callsite, arity, args, pc, BuiltinId::Adxr),
+            BuiltinId::Ad => self.call_ad(callsite, arity, args, pc),
+            BuiltinId::Adosc => self.call_adosc(callsite, arity, args, pc),
+            BuiltinId::Mfi => self.call_mfi(arity, args, pc),
+            BuiltinId::Imi => self.call_imi(arity, args, pc),
+            BuiltinId::Macdfix => self.call_macdfix(callsite, arity, args, pc),
+            BuiltinId::Bbands => self.call_bbands(callsite, arity, args, pc),
+            BuiltinId::Dema => {
+                self.call_moving_average_builtin(callsite, arity, args, pc, BuiltinId::Dema)
+            }
+            BuiltinId::Tema => {
+                self.call_moving_average_builtin(callsite, arity, args, pc, BuiltinId::Tema)
+            }
+            BuiltinId::Trima => {
+                self.call_moving_average_builtin(callsite, arity, args, pc, BuiltinId::Trima)
+            }
+            BuiltinId::Kama => {
+                self.call_moving_average_builtin(callsite, arity, args, pc, BuiltinId::Kama)
+            }
+            BuiltinId::T3 => self.call_t3(callsite, arity, args, pc),
+            BuiltinId::Trix => self.call_trix(callsite, arity, args, pc),
             BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
             BuiltinId::Trange => self.call_trange(arity, args, pc),
             BuiltinId::Wma => self.call_wma(arity, args, pc),
@@ -714,24 +748,33 @@ impl<'a> VmEngine<'a> {
             });
         }
         let ma_type = expect_ma_type(args[2].clone(), pc)?;
-        match ma_type {
-            MaType::Sma => self.call_sma(callsite, 2, vec![args[0].clone(), args[1].clone()], pc),
-            MaType::Ema => self.call_ema(callsite, 2, vec![args[0].clone(), args[1].clone()], pc),
-            MaType::Wma => {
-                let series_slot = series_ref(args[0].clone(), pc)?;
-                let window = expect_window(args[1].clone(), pc)?;
-                self.consume_steps(window, pc)?;
+        if matches!(ma_type, MaType::Mama) {
+            return Err(RuntimeError::UnsupportedMaType {
+                builtin: "ma",
+                ma_type: ma_type.as_str(),
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let key = (BuiltinId::Ma, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::MovingAverage(Box::new(
+                MovingAverageState::new(ma_type, window)?,
+            )));
+        let result = match &mut state {
+            IndicatorState::MovingAverage(state) => {
                 let buffer = self
                     .series_values
                     .get(series_slot)
                     .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
-                calculate_wma(buffer, window, pc)
+                state.update(buffer, pc)?
             }
-            other => Err(RuntimeError::UnsupportedMaType {
-                builtin: "ma",
-                ma_type: other.as_str(),
-            }),
-        }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
     }
 
     fn call_macd(
@@ -759,6 +802,208 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Macd(MacdState::new(fast, slow, signal)));
         let result = match &mut state {
             IndicatorState::Macd(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_macdfix(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "macdfix",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let signal = expect_window(args[1].clone(), pc)?;
+        let key = (BuiltinId::Macdfix, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Macd(MacdState::new(12, 26, signal)));
+        let result = match &mut state {
+            IndicatorState::Macd(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_moving_average_builtin(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let ma_type = match builtin {
+            BuiltinId::Dema => MaType::Dema,
+            BuiltinId::Tema => MaType::Tema,
+            BuiltinId::Trima => MaType::Trima,
+            BuiltinId::Kama => MaType::Kama,
+            _ => unreachable!(),
+        };
+        let key = (builtin, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::MovingAverage(Box::new(
+                MovingAverageState::new(ma_type, window)?,
+            )));
+        let result = match &mut state {
+            IndicatorState::MovingAverage(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_t3(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "t3",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let volume_factor = expect_f64(args[2].clone(), pc)?;
+        let key = (BuiltinId::T3, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::T3(Box::new(
+                crate::indicators::T3State::new(window, volume_factor),
+            )));
+        let result = match &mut state {
+            IndicatorState::T3(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_trix(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "trix",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let key = (BuiltinId::Trix, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Trix(TrixState::new(window)));
+        let result = match &mut state {
+            IndicatorState::Trix(state) => {
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_bbands(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 5 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "bbands",
+                expected: 5,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let deviations_up = expect_f64(args[2].clone(), pc)?;
+        let deviations_down = expect_f64(args[3].clone(), pc)?;
+        let ma_type = expect_ma_type(args[4].clone(), pc)?;
+        if matches!(ma_type, MaType::Mama) {
+            return Err(RuntimeError::UnsupportedMaType {
+                builtin: "bbands",
+                ma_type: ma_type.as_str(),
+            });
+        }
+        let key = (BuiltinId::Bbands, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Bbands(Box::new(BbandsState::new(
+                window,
+                deviations_up,
+                deviations_down,
+                ma_type,
+            )?)));
+        let result = match &mut state {
+            IndicatorState::Bbands(state) => {
                 let buffer = self
                     .series_values
                     .get(series_slot)
@@ -983,16 +1228,18 @@ impl<'a> VmEngine<'a> {
         let fast = expect_window(args[1].clone(), pc)?;
         let slow = expect_window(args[2].clone(), pc)?;
         let ma_type = expect_ma_type(args[3].clone(), pc)?;
+        if matches!(ma_type, MaType::Mama) {
+            return Err(RuntimeError::UnsupportedMaType {
+                builtin: builtin_name,
+                ma_type: ma_type.as_str(),
+            });
+        }
         let key = (builtin_id, callsite);
         let mut state =
             self.indicator_state
                 .remove(&key)
-                .unwrap_or(IndicatorState::PriceOscillator(PriceOscillatorState::new(
-                    builtin_name,
-                    fast,
-                    slow,
-                    ma_type,
-                    kind,
+                .unwrap_or(IndicatorState::PriceOscillator(Box::new(
+                    PriceOscillatorState::new(builtin_name, fast, slow, ma_type, kind),
                 )));
         let result = match &mut state {
             IndicatorState::PriceOscillator(state) => {
@@ -1625,6 +1872,272 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Obv(ObvState::new()));
         let result = match &mut state {
             IndicatorState::Obv(state) => state.update(price, volume, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_ad(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "ad",
+                expected: 4,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let volume_slot = series_ref(args[3].clone(), pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        let volume = self
+            .series_values
+            .get(volume_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: volume_slot })?;
+        let key = (BuiltinId::Ad, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Ad(AdState::new()));
+        let result = match &mut state {
+            IndicatorState::Ad(state) => state.update(high, low, close, volume, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_adosc(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 6 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "adosc",
+                expected: 6,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let volume_slot = series_ref(args[3].clone(), pc)?;
+        let fast = expect_window(args[4].clone(), pc)?;
+        let slow = expect_window(args[5].clone(), pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        let volume = self
+            .series_values
+            .get(volume_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: volume_slot })?;
+        let key = (BuiltinId::Adosc, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::AdOsc(AdOscState::new(fast, slow)));
+        let result = match &mut state {
+            IndicatorState::AdOsc(state) => state.update(high, low, close, volume, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_mfi(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 5 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "mfi",
+                expected: 5,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let volume_slot = series_ref(args[3].clone(), pc)?;
+        let window = expect_window(args[4].clone(), pc)?;
+        self.consume_steps(window + 1, pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        let volume = self
+            .series_values
+            .get(volume_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: volume_slot })?;
+        calculate_mfi(high, low, close, volume, window, pc)
+    }
+
+    fn call_imi(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "imi",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let open_slot = series_ref(args[0].clone(), pc)?;
+        let close_slot = series_ref(args[1].clone(), pc)?;
+        let window = expect_window(args[2].clone(), pc)?;
+        self.consume_steps(window.max(1), pc)?;
+        let open = self
+            .series_values
+            .get(open_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: open_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        calculate_imi(open, close, window, pc)
+    }
+
+    fn call_dm(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 3,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let window = expect_window(args[2].clone(), pc)?;
+        let kind = if matches!(builtin, BuiltinId::PlusDm) {
+            DmKind::Plus
+        } else {
+            DmKind::Minus
+        };
+        let key = (builtin, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Dm(DmState::new(window, kind)));
+        let result = match &mut state {
+            IndicatorState::Dm(state) => {
+                let high = self
+                    .series_values
+                    .get(high_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+                let low = self
+                    .series_values
+                    .get(low_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+                state.update(high, low, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_directional(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 4,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let window = expect_window(args[3].clone(), pc)?;
+        let kind = match builtin {
+            BuiltinId::Atr => DirectionalKind::Atr,
+            BuiltinId::Natr => DirectionalKind::Natr,
+            BuiltinId::PlusDi => DirectionalKind::PlusDi,
+            BuiltinId::MinusDi => DirectionalKind::MinusDi,
+            BuiltinId::Dx => DirectionalKind::Dx,
+            BuiltinId::Adx => DirectionalKind::Adx,
+            BuiltinId::Adxr => DirectionalKind::Adxr,
+            _ => unreachable!(),
+        };
+        let key = (builtin, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Directional(DirectionalState::new(
+                window, kind,
+            )));
+        let result = match &mut state {
+            IndicatorState::Directional(state) => {
+                let high = self
+                    .series_values
+                    .get(high_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+                let low = self
+                    .series_values
+                    .get(low_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+                let close = self
+                    .series_values
+                    .get(close_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+                state.update(high, low, close, pc)?
+            }
             _ => unreachable!(),
         };
         self.indicator_state.insert(key, state);
