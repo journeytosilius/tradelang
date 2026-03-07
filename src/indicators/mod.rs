@@ -14,13 +14,17 @@ pub(crate) mod math;
 pub(crate) mod momentum;
 pub(crate) mod oscillator;
 pub(crate) mod rsi;
+pub(crate) mod sar;
 pub(crate) mod sma;
 pub(crate) mod statistics;
+pub(crate) mod stochastic;
 pub(crate) mod volatility;
 pub(crate) mod volume;
 pub(crate) mod wma;
 
-pub(crate) use advanced_ma::{BbandsState, MovingAverageState, T3State, TrixState};
+pub(crate) use advanced_ma::{
+    AccbandsState, BbandsState, MavpState, MovingAverageState, T3State, TrixState,
+};
 pub(crate) use cmo::CmoState;
 pub(crate) use directional::{DirectionalKind, DirectionalState, DmKind, DmState};
 pub(crate) use ema::EmaState;
@@ -30,18 +34,20 @@ pub(crate) use extrema::{
     calculate_max_index, calculate_min_index, calculate_min_max, calculate_min_max_index,
     calculate_willr, FallingState, HighestState, LowestState, RisingState,
 };
-pub(crate) use macd::MacdState;
+pub(crate) use macd::{MacdExtState, MacdState};
 pub(crate) use math::{
     apply_unary as apply_unary_math, calculate_avgdev, calculate_sum, UnaryMathTransform,
 };
 pub(crate) use momentum::{calculate_bop, calculate_cci, calculate_imi, calculate_mfi};
 pub(crate) use oscillator::{OscillatorKind, PriceOscillatorState};
 pub(crate) use rsi::RsiState;
+pub(crate) use sar::{SarConfig, SarState};
 pub(crate) use sma::SmaState;
 pub(crate) use statistics::{
     calculate_beta, calculate_correl, calculate_linear_regression, calculate_stddev, calculate_var,
     RegressionOutput,
 };
+pub(crate) use stochastic::{StochFastState, StochRsiState, StochState};
 pub(crate) use volatility::calculate_trange;
 pub(crate) use volume::{AdOscState, AdState, ObvState};
 pub(crate) use wma::calculate as calculate_wma;
@@ -67,7 +73,14 @@ pub(crate) enum IndicatorState {
     Trix(TrixState),
     T3(Box<T3State>),
     Bbands(Box<BbandsState>),
+    Accbands(Box<AccbandsState>),
     Dm(DmState),
     Directional(DirectionalState),
     MovingAverage(Box<MovingAverageState>),
+    Mavp(Box<MavpState>),
+    MacdExt(Box<MacdExtState>),
+    Stoch(Box<StochState>),
+    StochFast(Box<StochFastState>),
+    StochRsi(Box<StochRsiState>),
+    Sar(Box<SarState>),
 }

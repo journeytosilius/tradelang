@@ -571,6 +571,46 @@ fn golden_macd_tuple_destructuring_shape_matches() {
 }
 
 #[test]
+fn golden_stoch_tuple_destructuring_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (k, d) = stoch(high, low, close, 3, 3, ma_type.sma, 3, ma_type.sma)\nplot(k - d)",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert!(json["plots"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(6)
+        .any(|point| point["value"].is_number()));
+}
+
+#[test]
+fn golden_mavp_accepts_variable_period_series() {
+    let compiled = compile(&with_interval(
+        "plot(mavp(close, volume, 2, 5, ma_type.sma))",
+    ))
+    .expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][0]["value"],
+        serde_json::Value::Null
+    );
+    assert!(json["plots"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(4)
+        .any(|point| point["value"].is_number()));
+}
+
+#[test]
 fn golden_avgprice_matches_expected_value() {
     let compiled =
         compile(&with_interval("plot(avgprice(open, high, low, close))")).expect("compiles");

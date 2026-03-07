@@ -39,6 +39,14 @@ impl MovingAverageState {
         })
     }
 
+    pub(crate) const fn input_history(window: usize, ma_type: MaType) -> usize {
+        match ma_type {
+            MaType::Kama => window + 1,
+            MaType::Mama => window,
+            _ => window,
+        }
+    }
+
     pub(crate) fn update(
         &mut self,
         buffer: &SeriesBuffer,
@@ -68,6 +76,191 @@ pub(crate) struct BbandsState {
     deviations_down: f64,
     last_seen_version: u64,
     cached_output: Value,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AccbandsState {
+    upper: SmaState,
+    middle: SmaState,
+    lower: SmaState,
+    upper_buffer: SeriesBuffer,
+    lower_buffer: SeriesBuffer,
+    last_versions: (u64, u64, u64),
+    cached_output: Value,
+}
+
+impl AccbandsState {
+    pub(crate) fn new(window: usize) -> Self {
+        Self {
+            upper: SmaState::new(window),
+            middle: SmaState::new(window),
+            lower: SmaState::new(window),
+            upper_buffer: SeriesBuffer::new(window.max(2)),
+            lower_buffer: SeriesBuffer::new(window.max(2)),
+            last_versions: (0, 0, 0),
+            cached_output: na_tuple3(),
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        high: &SeriesBuffer,
+        low: &SeriesBuffer,
+        close: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        let versions = (high.version(), low.version(), close.version());
+        if versions == self.last_versions {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_versions = versions;
+
+        let high_value = match high.get(0) {
+            Value::F64(value) => value,
+            Value::NA => {
+                self.upper_buffer.push(Value::NA);
+                self.lower_buffer.push(Value::NA);
+                self.cached_output = na_tuple3();
+                return Ok(self.cached_output.clone());
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+        let low_value = match low.get(0) {
+            Value::F64(value) => value,
+            Value::NA => {
+                self.upper_buffer.push(Value::NA);
+                self.lower_buffer.push(Value::NA);
+                self.cached_output = na_tuple3();
+                return Ok(self.cached_output.clone());
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+
+        let sum = high_value + low_value;
+        let (upper_band, lower_band) = if sum != 0.0 {
+            let factor = 4.0 * (high_value - low_value) / sum;
+            (
+                Value::F64(high_value * (1.0 + factor)),
+                Value::F64(low_value * (1.0 - factor)),
+            )
+        } else {
+            (Value::F64(high_value), Value::F64(low_value))
+        };
+        self.upper_buffer.push(upper_band);
+        self.lower_buffer.push(lower_band);
+
+        let middle = match self.middle.update(close, pc)? {
+            Some(value) => value,
+            None => self.middle.cached_output(),
+        };
+        let upper = match self.upper.update(&self.upper_buffer, pc)? {
+            Some(value) => value,
+            None => self.upper.cached_output(),
+        };
+        let lower = match self.lower.update(&self.lower_buffer, pc)? {
+            Some(value) => value,
+            None => self.lower.cached_output(),
+        };
+
+        self.cached_output = match (upper, middle, lower) {
+            (Value::F64(upper), Value::F64(middle), Value::F64(lower)) => Value::Tuple3([
+                Box::new(Value::F64(upper)),
+                Box::new(Value::F64(middle)),
+                Box::new(Value::F64(lower)),
+            ]),
+            (Value::NA, _, _) | (_, Value::NA, _) | (_, _, Value::NA) => na_tuple3(),
+            (other, _, _) => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+        Ok(self.cached_output.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MavpState {
+    min_period: usize,
+    max_period: usize,
+    states: Vec<MovingAverageState>,
+    period_versions: (u64, u64),
+    cached_output: Value,
+}
+
+impl MavpState {
+    pub(crate) fn new(
+        min_period: usize,
+        max_period: usize,
+        ma_type: MaType,
+    ) -> Result<Self, RuntimeError> {
+        let mut states = Vec::with_capacity(max_period - min_period + 1);
+        for period in min_period..=max_period {
+            states.push(MovingAverageState::new(ma_type, period)?);
+        }
+        Ok(Self {
+            min_period,
+            max_period,
+            states,
+            period_versions: (0, 0),
+            cached_output: Value::NA,
+        })
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        prices: &SeriesBuffer,
+        periods: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        let versions = (prices.version(), periods.version());
+        if versions == self.period_versions {
+            return Ok(self.cached_output.clone());
+        }
+        self.period_versions = versions;
+
+        let current_period = match periods.get(0) {
+            Value::F64(value) => Some((value as i64) as isize),
+            Value::NA => None,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+
+        let selected_index = current_period.map(|raw| {
+            let clamped = raw.clamp(self.min_period as isize, self.max_period as isize);
+            (clamped as usize) - self.min_period
+        });
+
+        let mut selected = Value::NA;
+        for (index, state) in self.states.iter_mut().enumerate() {
+            let value = state.update(prices, pc)?;
+            if Some(index) == selected_index {
+                selected = value;
+            }
+        }
+
+        self.cached_output = selected;
+        Ok(self.cached_output.clone())
+    }
 }
 
 impl BbandsState {
@@ -570,7 +763,11 @@ fn na_tuple3() -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{calculate_trima, DemaState, KamaState, T3State, TemaState, TrixState};
+    use super::{
+        calculate_trima, AccbandsState, DemaState, KamaState, MavpState, MovingAverageState,
+        T3State, TemaState, TrixState,
+    };
+    use crate::talib::MaType;
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -636,5 +833,43 @@ mod tests {
             let _ = state.update(&buffer, 0).unwrap();
         }
         assert!(matches!(state.update(&buffer, 0).unwrap(), Value::F64(_)));
+    }
+
+    #[test]
+    fn accbands_returns_tuple_after_window() {
+        let mut state = AccbandsState::new(3);
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+        for value in 1..=3 {
+            high.push(Value::F64(value as f64 + 1.0));
+            low.push(Value::F64(value as f64 - 1.0));
+            close.push(Value::F64(value as f64));
+        }
+        assert!(matches!(
+            state.update(&high, &low, &close, 0).unwrap(),
+            Value::Tuple3(_)
+        ));
+    }
+
+    #[test]
+    fn mavp_selects_clamped_period_state() {
+        let mut state = MavpState::new(2, 4, MaType::Sma).unwrap();
+        let mut close = SeriesBuffer::new(8);
+        let mut periods = SeriesBuffer::new(8);
+        for (price, period) in [(1.0, 1.0), (2.0, 2.0), (3.0, 4.0), (4.0, 8.0)] {
+            close.push(Value::F64(price));
+            periods.push(Value::F64(period));
+            let _ = state.update(&close, &periods, 0).unwrap();
+        }
+        assert!(matches!(
+            state.update(&close, &periods, 0).unwrap(),
+            Value::F64(_)
+        ));
+    }
+
+    #[test]
+    fn moving_average_input_history_handles_kama() {
+        assert_eq!(MovingAverageState::input_history(5, MaType::Kama), 6);
     }
 }

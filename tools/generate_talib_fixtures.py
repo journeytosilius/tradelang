@@ -215,10 +215,43 @@ class TalibOracle:
             return self.call_macdfix(inputs[0], int_options[0])
         if family == "bands":
             return self.call_bbands(inputs[0], int_options[0], float_options[0], float_options[1], ma_type or "sma")
+        if family == "accbands":
+            return self.call_accbands(inputs[0], inputs[1], inputs[2], int_options[0])
+        if family == "macdext":
+            return self.call_macdext(
+                inputs[0],
+                int_options[0],
+                ma_type or "sma",
+                int_options[1],
+                ma_type or "sma",
+                int_options[2],
+                ma_type or "sma",
+            )
         if family == "window_ohlcv":
             return [self.call_window_ohlcv(function, inputs[0], inputs[1], inputs[2], inputs[3], int_options[0])]
         if family == "window_ohlcv_fastslow":
             return [self.call_window_ohlcv_fastslow(function, inputs[0], inputs[1], inputs[2], inputs[3], int_options[0], int_options[1])]
+        if family == "mavp":
+            return [self.call_mavp(inputs[0], inputs[1], int_options[0], int_options[1], ma_type or "sma")]
+        if family == "sar":
+            return [self.call_sar(inputs[0], inputs[1], float_options[0], float_options[1])]
+        if family == "sarext":
+            return [self.call_sarext(inputs[0], inputs[1], float_options)]
+        if family == "stoch":
+            return self.call_stoch(
+                inputs[0],
+                inputs[1],
+                inputs[2],
+                int_options[0],
+                int_options[1],
+                ma_type or "sma",
+                int_options[2],
+                ma_type or "sma",
+            )
+        if family == "stochf":
+            return self.call_stochf(inputs[0], inputs[1], inputs[2], int_options[0], int_options[1], ma_type or "sma")
+        if family == "stochrsi":
+            return self.call_stochrsi(inputs[0], int_options[0], int_options[1], int_options[2], ma_type or "sma")
         raise RuntimeError(f"unsupported oracle family {family}")
 
     def call_unary(self, function: str, input0: list[float]) -> list[float | None]:
@@ -333,6 +366,105 @@ class TalibOracle:
             deviations_up,
             deviations_down,
             TA_MATYPE[ma_type],
+        )
+
+    def call_accbands(
+        self, input0: list[float], input1: list[float], input2: list[float], time_period: int
+    ) -> list[list[float | None]]:
+        return self._call_3in_3out_1int("ACCBANDS", input0, input1, input2, time_period)
+
+    def call_macdext(
+        self,
+        input0: list[float],
+        fast_period: int,
+        fast_ma_type: str,
+        slow_period: int,
+        slow_ma_type: str,
+        signal_period: int,
+        signal_ma_type: str,
+    ) -> list[list[float | None]]:
+        return self._call_1in_3out_6int(
+            "MACDEXT",
+            input0,
+            fast_period,
+            TA_MATYPE[fast_ma_type],
+            slow_period,
+            TA_MATYPE[slow_ma_type],
+            signal_period,
+            TA_MATYPE[signal_ma_type],
+        )
+
+    def call_mavp(
+        self,
+        input0: list[float],
+        input1: list[float],
+        min_period: int,
+        max_period: int,
+        ma_type: str,
+    ) -> list[float | None]:
+        return self._call_2in_1out_3int("MAVP", input0, input1, min_period, max_period, TA_MATYPE[ma_type])
+
+    def call_sar(
+        self, input0: list[float], input1: list[float], acceleration: float, maximum: float
+    ) -> list[float | None]:
+        return self._call_2in_1out_2real("SAR", input0, input1, acceleration, maximum)
+
+    def call_sarext(
+        self, input0: list[float], input1: list[float], options: tuple[float, ...]
+    ) -> list[float | None]:
+        return self._call_2in_1out_8real("SAREXT", input0, input1, *options)
+
+    def call_stoch(
+        self,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        fast_k_period: int,
+        slow_k_period: int,
+        slow_k_ma_type: str,
+        slow_d_period: int,
+        slow_d_ma_type: str,
+    ) -> list[list[float | None]]:
+        return self._call_3in_2out_5int(
+            "STOCH",
+            input0,
+            input1,
+            input2,
+            fast_k_period,
+            slow_k_period,
+            TA_MATYPE[slow_k_ma_type],
+            slow_d_period,
+            TA_MATYPE[slow_d_ma_type],
+        )
+
+    def call_stochf(
+        self,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        fast_k_period: int,
+        fast_d_period: int,
+        fast_d_ma_type: str,
+    ) -> list[list[float | None]]:
+        return self._call_3in_2out_3int(
+            "STOCHF", input0, input1, input2, fast_k_period, fast_d_period, TA_MATYPE[fast_d_ma_type]
+        )
+
+    def call_stochrsi(
+        self,
+        input0: list[float],
+        time_period: int,
+        fast_k_period: int,
+        fast_d_period: int,
+        fast_d_ma_type: str,
+    ) -> list[list[float | None]]:
+        return self._call_1in_2out_4int(
+            "STOCHRSI",
+            input0,
+            time_period,
+            fast_k_period,
+            fast_d_period,
+            TA_MATYPE[fast_d_ma_type],
         )
 
     def call_window_ohlcv(
@@ -520,6 +652,29 @@ class TalibOracle:
         ]
         return self._invoke_3out(func, lookback, [input0], [opt0, opt1, opt2, opt3])
 
+    def _call_1in_3out_6int(
+        self, c_name: str, input0: list[float], opt0: int, opt1: int, opt2: int, opt3: int, opt4: int, opt5: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_6int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_3out(func, lookback, [input0], [opt0, opt1, opt2, opt3, opt4, opt5])
+
     def _call_1in_2out_1int(
         self, c_name: str, input0: list[float], opt0: int
     ) -> list[list[float | None]]:
@@ -536,6 +691,26 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_2out(func, lookback, [input0], [opt0])
+
+    def _call_1in_2out_4int(
+        self, c_name: str, input0: list[float], opt0: int, opt1: int, opt2: int, opt3: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_4int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0], [opt0, opt1, opt2, opt3])
 
     def _call_1in_2out_1int_index(
         self, c_name: str, input0: list[float], opt0: int
@@ -587,6 +762,80 @@ class TalibOracle:
         ]
         return self._invoke_1out(func, lookback, [input0, input1], [opt0])
 
+    def _call_2in_1out_2real(
+        self, c_name: str, input0: list[float], input1: list[float], opt0: float, opt1: float
+    ) -> list[float | None]:
+        lookback = self._lookup_2real(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0, input1], [opt0, opt1])
+
+    def _call_2in_1out_3int(
+        self, c_name: str, input0: list[float], input1: list[float], opt0: int, opt1: int, opt2: int
+    ) -> list[float | None]:
+        lookback = self._lookup_3int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0, input1], [opt0, opt1, opt2])
+
+    def _call_2in_1out_8real(
+        self,
+        c_name: str,
+        input0: list[float],
+        input1: list[float],
+        opt0: float,
+        opt1: float,
+        opt2: float,
+        opt3: float,
+        opt4: float,
+        opt5: float,
+        opt6: float,
+        opt7: float,
+    ) -> list[float | None]:
+        lookback = self._lookup_8real(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(
+            func, lookback, [input0, input1], [opt0, opt1, opt2, opt3, opt4, opt5, opt6, opt7]
+        )
+
     def _call_2in_2out_1int(
         self, c_name: str, input0: list[float], input1: list[float], opt0: int
     ) -> list[list[float | None]]:
@@ -604,6 +853,79 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_2out(func, lookback, [input0, input1], [opt0])
+
+    def _call_3in_2out_3int(
+        self, c_name: str, input0: list[float], input1: list[float], input2: list[float], opt0: int, opt1: int, opt2: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_3int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0, input1, input2], [opt0, opt1, opt2])
+
+    def _call_3in_2out_5int(
+        self,
+        c_name: str,
+        input0: list[float],
+        input1: list[float],
+        input2: list[float],
+        opt0: int,
+        opt1: int,
+        opt2: int,
+        opt3: int,
+        opt4: int,
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_5int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0, input1, input2], [opt0, opt1, opt2, opt3, opt4])
+
+    def _call_3in_3out_1int(
+        self, c_name: str, input0: list[float], input1: list[float], input2: list[float], opt0: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_3out(func, lookback, [input0, input1, input2], [opt0])
 
     def _call_3in_1out_0opt(
         self, c_name: str, input0: list[float], input1: list[float], input2: list[float]
@@ -851,9 +1173,48 @@ class TalibOracle:
         func.restype = ctypes.c_int
         return func
 
+    def _lookup_4int(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        func.restype = ctypes.c_int
+        return func
+
+    def _lookup_5int(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        func.restype = ctypes.c_int
+        return func
+
+    def _lookup_6int(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int]
+        func.restype = ctypes.c_int
+        return func
+
     def _lookup_int_real_real_int(self, name: str):
         func = getattr(self.lib, name)
         func.argtypes = [ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_int]
+        func.restype = ctypes.c_int
+        return func
+
+    def _lookup_2real(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [ctypes.c_double, ctypes.c_double]
+        func.restype = ctypes.c_int
+        return func
+
+    def _lookup_8real(self, name: str):
+        func = getattr(self.lib, name)
+        func.argtypes = [
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+        ]
         func.restype = ctypes.c_int
         return func
 
@@ -921,6 +1282,7 @@ def extract_fields(dataset: list[Bar]) -> dict[str, list[float]]:
         "close": [bar.close for bar in dataset],
         "volume": [bar.volume for bar in dataset],
         "time": [bar.time for bar in dataset],
+        "periods": [float(2 + (index % 4)) for index, _bar in enumerate(dataset)],
     }
 
 
@@ -1080,6 +1442,86 @@ def fixture_cases() -> list[Case]:
             Case("kama_default", script_for_single_export("value", "kama(close)"), ("value",), "window", "kama", epsilon=5e-3, input_fields=("close",), int_options=(30,)),
             Case("t3_default", script_for_single_export("value", "t3(close)"), ("value",), "window_factor", "t3", epsilon=5e-3, input_fields=("close",), int_options=(5,), float_options=(0.7,)),
             Case("trix_default", script_for_single_export("value", "trix(close)"), ("value",), "window", "trix", input_fields=("close",), int_options=(30,)),
+            Case(
+                "accbands_default",
+                script_for_tuple_exports(("upper", "middle", "lower"), ("u", "m", "l"), "accbands(high, low, close)"),
+                ("upper", "middle", "lower"),
+                "accbands",
+                "accbands",
+                input_fields=("high", "low", "close"),
+                int_options=(20,),
+            ),
+            Case(
+                "macdext_default",
+                script_for_tuple_exports(("macd_line", "macd_signal", "macd_hist"), ("line", "signal", "hist"), "macdext(close)"),
+                ("macd_line", "macd_signal", "macd_hist"),
+                "macdext",
+                "macdext",
+                input_fields=("close",),
+                int_options=(12, 26, 9),
+                float_options=(0.0, 0.0),
+                ma_type="sma",
+                epsilon=5e-3,
+            ),
+            Case(
+                "mavp_default",
+                script_for_single_export("value", "mavp(close, volume, 2, 5, ma_type.sma)"),
+                ("value",),
+                "mavp",
+                "mavp",
+                input_fields=("close", "volume"),
+                int_options=(2, 5),
+                ma_type="sma",
+            ),
+            Case(
+                "sar_default",
+                script_for_single_export("value", "sar(high, low)"),
+                ("value",),
+                "sar",
+                "sar",
+                input_fields=("high", "low"),
+                float_options=(0.02, 0.2),
+            ),
+            Case(
+                "sarext_default",
+                script_for_single_export("value", "sarext(high, low)"),
+                ("value",),
+                "sarext",
+                "sarext",
+                input_fields=("high", "low"),
+                float_options=(0.0, 0.0, 0.02, 0.02, 0.2, 0.02, 0.02, 0.2),
+            ),
+            Case(
+                "stoch_default",
+                script_for_tuple_exports(("slowk", "slowd"), ("k", "d"), "stoch(high, low, close)"),
+                ("slowk", "slowd"),
+                "stoch",
+                "stoch",
+                input_fields=("high", "low", "close"),
+                int_options=(5, 3, 3),
+                float_options=(0.0,),
+                ma_type="sma",
+            ),
+            Case(
+                "stochf_default",
+                script_for_tuple_exports(("fastk", "fastd"), ("k", "d"), "stochf(high, low, close)"),
+                ("fastk", "fastd"),
+                "stochf",
+                "stochf",
+                input_fields=("high", "low", "close"),
+                int_options=(5, 3),
+                ma_type="sma",
+            ),
+            Case(
+                "stochrsi_default",
+                script_for_tuple_exports(("fastk", "fastd"), ("k", "d"), "stochrsi(close)"),
+                ("fastk", "fastd"),
+                "stochrsi",
+                "stochrsi",
+                input_fields=("close",),
+                int_options=(14, 5, 3),
+                ma_type="sma",
+            ),
         ]
     )
     return cases
@@ -1087,6 +1529,11 @@ def fixture_cases() -> list[Case]:
 
 def script_for_single_export(name: str, expr: str) -> str:
     return f"interval 1m\nexport {name} = {expr}\nplot(0)"
+
+
+def script_for_tuple_exports(export_names: tuple[str, ...], bindings: tuple[str, ...], expr: str) -> str:
+    exports = "\n".join(f"export {export} = {binding}" for export, binding in zip(export_names, bindings))
+    return f"interval 1m\nlet ({', '.join(bindings)}) = {expr}\n{exports}\nplot(0)"
 
 
 if __name__ == "__main__":

@@ -70,6 +70,19 @@ Rules:
 - the result type is a 3-tuple of series values in TA-Lib order: `(macd_line, signal, histogram)`
 - the result must be destructured before it can be used in `plot`, `export`, conditions, or further expressions
 
+## `macdext(series[, fast_length=12[, fast_ma=ma_type.sma[, slow_length=26[, slow_ma=ma_type.sma[, signal_length=9[, signal_ma=ma_type.sma]]]]]])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- omitted lengths use TA-Lib defaults `12`, `26`, and `9`
+- `fast_length` and `slow_length` must be integer literals greater than or equal to `2`
+- `signal_length` must be an integer literal greater than or equal to `1`
+- each MA argument must be a typed `ma_type.<variant>` value
+- the same executable `ma_type` variants as `ma(...)` are supported
+- the result type is a 3-tuple of series values in TA-Lib order: `(macd_line, signal, histogram)`
+- the result must be destructured before further use
+
 ## `bbands(series[, length=5[, deviations_up=2.0[, deviations_down=2.0[, ma_type=ma_type.sma]]]])`
 
 Rules:
@@ -82,6 +95,16 @@ Rules:
 - the result type is a 3-tuple of series values in TA-Lib order: `(upper, middle, lower)`
 - the result must be destructured before it can be used in `plot`, `export`, conditions, or further expressions
 
+## `accbands(high, low, close[, length=20])`
+
+Rules:
+
+- the first three arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `20`
+- if provided, `length` must be an integer literal greater than or equal to `2`
+- the result type is a 3-tuple of series values in TA-Lib order: `(upper, middle, lower)`
+- the result must be destructured before further use
+
 ## `dema(series[, length=30])`, `tema(series[, length=30])`, `trima(series[, length=30])`, `kama(series[, length=30])`, `t3(series[, length=5[, volume_factor=0.7]])`, and `trix(series[, length=30])`
 
 Rules:
@@ -91,6 +114,27 @@ Rules:
 - `t3` defaults to `length=5` and `volume_factor=0.7`
 - if provided, `length` must be a positive integer literal
 - if provided, `volume_factor` must be a numeric scalar
+- the result type is `series<float>`
+
+## `mavp(series, periods, minimum_period, maximum_period, ma_type)`
+
+Rules:
+
+- the first two arguments must be `series<float>`
+- `minimum_period` and `maximum_period` must be integer literals greater than or equal to `2`
+- the fifth argument must be a typed `ma_type.<variant>` value
+- the moving-average family is the same executable `ma_type` subset as `ma(...)`
+- `periods` is clamped per bar into `[minimum_period, maximum_period]`
+- the result type is `series<float>`
+
+## `sar(high, low[, acceleration=0.02[, maximum=0.2]])` and `sarext(high, low[, ...])`
+
+Rules:
+
+- `high` and `low` must be `series<float>`
+- all optional SAR parameters are numeric scalars
+- `sar` returns the standard Parabolic SAR
+- `sarext` exposes the extended TA-Lib SAR controls and returns negative values while short, matching upstream TA-Lib behavior
 - the result type is `series<float>`
 
 ## `wma(series[, length=30])`

@@ -61,9 +61,16 @@ pub enum BuiltinKind {
     HighestBars,
     LowestBars,
     IndicatorTupleSignal,
+    IndicatorTupleMa,
     Bands,
     RollingQuadInputWindow,
     RollingQuadInputDoubleWindow,
+    RollingHighLowCloseTuple,
+    RollingSingleInputTupleMa,
+    VariablePeriodMovingAverage,
+    ParabolicSar,
+    ParabolicSarExt,
+    RollingHighLowCloseBands,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -180,10 +187,18 @@ pub enum BuiltinId {
     Kama = 108,
     T3 = 109,
     Trix = 110,
+    Accbands = 111,
+    Macdext = 112,
+    Mavp = 113,
+    Sar = 114,
+    Sarext = 115,
+    Stoch = 116,
+    Stochf = 117,
+    Stochrsi = 118,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 111] = [
+    pub const RESERVED: [Self; 119] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -295,9 +310,17 @@ impl BuiltinId {
         Self::Kama,
         Self::T3,
         Self::Trix,
+        Self::Accbands,
+        Self::Macdext,
+        Self::Mavp,
+        Self::Sar,
+        Self::Sarext,
+        Self::Stoch,
+        Self::Stochf,
+        Self::Stochrsi,
     ];
 
-    pub const CALLABLE: [Self; 105] = [
+    pub const CALLABLE: [Self; 113] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -403,6 +426,14 @@ impl BuiltinId {
         Self::Kama,
         Self::T3,
         Self::Trix,
+        Self::Accbands,
+        Self::Macdext,
+        Self::Mavp,
+        Self::Sar,
+        Self::Sarext,
+        Self::Stoch,
+        Self::Stochf,
+        Self::Stochrsi,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -518,6 +549,14 @@ impl BuiltinId {
             "kama" => Some(Self::Kama),
             "t3" => Some(Self::T3),
             "trix" => Some(Self::Trix),
+            "accbands" => Some(Self::Accbands),
+            "macdext" => Some(Self::Macdext),
+            "mavp" => Some(Self::Mavp),
+            "sar" => Some(Self::Sar),
+            "sarext" => Some(Self::Sarext),
+            "stoch" => Some(Self::Stoch),
+            "stochf" => Some(Self::Stochf),
+            "stochrsi" => Some(Self::Stochrsi),
             _ => None,
         }
     }
@@ -635,6 +674,14 @@ impl BuiltinId {
             108 => Some(Self::Kama),
             109 => Some(Self::T3),
             110 => Some(Self::Trix),
+            111 => Some(Self::Accbands),
+            112 => Some(Self::Macdext),
+            113 => Some(Self::Mavp),
+            114 => Some(Self::Sar),
+            115 => Some(Self::Sarext),
+            116 => Some(Self::Stoch),
+            117 => Some(Self::Stochf),
+            118 => Some(Self::Stochrsi),
             _ => None,
         }
     }
@@ -752,6 +799,14 @@ impl BuiltinId {
             Self::Kama => "kama",
             Self::T3 => "t3",
             Self::Trix => "trix",
+            Self::Accbands => "accbands",
+            Self::Macdext => "macdext",
+            Self::Mavp => "mavp",
+            Self::Sar => "sar",
+            Self::Sarext => "sarext",
+            Self::Stoch => "stoch",
+            Self::Stochf => "stochf",
+            Self::Stochrsi => "stochrsi",
         }
     }
 
@@ -823,7 +878,9 @@ impl BuiltinId {
             Self::HighestBars => BuiltinKind::HighestBars,
             Self::LowestBars => BuiltinKind::LowestBars,
             Self::Macdfix => BuiltinKind::IndicatorTupleSignal,
+            Self::Macdext => BuiltinKind::IndicatorTupleMa,
             Self::Bbands => BuiltinKind::Bands,
+            Self::Accbands => BuiltinKind::RollingHighLowCloseBands,
             Self::Dema | Self::Tema | Self::Trima | Self::Kama | Self::Trix => {
                 BuiltinKind::RollingSingleInput
             }
@@ -840,6 +897,11 @@ impl BuiltinId {
             Self::Mfi => BuiltinKind::RollingQuadInputWindow,
             Self::Adosc => BuiltinKind::RollingQuadInputDoubleWindow,
             Self::Imi => BuiltinKind::RollingDoubleInput,
+            Self::Mavp => BuiltinKind::VariablePeriodMovingAverage,
+            Self::Sar => BuiltinKind::ParabolicSar,
+            Self::Sarext => BuiltinKind::ParabolicSarExt,
+            Self::Stoch | Self::Stochf => BuiltinKind::RollingHighLowCloseTuple,
+            Self::Stochrsi => BuiltinKind::RollingSingleInputTupleMa,
         }
     }
 
@@ -945,6 +1007,14 @@ impl BuiltinId {
             Self::Macdfix => BuiltinArity::Range { min: 1, max: 2 },
             Self::Coalesce => BuiltinArity::Exact(2),
             Self::Bbands => BuiltinArity::Range { min: 1, max: 5 },
+            Self::Accbands => BuiltinArity::Range { min: 3, max: 4 },
+            Self::Macdext => BuiltinArity::Range { min: 1, max: 7 },
+            Self::Mavp => BuiltinArity::Exact(5),
+            Self::Sar => BuiltinArity::Range { min: 2, max: 4 },
+            Self::Sarext => BuiltinArity::Range { min: 2, max: 10 },
+            Self::Stoch => BuiltinArity::Range { min: 3, max: 8 },
+            Self::Stochf => BuiltinArity::Range { min: 3, max: 6 },
+            Self::Stochrsi => BuiltinArity::Range { min: 1, max: 5 },
         }
     }
 
@@ -1004,6 +1074,14 @@ impl BuiltinId {
             Self::Kama => "kama(series[, length=30])",
             Self::T3 => "t3(series[, length=5[, volume_factor=0.7]])",
             Self::Trix => "trix(series[, length=30])",
+            Self::Accbands => "accbands(high, low, close[, length=20])",
+            Self::Macdext => "macdext(series[, fast_length=12[, fast_ma=ma_type.sma[, slow_length=26[, slow_ma=ma_type.sma[, signal_length=9[, signal_ma=ma_type.sma]]]]]])",
+            Self::Mavp => "mavp(series, periods, minimum_period, maximum_period, ma_type)",
+            Self::Sar => "sar(high, low[, acceleration=0.02[, maximum=0.2]])",
+            Self::Sarext => "sarext(high, low[, start_value=0.0[, offset_on_reverse=0.0[, af_init_long=0.02[, af_long=0.02[, af_max_long=0.2[, af_init_short=0.02[, af_short=0.02[, af_max_short=0.2]]]]]]]])",
+            Self::Stoch => "stoch(high, low, close[, fast_k=5[, slow_k=3[, slow_k_ma=ma_type.sma[, slow_d=3[, slow_d_ma=ma_type.sma]]]]])",
+            Self::Stochf => "stochf(high, low, close[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]])",
+            Self::Stochrsi => "stochrsi(series[, time_period=14[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]]])",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1126,6 +1204,14 @@ impl BuiltinId {
             Self::Kama => "Kaufman adaptive moving average.",
             Self::T3 => "T3 moving average.",
             Self::Trix => "TRIX one-bar rate of change of a triple EMA.",
+            Self::Accbands => "Acceleration Bands tuple (upper, middle, lower).",
+            Self::Macdext => "MACD tuple with configurable moving-average types for fast, slow, and signal lines.",
+            Self::Mavp => "Moving average with a per-bar variable period series.",
+            Self::Sar => "Parabolic SAR.",
+            Self::Sarext => "Extended Parabolic SAR with explicit long/short acceleration controls.",
+            Self::Stoch => "Stochastic oscillator tuple (slowk, slowd).",
+            Self::Stochf => "Fast stochastic oscillator tuple (fastk, fastd).",
+            Self::Stochrsi => "Stochastic RSI tuple (fastk, fastd).",
             Self::Ma => "TA-Lib moving average with typed ma_type selection.",
             Self::Apo => "Absolute price oscillator using a typed moving-average family.",
             Self::Ppo => "Percentage price oscillator using a typed moving-average family.",
@@ -1196,7 +1282,7 @@ mod tests {
             assert_eq!(BuiltinId::from_u16(builtin as u16), Some(builtin));
         }
         assert_eq!(BuiltinId::from_name("missing"), None);
-        assert_eq!(BuiltinId::from_u16(111), None);
+        assert_eq!(BuiltinId::from_u16(999), None);
     }
 
     #[test]

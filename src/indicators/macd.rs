@@ -3,8 +3,11 @@
 use std::collections::VecDeque;
 
 use crate::diagnostic::RuntimeError;
+use crate::talib::MaType;
 use crate::types::Value;
 use crate::vm::SeriesBuffer;
+
+use super::MovingAverageState;
 
 #[derive(Clone, Debug)]
 enum MacdPhase {
@@ -28,6 +31,78 @@ pub(crate) struct MacdState {
     signal_ema: f64,
     last_seen_version: u64,
     cached_output: Value,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MacdExtState {
+    fast: MovingAverageState,
+    slow: MovingAverageState,
+    signal: MovingAverageState,
+    macd_buffer: SeriesBuffer,
+    last_seen_version: u64,
+    cached_output: Value,
+}
+
+impl MacdExtState {
+    pub(crate) fn new(
+        fast_period: usize,
+        fast_ma_type: MaType,
+        slow_period: usize,
+        slow_ma_type: MaType,
+        signal_period: usize,
+        signal_ma_type: MaType,
+    ) -> Result<Self, RuntimeError> {
+        Ok(Self {
+            fast: MovingAverageState::new(fast_ma_type, fast_period)?,
+            slow: MovingAverageState::new(slow_ma_type, slow_period)?,
+            signal: MovingAverageState::new(signal_ma_type, signal_period)?,
+            macd_buffer: SeriesBuffer::new(
+                MovingAverageState::input_history(signal_period, signal_ma_type).max(2),
+            ),
+            last_seen_version: 0,
+            cached_output: na_tuple(),
+        })
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        price_buffer: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        let version = price_buffer.version();
+        if version == self.last_seen_version {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_seen_version = version;
+
+        let fast = self.fast.update(price_buffer, pc)?;
+        let slow = self.slow.update(price_buffer, pc)?;
+        let line = match (fast, slow) {
+            (Value::F64(fast), Value::F64(slow)) => Value::F64(fast - slow),
+            (Value::NA, _) | (_, Value::NA) => Value::NA,
+            (other, _) => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                })
+            }
+        };
+        self.macd_buffer.push(line.clone());
+        let signal = self.signal.update(&self.macd_buffer, pc)?;
+        self.cached_output = match (&line, &signal) {
+            (Value::F64(line), Value::F64(signal)) => tuple(*line, *signal, line - signal),
+            (Value::NA, _) | (_, Value::NA) => na_tuple(),
+            _ => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: line.type_name(),
+                })
+            }
+        };
+        Ok(self.cached_output.clone())
+    }
 }
 
 impl MacdState {
@@ -163,7 +238,8 @@ fn na_tuple() -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::MacdState;
+    use super::{MacdExtState, MacdState};
+    use crate::talib::MaType;
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -186,5 +262,16 @@ mod tests {
         buffer.push(Value::F64(6.0));
         let value = state.update(&buffer, 0).unwrap();
         assert_eq!(value.tuple_len(), Some(3));
+    }
+
+    #[test]
+    fn macdext_returns_tuple_once_all_lines_are_ready() {
+        let mut state = MacdExtState::new(3, MaType::Sma, 5, MaType::Sma, 2, MaType::Sma).unwrap();
+        let mut buffer = SeriesBuffer::new(16);
+        for price in [1.0, 2.0, 3.0, 4.0, 5.0, 6.0] {
+            buffer.push(Value::F64(price));
+            let _ = state.update(&buffer, 0).unwrap();
+        }
+        assert_eq!(state.update(&buffer, 0).unwrap().tuple_len(), Some(3));
     }
 }

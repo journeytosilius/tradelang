@@ -108,6 +108,20 @@ Rules:
 - `imi` uses trailing intraday open-close movement over the requested window
 - the result type is `series<float>`
 
+## `stoch(high, low, close[, fast_k=5[, slow_k=3[, slow_k_ma=ma_type.sma[, slow_d=3[, slow_d_ma=ma_type.sma]]]]])`, `stochf(high, low, close[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]])`, and `stochrsi(series[, time_period=14[, fast_k=5[, fast_d=3[, fast_d_ma=ma_type.sma]]]])`
+
+Rules:
+
+- all price or source arguments must be `series<float>`
+- omitted periods use TA-Lib defaults
+- `fast_k`, `slow_k`, and `fast_d`/`slow_d` lengths must be positive integer literals
+- `time_period` for `stochrsi` must be an integer literal greater than or equal to `2`
+- all MA arguments must be typed `ma_type.<variant>` values
+- `stoch` returns `(slowk, slowd)` in TA-Lib order
+- `stochf` returns `(fastk, fastd)` in TA-Lib order
+- `stochrsi` returns `(fastk, fastd)` in TA-Lib order
+- tuple-valued outputs must be destructured before further use
+
 ## `ad(high, low, close, volume)`, `adosc(high, low, close, volume[, fast_length=3[, slow_length=10]])`, and `obv(series, volume)`
 
 Rules:

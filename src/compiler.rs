@@ -2343,6 +2343,50 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::IndicatorTupleMa => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
+            }
+            if args.len() >= 3 && !matches!(arg_info[2].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the third argument"),
+                    args[2].span,
+                ));
+            }
+            if args.len() >= 4 {
+                validate_min_window_literal(callee, &args[3], immutable_values, 2, diagnostics);
+            }
+            if args.len() >= 5 && !matches!(arg_info[4].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the fifth argument"),
+                    args[4].span,
+                ));
+            }
+            if args.len() >= 6 {
+                validate_min_window_literal(callee, &args[5], immutable_values, 1, diagnostics);
+            }
+            if args.len() == 7 && !matches!(arg_info[6].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the seventh argument"),
+                    args[6].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::Bands => {
             let series_info = arg_info[0];
             if !series_info.ty.is_series_numeric() {
@@ -2379,6 +2423,35 @@ fn analyze_helper_builtin(
             ExprInfo {
                 ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
                 update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::RollingHighLowCloseBands => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            let close_info = arg_info[2];
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(3).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            if args.len() == 4 {
+                validate_min_window_literal(callee, &args[3], immutable_values, 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+                update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
             }
         }
         BuiltinKind::UnaryMathTransform
@@ -2710,6 +2783,167 @@ fn analyze_helper_builtin(
                 update_mask,
             }
         }
+        BuiltinKind::RollingHighLowCloseTuple => {
+            let update_mask = arg_info
+                .iter()
+                .take(3)
+                .fold(0, |mask, info| mask | info.update_mask);
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(3).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            if args.len() >= 4 {
+                validate_min_window_literal(callee, &args[3], immutable_values, 1, diagnostics);
+            }
+            if matches!(builtin, BuiltinId::Stoch) {
+                if args.len() >= 5 {
+                    validate_min_window_literal(callee, &args[4], immutable_values, 1, diagnostics);
+                }
+                if args.len() >= 6
+                    && !matches!(arg_info[5].ty, InferredType::Concrete(Type::MaType))
+                {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires ma_type as the sixth argument"),
+                        args[5].span,
+                    ));
+                }
+                if args.len() >= 7 {
+                    validate_min_window_literal(callee, &args[6], immutable_values, 1, diagnostics);
+                }
+                if args.len() == 8
+                    && !matches!(arg_info[7].ty, InferredType::Concrete(Type::MaType))
+                {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires ma_type as the eighth argument"),
+                        args[7].span,
+                    ));
+                }
+            } else {
+                if args.len() >= 5 {
+                    validate_min_window_literal(callee, &args[4], immutable_values, 1, diagnostics);
+                }
+                if args.len() == 6
+                    && !matches!(arg_info[5].ty, InferredType::Concrete(Type::MaType))
+                {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires ma_type as the sixth argument"),
+                        args[5].span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask,
+            }
+        }
+        BuiltinKind::RollingSingleInputTupleMa => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                validate_min_window_literal(callee, &args[1], immutable_values, 2, diagnostics);
+            }
+            if args.len() >= 3 {
+                validate_min_window_literal(callee, &args[2], immutable_values, 1, diagnostics);
+            }
+            if args.len() >= 4 {
+                validate_min_window_literal(callee, &args[3], immutable_values, 1, diagnostics);
+            }
+            if args.len() == 5 && !matches!(arg_info[4].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the fifth argument"),
+                    args[4].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::VariablePeriodMovingAverage => {
+            let price_info = arg_info[0];
+            let period_info = arg_info[1];
+            if !price_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !period_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            validate_min_window_literal(callee, &args[2], immutable_values, 2, diagnostics);
+            validate_min_window_literal(callee, &args[3], immutable_values, 2, diagnostics);
+            if !matches!(arg_info[4].ty, InferredType::Concrete(Type::MaType)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires ma_type as the fifth argument"),
+                    args[4].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: price_info.update_mask | period_info.update_mask,
+            }
+        }
+        BuiltinKind::ParabolicSar | BuiltinKind::ParabolicSarExt => {
+            let update_mask = arg_info
+                .iter()
+                .take(2)
+                .fold(0, |mask, info| mask | info.update_mask);
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(2).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            if index == 0 { "first" } else { "second" }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            for (arg, info) in args.iter().zip(arg_info.iter()).skip(2) {
+                if !info.ty.is_scalar_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} optional parameters must be numeric scalar values"),
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask,
+            }
+        }
         BuiltinKind::Relation2 => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !info.ty.is_numeric_like() {
@@ -3001,7 +3235,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
-        BuiltinKind::IndicatorTupleSignal | BuiltinKind::Bands => ExprInfo {
+        BuiltinKind::IndicatorTupleSignal
+        | BuiltinKind::IndicatorTupleMa
+        | BuiltinKind::Bands
+        | BuiltinKind::RollingHighLowCloseBands => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
@@ -3013,6 +3250,12 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
+        BuiltinKind::RollingHighLowCloseTuple | BuiltinKind::RollingSingleInputTupleMa => {
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask: 0,
+            }
+        }
         BuiltinKind::UnaryMathTransform
         | BuiltinKind::NumericBinary
         | BuiltinKind::PriceTransform => numeric_result(arg_info),
@@ -3035,6 +3278,9 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::RollingHighLowClose
         | BuiltinKind::RollingQuadInputWindow
         | BuiltinKind::RollingQuadInputDoubleWindow
+        | BuiltinKind::VariablePeriodMovingAverage
+        | BuiltinKind::ParabolicSar
+        | BuiltinKind::ParabolicSarExt
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
@@ -3453,6 +3699,33 @@ fn literal_window(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Opt
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn literal_ma_type(expr: &Expr, immutable_values: &HashMap<String, Value>) -> Option<MaType> {
+    match &expr.kind {
+        ExprKind::Ident(name) => match immutable_values.get(name) {
+            Some(Value::MaType(ma_type)) => Some(*ma_type),
+            _ => None,
+        },
+        ExprKind::EnumVariant {
+            namespace, variant, ..
+        } => match resolve_enum_variant(namespace, variant) {
+            Some(Value::MaType(ma_type)) => Some(ma_type),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn ma_input_history_hint(
+    ma_type_expr: Option<&Expr>,
+    window: usize,
+    immutable_values: &HashMap<String, Value>,
+) -> usize {
+    match ma_type_expr.and_then(|expr| literal_ma_type(expr, immutable_values)) {
+        Some(ma_type) => crate::indicators::MovingAverageState::input_history(window, ma_type),
+        None => window + 1,
     }
 }
 
@@ -4009,7 +4282,15 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Trima
             | BuiltinId::Kama
             | BuiltinId::T3
-            | BuiltinId::Trix => {
+            | BuiltinId::Trix
+            | BuiltinId::Accbands
+            | BuiltinId::Macdext
+            | BuiltinId::Mavp
+            | BuiltinId::Sar
+            | BuiltinId::Sarext
+            | BuiltinId::Stoch
+            | BuiltinId::Stochf
+            | BuiltinId::Stochrsi => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -4619,6 +4900,46 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            BuiltinKind::IndicatorTupleMa => {
+                let fast = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(12);
+                let slow = args
+                    .get(3)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(26);
+                let required_history =
+                    ma_input_history_hint(args.get(2), fast, &self.analysis.immutable_values).max(
+                        ma_input_history_hint(args.get(4), slow, &self.analysis.immutable_values),
+                    );
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                if let Some(fast_expr) = args.get(1) {
+                    self.emit_expr(fast_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(12.0, expr.span);
+                }
+                self.emit_ma_type_argument(args.get(2), expr.span, expr_info, user_calls);
+                if let Some(slow_expr) = args.get(3) {
+                    self.emit_expr(slow_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(26.0, expr.span);
+                }
+                self.emit_ma_type_argument(args.get(4), expr.span, expr_info, user_calls);
+                if let Some(signal_expr) = args.get(5) {
+                    self.emit_expr(signal_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(9.0, expr.span);
+                }
+                self.emit_ma_type_argument(args.get(6), expr.span, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(7)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::Bands => {
                 let required_history = args
                     .get(1)
@@ -4655,6 +4976,27 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingHighLowCloseBands => {
+                let required_history = args
+                    .get(3)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(20);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(3) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(20.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
@@ -4710,6 +5052,145 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(6)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingHighLowCloseTuple => {
+                let fast_k = args
+                    .get(3)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(5);
+                self.emit_series_ref(&args[0], fast_k.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], fast_k.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[2], fast_k.max(2), expr_info, user_calls);
+                if let Some(fast_k_expr) = args.get(3) {
+                    self.emit_expr(fast_k_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(5.0, expr.span);
+                }
+                if matches!(builtin, BuiltinId::Stoch) {
+                    if let Some(slow_k_expr) = args.get(4) {
+                        self.emit_expr(slow_k_expr, expr_info, user_calls);
+                    } else {
+                        self.emit_f64_constant(3.0, expr.span);
+                    }
+                    self.emit_ma_type_argument(args.get(5), expr.span, expr_info, user_calls);
+                    if let Some(slow_d_expr) = args.get(6) {
+                        self.emit_expr(slow_d_expr, expr_info, user_calls);
+                    } else {
+                        self.emit_f64_constant(3.0, expr.span);
+                    }
+                    self.emit_ma_type_argument(args.get(7), expr.span, expr_info, user_calls);
+                    self.emit(
+                        Instruction::new(OpCode::CallBuiltin)
+                            .with_a(builtin as u16)
+                            .with_b(8)
+                            .with_c(callsite)
+                            .with_span(expr.span),
+                    );
+                } else {
+                    if let Some(fast_d_expr) = args.get(4) {
+                        self.emit_expr(fast_d_expr, expr_info, user_calls);
+                    } else {
+                        self.emit_f64_constant(3.0, expr.span);
+                    }
+                    self.emit_ma_type_argument(args.get(5), expr.span, expr_info, user_calls);
+                    self.emit(
+                        Instruction::new(OpCode::CallBuiltin)
+                            .with_a(builtin as u16)
+                            .with_b(6)
+                            .with_c(callsite)
+                            .with_span(expr.span),
+                    );
+                }
+            }
+            BuiltinKind::RollingSingleInputTupleMa => {
+                let time_period = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(14);
+                self.emit_series_ref(&args[0], (time_period + 1).max(2), expr_info, user_calls);
+                if let Some(time_expr) = args.get(1) {
+                    self.emit_expr(time_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(14.0, expr.span);
+                }
+                if let Some(fast_k_expr) = args.get(2) {
+                    self.emit_expr(fast_k_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(5.0, expr.span);
+                }
+                if let Some(fast_d_expr) = args.get(3) {
+                    self.emit_expr(fast_d_expr, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(3.0, expr.span);
+                }
+                self.emit_ma_type_argument(args.get(4), expr.span, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::VariablePeriodMovingAverage => {
+                let max_period =
+                    literal_window(&args[3], &self.analysis.immutable_values).unwrap_or(30);
+                let required_history =
+                    ma_input_history_hint(args.get(4), max_period, &self.analysis.immutable_values);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit_expr(&args[2], expr_info, user_calls);
+                self.emit_expr(&args[3], expr_info, user_calls);
+                self.emit_expr(&args[4], expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::ParabolicSar => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                if let Some(accel) = args.get(2) {
+                    self.emit_expr(accel, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(0.02, expr.span);
+                }
+                if let Some(maximum) = args.get(3) {
+                    self.emit_expr(maximum, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(0.2, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::ParabolicSarExt => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                for (index, default) in [0.0, 0.0, 0.02, 0.02, 0.2, 0.02, 0.02, 0.2]
+                    .iter()
+                    .enumerate()
+                {
+                    if let Some(expr_arg) = args.get(index + 2) {
+                        self.emit_expr(expr_arg, expr_info, user_calls);
+                    } else {
+                        self.emit_f64_constant(*default, expr.span);
+                    }
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(10)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
@@ -4831,6 +5312,25 @@ impl<'a> Compiler<'a> {
                 .with_a(index)
                 .with_span(span),
         );
+    }
+
+    fn emit_ma_type_argument(
+        &mut self,
+        arg: Option<&Expr>,
+        span: Span,
+        expr_info: &HashMap<NodeId, ExprInfo>,
+        user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+    ) {
+        if let Some(arg) = arg {
+            self.emit_expr(arg, expr_info, user_calls);
+        } else {
+            let index = self.push_constant(Value::MaType(MaType::Sma));
+            self.emit(
+                Instruction::new(OpCode::LoadConst)
+                    .with_a(index)
+                    .with_span(span),
+            );
+        }
     }
 
     fn emit_series_window_alias_call(

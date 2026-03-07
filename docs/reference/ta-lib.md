@@ -30,12 +30,13 @@ Implemented TA-Lib-style builtins:
 - `ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])`
 - `macd(series, fast_length, slow_length, signal_length)`
 - `macdfix(series[, signal_length=9])`
+- `macdext(series[, fast_length=12[, fast_ma=ma_type.sma[, slow_length=26[, slow_ma=ma_type.sma[, signal_length=9[, signal_ma=ma_type.sma]]]]]])`
 - unary math transforms: `acos`, `asin`, `atan`, `ceil`, `cos`, `cosh`, `exp`, `floor`, `ln`, `log10`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`
 - math operators: `add`, `div`, `mult`, `sub`, `max`, `min`, `sum`, `maxindex`, `minindex`, `minmax`, `minmaxindex`
 - price transforms: `avgprice`, `medprice`, `typprice`, `wclprice`
-- overlap helpers: `bbands`, `dema`, `ema`, `kama`, `ma`, `midpoint`, `midprice`, `sma`, `t3`, `tema`, `trima`, `wma`
+- overlap helpers: `accbands`, `bbands`, `dema`, `ema`, `kama`, `ma`, `mavp`, `midpoint`, `midprice`, `sar`, `sarext`, `sma`, `t3`, `tema`, `trima`, `wma`
 - statistics helpers: `avgdev`, `stddev`, `var`, `linearreg`, `linearreg_angle`, `linearreg_intercept`, `linearreg_slope`, `tsf`, `beta`, `correl`
-- momentum helpers: `adx`, `adxr`, `apo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `dx`, `imi`, `mfi`, `minus_di`, `minus_dm`, `mom`, `plus_di`, `plus_dm`, `ppo`, `roc`, `rocp`, `rocr`, `rocr100`, `trix`, `willr`
+- momentum helpers: `adx`, `adxr`, `apo`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `dx`, `imi`, `mfi`, `minus_di`, `minus_dm`, `mom`, `plus_di`, `plus_dm`, `ppo`, `roc`, `rocp`, `rocr`, `rocr100`, `stoch`, `stochf`, `stochrsi`, `trix`, `willr`
 - volume and volatility helpers: `ad`, `adosc`, `atr`, `natr`, `obv`, `trange`
 
 Current `ma_type` variants:
@@ -50,7 +51,7 @@ Current `ma_type` variants:
 - `ma_type.mama`
 - `ma_type.t3`
 
-All `ma_type` variants except `ma_type.mama` are currently executable through `ma(...)`, `apo(...)`, and `ppo(...)`. `ma_type.mama` remains reserved for the later Hilbert/MAMA batch.
+All `ma_type` variants except `ma_type.mama` are currently executable through `ma(...)`, `apo(...)`, `ppo(...)`, `bbands(...)`, `macdext(...)`, `mavp(...)`, `stoch(...)`, `stochf(...)`, and `stochrsi(...)`. `ma_type.mama` remains reserved for the later Hilbert/MAMA batch.
 
 Current TA-Lib defaults now honored in the executable surface:
 
@@ -64,7 +65,12 @@ Current TA-Lib defaults now honored in the executable surface:
 - `correl` defaults to `length=30`
 - `apo` and `ppo` default to `fast_length=12`, `slow_length=26`, and `ma_type.sma`
 - `macdfix` defaults to `signal_length=9`
+- `macdext` defaults to `fast_length=12`, `slow_length=26`, `signal_length=9`, and `ma_type.sma` for all three MA roles
 - `bbands` defaults to `length=5`, `deviations_up=2`, `deviations_down=2`, and `ma_type.sma`
+- `accbands` defaults to `length=20`
+- `mavp` requires explicit `minimum_period`, `maximum_period`, and `ma_type`
+- `sar` defaults to `acceleration=0.02` and `maximum=0.2`
+- `sarext` defaults to `start_value=0`, `offset_on_reverse=0`, `af_init_long=0.02`, `af_long=0.02`, `af_max_long=0.2`, `af_init_short=0.02`, `af_short=0.02`, and `af_max_short=0.2`
 - `aroon` and `aroonosc` default to `length=14`
 - `atr`, `natr`, `plus_dm`, `minus_dm`, `plus_di`, `minus_di`, `dx`, `adx`, `adxr`, `mfi`, and `imi` default to `length=14`
 - `adosc` defaults to `fast_length=3` and `slow_length=10`
@@ -73,6 +79,9 @@ Current TA-Lib defaults now honored in the executable surface:
 - `dema`, `tema`, `trima`, `kama`, and `trix` default to `length=30`
 - `t3` defaults to `length=5` and `volume_factor=0.7`
 - `mom`, `roc`, `rocp`, `rocr`, and `rocr100` default to `length=10`
+- `stoch` defaults to `fast_k=5`, `slow_k=3`, `slow_d=3`, and `ma_type.sma` for both smoothing stages
+- `stochf` defaults to `fast_k=5`, `fast_d=3`, and `ma_type.sma`
+- `stochrsi` defaults to `time_period=14`, `fast_k=5`, `fast_d=3`, and `ma_type.sma`
 - `willr` defaults to `length=14`
 
 Oracle fixture refresh for the implemented subset:
