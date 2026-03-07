@@ -8,6 +8,13 @@ This repository does not yet expose the entire TA-Lib function catalog at runtim
 - tuple destructuring for multi-output TA-Lib builtins
 - TA-Lib metadata snapshot in `src/talib.rs`
 - importer tooling under `tools/`
+- a generated 161-function catalog in `src/talib_generated.rs`
+
+Current metadata-driven surface behavior:
+
+- all 161 TA-Lib function names are reserved as builtin names
+- IDE completion and hover can show the generated TA-Lib signatures and summaries
+- calling a catalog function that is not implemented yet produces a deterministic compile diagnostic instead of being treated as an unknown identifier
 
 Implemented TA-Lib-style builtins in this change:
 

@@ -18,6 +18,7 @@ use crate::interval::{Interval, MarketField, INTERVAL_SPECS};
 use crate::lexer;
 use crate::parser;
 use crate::span::Span;
+use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SNAPSHOT};
 use crate::types::Type;
 
 const KEYWORD_COMPLETIONS: [(&str, &str); 12] = [
@@ -643,6 +644,12 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                     definition_index: None,
                     hover: builtin_hover(builtin),
                 }
+            } else if let Some(metadata) = talib_metadata_by_name(callee) {
+                Reference {
+                    span: *callee_span,
+                    definition_index: None,
+                    hover: talib_hover(metadata),
+                }
             } else {
                 Reference {
                     span: *callee_span,
@@ -805,14 +812,29 @@ fn builtin_hover(builtin: BuiltinId) -> String {
 }
 
 fn builtin_completions() -> Vec<CompletionEntry> {
-    BuiltinId::CALLABLE
+    let mut entries: BTreeMap<String, CompletionEntry> = BuiltinId::CALLABLE
         .into_iter()
         .map(|builtin| CompletionEntry {
             label: builtin.as_str().to_string(),
             kind: CompletionKind::Builtin,
             detail: Some(builtin.signature().to_string()),
         })
-        .collect()
+        .map(|entry| (entry.label.clone(), entry))
+        .collect();
+    for metadata in TALIB_METADATA_SNAPSHOT {
+        entries
+            .entry(metadata.name.to_string())
+            .or_insert(CompletionEntry {
+                label: metadata.name.to_string(),
+                kind: CompletionKind::Builtin,
+                detail: Some(metadata.signature.to_string()),
+            });
+    }
+    entries.into_values().collect()
+}
+
+fn talib_hover(metadata: &crate::talib::TalibFunctionMetadata) -> String {
+    format!("`{}`\n\n{}", metadata.signature, metadata.summary)
 }
 
 fn render_expr_info(info: &ExprInfo) -> String {
@@ -1177,7 +1199,8 @@ fn render_market_field(field: MarketField) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{analyze_document, format_document, CompletionKind};
+    use super::{analyze_document, format_document, talib_hover, CompletionKind};
+    use crate::talib::metadata_by_name as talib_metadata_by_name;
 
     fn with_interval(source: &str) -> String {
         format!("interval 1m\n{source}")
@@ -1214,6 +1237,12 @@ mod tests {
         assert!(general
             .iter()
             .any(|entry| entry.label == "valuewhen" && entry.kind == CompletionKind::Builtin));
+        assert!(general
+            .iter()
+            .any(|entry| entry.label == "ht_sine" && entry.kind == CompletionKind::Builtin));
+        assert!(general
+            .iter()
+            .any(|entry| entry.label == "cdlhammer" && entry.kind == CompletionKind::Builtin));
         let fields = document.completions_at(source.find('.').expect("dot") + 1);
         assert!(fields.iter().any(|entry| entry.label == "close"));
     }
@@ -1227,6 +1256,13 @@ mod tests {
             .expect("hover");
         assert!(hover.contents.contains("`crossover(a, b)`"));
         assert!(hover.contents.contains("crosses above"));
+    }
+
+    #[test]
+    fn talib_metadata_hover_is_available_for_unimplemented_functions() {
+        let hover = talib_hover(talib_metadata_by_name("ht_sine").expect("metadata"));
+        assert!(hover.contains("`ht_sine(real)`"));
+        assert!(hover.contains("Hilbert Transform"));
     }
 
     #[test]

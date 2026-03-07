@@ -5,6 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
+mod generated {
+    include!("talib_generated.rs");
+}
+
 pub const TALIB_UPSTREAM_COMMIT: &str = "1bdf54384036852952b8b4cb97c09359ae407bd0";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -87,29 +91,34 @@ pub enum TalibFlag {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 pub struct TalibFunctionMetadata {
     pub name: &'static str,
+    pub abbreviation: &'static str,
+    pub camel_case_name: &'static str,
+    pub signature: &'static str,
+    pub summary: &'static str,
     pub group: TalibGroup,
+    pub required_input_count: u8,
+    pub optional_input_count: u8,
     pub output_count: u8,
     pub flags: &'static [TalibFlag],
 }
 
-pub const TALIB_METADATA_SNAPSHOT: &[TalibFunctionMetadata] = &[
-    TalibFunctionMetadata {
-        name: "ma",
-        group: TalibGroup::OverlapStudies,
-        output_count: 1,
-        flags: &[TalibFlag::Overlap],
-    },
-    TalibFunctionMetadata {
-        name: "macd",
-        group: TalibGroup::MomentumIndicators,
-        output_count: 3,
-        flags: &[],
-    },
-];
+pub const TALIB_METADATA_SNAPSHOT: &[TalibFunctionMetadata] = generated::GENERATED_TALIB_METADATA;
+
+impl TalibFunctionMetadata {
+    pub const fn total_input_count(self) -> usize {
+        (self.required_input_count + self.optional_input_count) as usize
+    }
+}
+
+pub fn metadata_by_name(name: &str) -> Option<&'static TalibFunctionMetadata> {
+    TALIB_METADATA_SNAPSHOT
+        .iter()
+        .find(|entry| entry.name == name)
+}
 
 #[cfg(test)]
 mod tests {
-    use super::{MaType, TALIB_METADATA_SNAPSHOT, TALIB_UPSTREAM_COMMIT};
+    use super::{metadata_by_name, MaType, TALIB_METADATA_SNAPSHOT, TALIB_UPSTREAM_COMMIT};
 
     #[test]
     fn ma_type_variants_round_trip() {
@@ -122,11 +131,14 @@ mod tests {
     #[test]
     fn metadata_snapshot_is_pinned() {
         assert_eq!(TALIB_UPSTREAM_COMMIT.len(), 40);
-        assert!(TALIB_METADATA_SNAPSHOT
-            .iter()
-            .any(|entry| entry.name == "ma"));
-        assert!(TALIB_METADATA_SNAPSHOT
-            .iter()
-            .any(|entry| entry.name == "macd"));
+        assert_eq!(TALIB_METADATA_SNAPSHOT.len(), 161);
+        assert_eq!(
+            metadata_by_name("ht_sine").map(|entry| entry.output_count),
+            Some(2)
+        );
+        assert_eq!(
+            metadata_by_name("cdlhammer").map(|entry| entry.summary),
+            Some("Hammer")
+        );
     }
 }

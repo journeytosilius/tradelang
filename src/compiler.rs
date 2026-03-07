@@ -17,7 +17,7 @@ use crate::interval::{
 use crate::lexer;
 use crate::parser;
 use crate::span::Span;
-use crate::talib::MaType;
+use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
 use crate::types::{SlotKind, Type, Value};
 
 const BASE_UPDATE_MASK: u32 = 1;
@@ -424,7 +424,9 @@ impl<'a> Analyzer<'a> {
 
     fn collect_functions(&mut self, ast: &'a Ast) {
         for function in &ast.functions {
-            if BuiltinId::from_name(&function.name).is_some() {
+            if BuiltinId::from_name(&function.name).is_some()
+                || talib_metadata_by_name(&function.name).is_some()
+            {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!("function name `{}` collides with a builtin", function.name),
@@ -622,6 +624,15 @@ impl<'a> Analyzer<'a> {
                                 ));
                             }
                         }
+                    }
+                    None if talib_metadata_by_name(callee).is_some() => {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!(
+                                "builtin `{callee}` is reserved by the TA-Lib catalog but is not implemented yet"
+                            ),
+                            expr.span,
+                        ));
                     }
                     None => match self.functions_by_name.get(callee).copied() {
                         Some(target) if target.params.len() != args.len() => {
@@ -963,6 +974,17 @@ impl<'a> Analyzer<'a> {
     fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> ExprInfo {
         if let Some(builtin) = BuiltinId::from_name(callee) {
             return self.analyze_builtin_call(builtin, callee, args, expr.span, false);
+        }
+        if let Some(metadata) = talib_metadata_by_name(callee) {
+            let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "builtin `{callee}` is reserved by the TA-Lib catalog but is not implemented yet"
+                ),
+                expr.span,
+            ));
+            return fallback_expr_info_for_talib(metadata, &arg_info);
         }
 
         let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
@@ -1344,6 +1366,17 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
     fn analyze_call(&mut self, expr: &Expr, callee: &str, args: &[Expr]) -> ExprInfo {
         if let Some(builtin) = BuiltinId::from_name(callee) {
             return self.analyze_builtin_call(builtin, callee, args, expr.span);
+        }
+        if let Some(metadata) = talib_metadata_by_name(callee) {
+            let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
+            self.parent.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "builtin `{callee}` is reserved by the TA-Lib catalog but is not implemented yet"
+                ),
+                expr.span,
+            ));
+            return fallback_expr_info_for_talib(metadata, &arg_info);
         }
 
         let arg_info: Vec<ExprInfo> = args.iter().map(|arg| self.analyze_expr(arg)).collect();
@@ -2145,6 +2178,29 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId) -> ExprInfo {
     }
 }
 
+fn fallback_expr_info_for_talib(
+    metadata: &TalibFunctionMetadata,
+    arg_info: &[ExprInfo],
+) -> ExprInfo {
+    let update_mask = arg_info
+        .iter()
+        .fold(0, |mask, info| mask | info.update_mask);
+    match metadata.output_count {
+        2 => ExprInfo {
+            ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+            update_mask,
+        },
+        3 => ExprInfo {
+            ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+            update_mask,
+        },
+        _ => ExprInfo {
+            ty: InferredType::Concrete(Type::SeriesF64),
+            update_mask,
+        },
+    }
+}
+
 fn bool_result(arg_info: &[ExprInfo]) -> ExprInfo {
     let update_mask = arg_info
         .iter()
@@ -2637,11 +2693,13 @@ impl<'a> Compiler<'a> {
         }
 
         let Some(builtin) = BuiltinId::from_name(callee) else {
-            self.diagnostics.push(Diagnostic::new(
-                DiagnosticKind::Compile,
-                format!("unknown builtin `{callee}`"),
-                expr.span,
-            ));
+            let message = if talib_metadata_by_name(callee).is_some() {
+                format!("builtin `{callee}` is reserved by the TA-Lib catalog but is not implemented yet")
+            } else {
+                format!("unknown builtin `{callee}`")
+            };
+            self.diagnostics
+                .push(Diagnostic::new(DiagnosticKind::Compile, message, expr.span));
             return;
         };
 
