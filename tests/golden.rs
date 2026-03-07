@@ -341,6 +341,24 @@ fn golden_midpoint_uses_default_window() {
 }
 
 #[test]
+fn golden_minmax_tuple_destructuring_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (lo, hi) = minmax(close, 10)\nplot(hi - lo)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][8]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][9]["value"],
+        serde_json::json!(9.0)
+    );
+}
+
+#[test]
 fn golden_obv_accumulates_with_direction() {
     let compiled = compile(&with_interval("plot(obv(close, volume))")).expect("compiles");
     let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");

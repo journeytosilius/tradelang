@@ -156,6 +156,56 @@ pub(crate) fn calculate_falling(
     directional_compare(buffer, window, pc, false)
 }
 
+pub(crate) fn calculate_max_index(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::F64(window.max_index as f64),
+        None => Value::NA,
+    })
+}
+
+pub(crate) fn calculate_min_index(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::F64(window.min_index as f64),
+        None => Value::NA,
+    })
+}
+
+pub(crate) fn calculate_min_max(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::Tuple2([
+            Box::new(Value::F64(window.min_value)),
+            Box::new(Value::F64(window.max_value)),
+        ]),
+        None => na_tuple2(),
+    })
+}
+
+pub(crate) fn calculate_min_max_index(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    extrema_window(buffer, window, pc).map(|window| match window {
+        Some(window) => Value::Tuple2([
+            Box::new(Value::F64(window.min_index as f64)),
+            Box::new(Value::F64(window.max_index as f64)),
+        ]),
+        None => na_tuple2(),
+    })
+}
+
 fn fold_extrema(
     buffer: &SeriesBuffer,
     window: usize,
@@ -241,9 +291,74 @@ fn directional_compare(
     Ok(Value::Bool(true))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ExtremaWindow {
+    min_value: f64,
+    min_index: usize,
+    max_value: f64,
+    max_index: usize,
+}
+
+fn extrema_window(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Option<ExtremaWindow>, RuntimeError> {
+    if buffer.len() < window {
+        return Ok(None);
+    }
+
+    let latest_index = buffer.version() as usize - 1;
+    let mut extrema: Option<ExtremaWindow> = None;
+    for (offset, value) in buffer.iter_recent(window).enumerate() {
+        let absolute_index = latest_index - offset;
+        let value = match value {
+            Value::F64(value) => *value,
+            Value::NA => return Ok(None),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        };
+
+        match &mut extrema {
+            Some(extrema) => {
+                if value > extrema.max_value {
+                    extrema.max_value = value;
+                    extrema.max_index = absolute_index;
+                }
+                if value < extrema.min_value {
+                    extrema.min_value = value;
+                    extrema.min_index = absolute_index;
+                }
+            }
+            None => {
+                extrema = Some(ExtremaWindow {
+                    min_value: value,
+                    min_index: absolute_index,
+                    max_value: value,
+                    max_index: absolute_index,
+                });
+            }
+        }
+    }
+
+    Ok(extrema)
+}
+
+fn na_tuple2() -> Value {
+    Value::Tuple2([Box::new(Value::NA), Box::new(Value::NA)])
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{calculate_falling, calculate_highest, calculate_lowest, calculate_rising};
+    use super::{
+        calculate_falling, calculate_highest, calculate_lowest, calculate_max_index,
+        calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_rising,
+    };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -284,5 +399,44 @@ mod tests {
         buffer.push(Value::F64(3.0));
         assert_eq!(calculate_highest(&buffer, 3, 0).unwrap(), Value::NA);
         assert_eq!(calculate_rising(&buffer, 2, 0).unwrap(), Value::NA);
+    }
+
+    #[test]
+    fn index_helpers_return_absolute_indices() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [3.0, 5.0, 2.0, 4.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        assert_eq!(calculate_max_index(&buffer, 3, 0).unwrap(), Value::F64(1.0));
+        assert_eq!(calculate_min_index(&buffer, 3, 0).unwrap(), Value::F64(2.0));
+    }
+
+    #[test]
+    fn index_helpers_prefer_newest_equal_value_like_talib() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [4.0, 2.0, 4.0, 2.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        assert_eq!(calculate_max_index(&buffer, 4, 0).unwrap(), Value::F64(2.0));
+        assert_eq!(calculate_min_index(&buffer, 4, 0).unwrap(), Value::F64(3.0));
+    }
+
+    #[test]
+    fn tuple_extrema_helpers_return_talib_order() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [3.0, 5.0, 2.0, 4.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        assert_eq!(
+            calculate_min_max(&buffer, 3, 0).unwrap(),
+            Value::Tuple2([Box::new(Value::F64(2.0)), Box::new(Value::F64(5.0))])
+        );
+        assert_eq!(
+            calculate_min_max_index(&buffer, 3, 0).unwrap(),
+            Value::Tuple2([Box::new(Value::F64(2.0)), Box::new(Value::F64(1.0))])
+        );
     }
 }

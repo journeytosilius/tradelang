@@ -6,7 +6,7 @@
 
 PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
-The language now includes indicator, signal-helper, event-memory, and early TA-Lib-style builtins such as `crossover`, `highest`, `barssince`, `valuewhen`, `ma`, and `macd` in addition to the core OHLCV series model.
+The language now includes indicator, signal-helper, event-memory, and early TA-Lib-style builtins such as `crossover`, `highest`, `barssince`, `valuewhen`, `ma`, `macd`, `wma`, `avgdev`, and `minmax` in addition to the core OHLCV series model.
 
 The repository currently ships:
 

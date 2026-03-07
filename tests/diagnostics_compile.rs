@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 23] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 24] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -429,6 +429,14 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "sum length must be greater than or equal to 2",
+            )],
+        ),
+        (
+            "type_minmax_requires_minimum_window",
+            with_interval("let (lo, hi) = minmax(close, 1)\nplot(hi)"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "minmax length must be greater than or equal to 2",
             )],
         ),
         (

@@ -39,6 +39,12 @@ PalmScript currently provides these callable builtins:
 - `sum(series[, length=30])`
 - `midpoint(series[, length=14])`
 - `midprice(high, low[, length=14])`
+- `wma(series[, length=30])`
+- `avgdev(series[, length=14])`
+- `maxindex(series[, length=30])`
+- `minindex(series[, length=30])`
+- `minmax(series[, length=30])`
+- `minmaxindex(series[, length=30])`
 - `obv(series, volume)`
 - `trange(high, low, close)`
 - `plot(value)`
@@ -179,6 +185,30 @@ Rules:
 - if any argument is a series, the result type is `series<float>`
 - otherwise the result type is `float`
 - if any required input is `na`, the result is `na`
+
+### TA-Lib rolling window helpers
+
+These builtins are currently executable:
+
+- `wma(series[, length=30])`
+- `avgdev(series[, length=14])`
+- `maxindex(series[, length=30])`
+- `minindex(series[, length=30])`
+- `minmax(series[, length=30])`
+- `minmaxindex(series[, length=30])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- the optional `length` must be an integer literal greater than or equal to `2`
+- omitted `length` uses the TA-Lib default for that builtin
+- `wma` and `avgdev` return `series<float>`
+- `maxindex` and `minindex` return `series<float>` containing the absolute bar index as `f64`
+- `minmax` returns a 2-tuple `(min_value, max_value)` in TA-Lib output order
+- `minmaxindex` returns a 2-tuple `(min_index, max_index)` in TA-Lib output order
+- tuple-valued outputs must be destructured before further use
+- if insufficient history exists, the current sample is `na`
+- if the required window contains `na`, the current sample is `na`
 
 ## Relational Helpers
 

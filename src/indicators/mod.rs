@@ -16,9 +16,14 @@ pub(crate) mod wma;
 
 pub(crate) use ema::EmaState;
 pub(crate) use event::{BarsSinceState, ValueWhenState};
-pub(crate) use extrema::{FallingState, HighestState, LowestState, RisingState};
+pub(crate) use extrema::{
+    calculate_max_index, calculate_min_index, calculate_min_max, calculate_min_max_index,
+    FallingState, HighestState, LowestState, RisingState,
+};
 pub(crate) use macd::MacdState;
-pub(crate) use math::{apply_unary as apply_unary_math, calculate_sum, UnaryMathTransform};
+pub(crate) use math::{
+    apply_unary as apply_unary_math, calculate_avgdev, calculate_sum, UnaryMathTransform,
+};
 pub(crate) use rsi::RsiState;
 pub(crate) use sma::SmaState;
 pub(crate) use volatility::calculate_trange;

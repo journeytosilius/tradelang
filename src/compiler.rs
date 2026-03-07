@@ -2070,6 +2070,23 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::RollingSingleInputTuple => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() == 2 {
+                validate_min_window_literal(callee, &args[1], 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask: series_info.update_mask,
+            }
+        }
         BuiltinKind::RollingHighLow => {
             let high_info = arg_info[0];
             let low_info = arg_info[1];
@@ -2273,6 +2290,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::ValueWhen => ExprInfo::series(0),
         BuiltinKind::IndicatorTuple => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
+            update_mask: 0,
+        },
+        BuiltinKind::RollingSingleInputTuple => ExprInfo {
+            ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
         BuiltinKind::UnaryMathTransform
@@ -2931,7 +2952,13 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Ma
             | BuiltinId::Macd
             | BuiltinId::Obv
-            | BuiltinId::Trange => {
+            | BuiltinId::Trange
+            | BuiltinId::Wma
+            | BuiltinId::Avgdev
+            | BuiltinId::MaxIndex
+            | BuiltinId::MinIndex
+            | BuiltinId::MinMax
+            | BuiltinId::MinMaxIndex => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3140,6 +3167,31 @@ impl<'a> Compiler<'a> {
                 let default_window = match builtin {
                     BuiltinId::Max | BuiltinId::Min | BuiltinId::Sum => 30,
                     BuiltinId::Midpoint => 14,
+                    BuiltinId::Wma | BuiltinId::MaxIndex | BuiltinId::MinIndex => 30,
+                    BuiltinId::Avgdev => 14,
+                    _ => unreachable!(),
+                };
+                let required_history = args
+                    .get(1)
+                    .and_then(literal_window)
+                    .unwrap_or(default_window);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingSingleInputTuple => {
+                let default_window = match builtin {
+                    BuiltinId::MinMax | BuiltinId::MinMaxIndex => 30,
                     _ => unreachable!(),
                 };
                 let required_history = args

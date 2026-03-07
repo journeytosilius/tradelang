@@ -188,6 +188,12 @@ class TalibOracle:
             return [self.call_window(function, inputs[0], int_options[0])]
         if family == "window_high_low":
             return [self.call_window_high_low(function, inputs[0], inputs[1], int_options[0])]
+        if family == "window_index":
+            return [self.call_window_index(function, inputs[0], int_options[0])]
+        if family == "window_tuple":
+            return self.call_window_tuple(function, inputs[0], int_options[0])
+        if family == "window_index_tuple":
+            return self.call_window_index_tuple(function, inputs[0], int_options[0])
         if family == "ma":
             return [self.call_ma(inputs[0], int_options[0], ma_type or "sma")]
         if family == "macd":
@@ -226,6 +232,22 @@ class TalibOracle:
     def call_window(self, function: str, input0: list[float], time_period: int) -> list[float | None]:
         c_name = function.upper()
         return self._call_1in_1out_1int(c_name, input0, time_period)
+
+    def call_window_index(self, function: str, input0: list[float], time_period: int) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_1in_1out_1int_index(c_name, input0, time_period)
+
+    def call_window_tuple(
+        self, function: str, input0: list[float], time_period: int
+    ) -> list[list[float | None]]:
+        c_name = function.upper()
+        return self._call_1in_2out_1int(c_name, input0, time_period)
+
+    def call_window_index_tuple(
+        self, function: str, input0: list[float], time_period: int
+    ) -> list[list[float | None]]:
+        c_name = function.upper()
+        return self._call_1in_2out_1int_index(c_name, input0, time_period)
 
     def call_window_high_low(
         self, function: str, high: list[float], low: list[float], time_period: int
@@ -269,6 +291,22 @@ class TalibOracle:
         ]
         return self._invoke_1out(func, lookback, [input0], [opt0])
 
+    def _call_1in_1out_1int_index(
+        self, c_name: str, input0: list[float], opt0: int
+    ) -> list[float | None]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        return self._invoke_1out_int(func, lookback, [input0], [opt0])
+
     def _call_1in_1out_2int(
         self, c_name: str, input0: list[float], opt0: int, opt1: int
     ) -> list[float | None]:
@@ -305,6 +343,40 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_3out(func, lookback, [input0], [opt0, opt1, opt2])
+
+    def _call_1in_2out_1int(
+        self, c_name: str, input0: list[float], opt0: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_2out(func, lookback, [input0], [opt0])
+
+    def _call_1in_2out_1int_index(
+        self, c_name: str, input0: list[float], opt0: int
+    ) -> list[list[float | None]]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        return self._invoke_2out_int(func, lookback, [input0], [opt0])
 
     def _call_2in_1out_0opt(
         self, c_name: str, input0: list[float], input1: list[float]
@@ -389,6 +461,36 @@ class TalibOracle:
         aligned, *_ = self._invoke_common(func, lookback_fn, inputs, options or [], 1)
         return aligned[0]
 
+    def _invoke_1out_int(
+        self,
+        func: ctypes._CFuncPtr,
+        lookback_fn,
+        inputs: list[list[float]],
+        options: list[int] | None = None,
+    ) -> list[float | None]:
+        aligned, *_ = self._invoke_common_int(func, lookback_fn, inputs, options or [], 1)
+        return aligned[0]
+
+    def _invoke_2out(
+        self,
+        func: ctypes._CFuncPtr,
+        lookback_fn,
+        inputs: list[list[float]],
+        options: list[int] | None = None,
+    ) -> list[list[float | None]]:
+        aligned, *_ = self._invoke_common(func, lookback_fn, inputs, options or [], 2)
+        return aligned
+
+    def _invoke_2out_int(
+        self,
+        func: ctypes._CFuncPtr,
+        lookback_fn,
+        inputs: list[list[float]],
+        options: list[int] | None = None,
+    ) -> list[list[float | None]]:
+        aligned, *_ = self._invoke_common_int(func, lookback_fn, inputs, options or [], 2)
+        return aligned
+
     def _invoke_3out(
         self,
         func: ctypes._CFuncPtr,
@@ -427,6 +529,34 @@ class TalibOracle:
             aligned.append(align_output(length, out_beg.value, out_nb.value, output))
         return aligned, out_beg.value, out_nb.value
 
+    def _invoke_common_int(
+        self,
+        func: ctypes._CFuncPtr,
+        lookback_fn,
+        inputs: list[list[float]],
+        options: list[int],
+        output_count: int,
+    ) -> tuple[list[list[float | None]], int, int]:
+        length = len(inputs[0])
+        arrays = [(ctypes.c_double * length)(*values) for values in inputs]
+        out_beg = ctypes.c_int()
+        out_nb = ctypes.c_int()
+        outputs = [(ctypes.c_int * length)() for _ in range(output_count)]
+        rc = func(
+            0,
+            length - 1,
+            *arrays,
+            *options,
+            ctypes.byref(out_beg),
+            ctypes.byref(out_nb),
+            *outputs,
+        )
+        self._check(rc, getattr(func, "__name__", "TA function"))
+        aligned = []
+        for output in outputs:
+            aligned.append(align_output_int(length, out_beg.value, out_nb.value, output))
+        return aligned, out_beg.value, out_nb.value
+
     def _lookup_void(self, name: str):
         func = getattr(self.lib, name)
         func.argtypes = []
@@ -460,6 +590,13 @@ def align_output(length: int, out_beg: int, out_nb: int, output) -> list[float |
     aligned: list[float | None] = [None] * length
     for index in range(out_nb):
         aligned[out_beg + index] = round(float(output[index]), 12)
+    return aligned
+
+
+def align_output_int(length: int, out_beg: int, out_nb: int, output) -> list[float | None]:
+    aligned: list[float | None] = [None] * length
+    for index in range(out_nb):
+        aligned[out_beg + index] = float(output[index])
     return aligned
 
 
@@ -564,6 +701,28 @@ def fixture_cases() -> list[Case]:
             Case("sum_default", script_for_single_export("value", "sum(close)"), ("value",), "window", "sum", input_fields=("close",), int_options=(30,)),
             Case("midpoint_default", script_for_single_export("value", "midpoint(close)"), ("value",), "window", "midpoint", input_fields=("close",), int_options=(14,)),
             Case("midprice_default", script_for_single_export("value", "midprice(high, low)"), ("value",), "window_high_low", "midprice", input_fields=("high", "low"), int_options=(14,)),
+            Case("wma_default", script_for_single_export("value", "wma(close)"), ("value",), "window", "wma", input_fields=("close",), int_options=(30,)),
+            Case("avgdev_default", script_for_single_export("value", "avgdev(close)"), ("value",), "window", "avgdev", input_fields=("close",), int_options=(14,)),
+            Case("maxindex_default", script_for_single_export("value", "maxindex(close)"), ("value",), "window_index", "maxindex", input_fields=("close",), int_options=(30,)),
+            Case("minindex_default", script_for_single_export("value", "minindex(close)"), ("value",), "window_index", "minindex", input_fields=("close",), int_options=(30,)),
+            Case(
+                "minmax_default",
+                "interval 1m\nlet (lo, hi) = minmax(close)\nexport min_value = lo\nexport max_value = hi\nplot(0)",
+                ("min_value", "max_value"),
+                "window_tuple",
+                "minmax",
+                input_fields=("close",),
+                int_options=(30,),
+            ),
+            Case(
+                "minmaxindex_default",
+                "interval 1m\nlet (lo_index, hi_index) = minmaxindex(close)\nexport min_index = lo_index\nexport max_index = hi_index\nplot(0)",
+                ("min_index", "max_index"),
+                "window_index_tuple",
+                "minmaxindex",
+                input_fields=("close",),
+                int_options=(30,),
+            ),
             Case("obv_close_volume", script_for_single_export("value", "obv(close, volume)"), ("value",), "binary", "obv", input_fields=("close", "volume")),
             Case("trange", script_for_single_export("value", "trange(high, low, close)"), ("value",), "ternary", "trange", input_fields=("high", "low", "close")),
         ]

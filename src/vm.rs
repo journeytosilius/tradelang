@@ -9,9 +9,10 @@ use crate::builtins::BuiltinId;
 use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
-    apply_unary_math, calculate_sum, calculate_trange, calculate_wma, BarsSinceState, EmaState,
-    FallingState, HighestState, IndicatorState, LowestState, MacdState, ObvState, RisingState,
-    RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    apply_unary_math, calculate_avgdev, calculate_max_index, calculate_min_index,
+    calculate_min_max, calculate_min_max_index, calculate_sum, calculate_trange, calculate_wma,
+    BarsSinceState, EmaState, FallingState, HighestState, IndicatorState, LowestState, MacdState,
+    ObvState, RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -457,6 +458,12 @@ impl<'a> VmEngine<'a> {
             BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
             BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
             BuiltinId::Trange => self.call_trange(arity, args, pc),
+            BuiltinId::Wma => self.call_wma(arity, args, pc),
+            BuiltinId::Avgdev => self.call_avgdev(arity, args, pc),
+            BuiltinId::MaxIndex => self.call_max_index(arity, args, pc),
+            BuiltinId::MinIndex => self.call_min_index(arity, args, pc),
+            BuiltinId::MinMax => self.call_min_max(arity, args, pc),
+            BuiltinId::MinMaxIndex => self.call_min_max_index(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -796,6 +803,60 @@ impl<'a> VmEngine<'a> {
         calculate_sum(buffer, window, pc)
     }
 
+    fn call_wma(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("wma", arity, args, pc, calculate_wma)
+    }
+
+    fn call_avgdev(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("avgdev", arity, args, pc, calculate_avgdev)
+    }
+
+    fn call_max_index(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("maxindex", arity, args, pc, calculate_max_index)
+    }
+
+    fn call_min_index(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("minindex", arity, args, pc, calculate_min_index)
+    }
+
+    fn call_min_max(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("minmax", arity, args, pc, calculate_min_max)
+    }
+
+    fn call_min_max_index(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("minmaxindex", arity, args, pc, calculate_min_max_index)
+    }
+
     fn call_highest(
         &mut self,
         callsite: u16,
@@ -1026,6 +1087,34 @@ impl<'a> VmEngine<'a> {
             .get(close_slot)
             .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
         calculate_trange(high, low, close, pc)
+    }
+
+    fn call_stateless_window_builtin<F>(
+        &mut self,
+        builtin: &'static str,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        calculate: F,
+    ) -> Result<Value, RuntimeError>
+    where
+        F: FnOnce(&SeriesBuffer, usize, usize) -> Result<Value, RuntimeError>,
+    {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin,
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        self.consume_steps(window, pc)?;
+        let buffer = self
+            .series_values
+            .get(series_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+        calculate(buffer, window, pc)
     }
 }
 

@@ -85,9 +85,52 @@ pub(crate) fn calculate_sum(
     Ok(Value::F64(sum))
 }
 
+pub(crate) fn calculate_avgdev(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    if buffer.len() < window {
+        return Ok(Value::NA);
+    }
+
+    let mut sum = 0.0;
+    for value in buffer.iter_recent(window) {
+        match value {
+            Value::F64(value) => sum += value,
+            Value::NA => return Ok(Value::NA),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+
+    let average = sum / window as f64;
+    let mut total_deviation = 0.0;
+    for value in buffer.iter_recent(window) {
+        match value {
+            Value::F64(value) => total_deviation += (value - average).abs(),
+            Value::NA => return Ok(Value::NA),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+
+    Ok(Value::F64(total_deviation / window as f64))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{apply_unary, calculate_sum, UnaryMathTransform};
+    use super::{apply_unary, calculate_avgdev, calculate_sum, UnaryMathTransform};
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -113,5 +156,18 @@ mod tests {
         }
 
         assert_eq!(calculate_sum(&buffer, 3, 0).unwrap(), Value::F64(9.0));
+    }
+
+    #[test]
+    fn avgdev_matches_average_absolute_deviation() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [1.0, 2.0, 3.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        assert_eq!(
+            calculate_avgdev(&buffer, 3, 0).unwrap(),
+            Value::F64(2.0 / 3.0)
+        );
     }
 }

@@ -34,6 +34,7 @@ pub enum BuiltinKind {
     NumericBinary,
     PriceTransform,
     RollingSingleInput,
+    RollingSingleInputTuple,
     RollingHighLow,
     VolumeIndicator,
     VolatilityIndicator,
@@ -110,10 +111,16 @@ pub enum BuiltinId {
     Wclprice = 54,
     Obv = 55,
     Trange = 56,
+    Wma = 57,
+    Avgdev = 58,
+    MaxIndex = 59,
+    MinIndex = 60,
+    MinMax = 61,
+    MinMaxIndex = 62,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 57] = [
+    pub const RESERVED: [Self; 63] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -171,9 +178,15 @@ impl BuiltinId {
         Self::Wclprice,
         Self::Obv,
         Self::Trange,
+        Self::Wma,
+        Self::Avgdev,
+        Self::MaxIndex,
+        Self::MinIndex,
+        Self::MinMax,
+        Self::MinMaxIndex,
     ];
 
-    pub const CALLABLE: [Self; 51] = [
+    pub const CALLABLE: [Self; 57] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -225,6 +238,12 @@ impl BuiltinId {
         Self::Wclprice,
         Self::Obv,
         Self::Trange,
+        Self::Wma,
+        Self::Avgdev,
+        Self::MaxIndex,
+        Self::MinIndex,
+        Self::MinMax,
+        Self::MinMaxIndex,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -286,6 +305,12 @@ impl BuiltinId {
             "wclprice" => Some(Self::Wclprice),
             "obv" => Some(Self::Obv),
             "trange" => Some(Self::Trange),
+            "wma" => Some(Self::Wma),
+            "avgdev" => Some(Self::Avgdev),
+            "maxindex" => Some(Self::MaxIndex),
+            "minindex" => Some(Self::MinIndex),
+            "minmax" => Some(Self::MinMax),
+            "minmaxindex" => Some(Self::MinMaxIndex),
             _ => None,
         }
     }
@@ -349,6 +374,12 @@ impl BuiltinId {
             54 => Some(Self::Wclprice),
             55 => Some(Self::Obv),
             56 => Some(Self::Trange),
+            57 => Some(Self::Wma),
+            58 => Some(Self::Avgdev),
+            59 => Some(Self::MaxIndex),
+            60 => Some(Self::MinIndex),
+            61 => Some(Self::MinMax),
+            62 => Some(Self::MinMaxIndex),
             _ => None,
         }
     }
@@ -412,6 +443,12 @@ impl BuiltinId {
             Self::Wclprice => "wclprice",
             Self::Obv => "obv",
             Self::Trange => "trange",
+            Self::Wma => "wma",
+            Self::Avgdev => "avgdev",
+            Self::MaxIndex => "maxindex",
+            Self::MinIndex => "minindex",
+            Self::MinMax => "minmax",
+            Self::MinMaxIndex => "minmaxindex",
         }
     }
 
@@ -444,6 +481,10 @@ impl BuiltinId {
                 BuiltinKind::PriceTransform
             }
             Self::Max | Self::Min | Self::Sum | Self::Midpoint => BuiltinKind::RollingSingleInput,
+            Self::Wma | Self::Avgdev | Self::MaxIndex | Self::MinIndex => {
+                BuiltinKind::RollingSingleInput
+            }
+            Self::MinMax | Self::MinMaxIndex => BuiltinKind::RollingSingleInputTuple,
             Self::Midprice => BuiltinKind::RollingHighLow,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
@@ -516,9 +557,16 @@ impl BuiltinId {
             | Self::ValueWhen
             | Self::Trange => BuiltinArity::Exact(3),
             Self::Macd => BuiltinArity::Exact(4),
-            Self::Max | Self::Min | Self::Sum | Self::Midpoint => {
-                BuiltinArity::Range { min: 1, max: 2 }
-            }
+            Self::Max
+            | Self::Min
+            | Self::Sum
+            | Self::Midpoint
+            | Self::Wma
+            | Self::Avgdev
+            | Self::MaxIndex
+            | Self::MinIndex
+            | Self::MinMax
+            | Self::MinMaxIndex => BuiltinArity::Range { min: 1, max: 2 },
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
         }
     }
@@ -582,6 +630,12 @@ impl BuiltinId {
             Self::Wclprice => "wclprice(high, low, close)",
             Self::Obv => "obv(series, volume)",
             Self::Trange => "trange(high, low, close)",
+            Self::Wma => "wma(series[, length=30])",
+            Self::Avgdev => "avgdev(series[, length=14])",
+            Self::MaxIndex => "maxindex(series[, length=30])",
+            Self::MinIndex => "minindex(series[, length=30])",
+            Self::MinMax => "minmax(series[, length=30])",
+            Self::MinMaxIndex => "minmaxindex(series[, length=30])",
         }
     }
 
@@ -644,6 +698,12 @@ impl BuiltinId {
             Self::Wclprice => "Weighted close price.",
             Self::Obv => "On-balance volume.",
             Self::Trange => "True range.",
+            Self::Wma => "Weighted moving average.",
+            Self::Avgdev => "Average deviation over a trailing period.",
+            Self::MaxIndex => "Absolute index of the highest value over a specified period.",
+            Self::MinIndex => "Absolute index of the lowest value over a specified period.",
+            Self::MinMax => "Lowest and highest values over a specified period.",
+            Self::MinMaxIndex => "Absolute indexes of the lowest and highest values over a specified period.",
         }
     }
 }
