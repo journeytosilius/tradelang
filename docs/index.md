@@ -49,5 +49,3 @@ If you want to learn PalmScript, start in `Learn`.
 If you need exact rules for what the compiler accepts or what the runtime does, use `Reference`.
 
 If you are changing the implementation, use `Internals` and `Contributing`.
-
-Checked-in example strategies live under `examples/strategies/` and are referenced throughout the Learn and Reference sections.

@@ -104,5 +104,3 @@ plot(line)
 plot(signal)
 plot(hist)
 ```
-
-Checked-in example: [`examples/strategies/macd_tuple.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/macd_tuple.palm)

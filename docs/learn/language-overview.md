@@ -26,8 +26,6 @@ source hl = hyperliquid.perps("BTC")
 plot(bn.close - hl.close)
 ```
 
-Related checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
-
 ## Mental Model
 
 - the script always has exactly one base interval

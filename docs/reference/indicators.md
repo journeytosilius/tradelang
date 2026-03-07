@@ -43,8 +43,6 @@ let (line, signal, hist) = macd(spot.close, 12, 26, 9)
 plot(line)
 ```
 
-Checked-in example: [`examples/strategies/macd_tuple.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/macd_tuple.palm)
-
 ## Executable vs Reserved TA-Lib Names
 
 PalmScript reserves a broader TA-Lib catalog than it executes today.

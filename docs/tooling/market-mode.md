@@ -40,8 +40,6 @@ plot(bn.close - hl.close)
 plot(hl.1h.close)
 ```
 
-Example file: [`examples/strategies/exchange_backed_sources.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/exchange_backed_sources.palm)
-
 ## Fetch Model
 
 Market mode:

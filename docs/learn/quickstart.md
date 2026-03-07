@@ -9,22 +9,20 @@ cargo build --bin palmscript --bin palmscript-lsp
 ## 2. Validate A Strategy
 
 ```bash
-target/debug/palmscript check examples/strategies/sma_cross.palm
+target/debug/palmscript check strategy.palm
 ```
 
 ## 3. Run A Market-Backed Strategy
 
 ```bash
-target/debug/palmscript run market examples/strategies/sma_cross.palm \
+target/debug/palmscript run market strategy.palm \
   --from 1704067200000 \
   --to 1704153600000
 ```
 ## 4. Run Another Exchange-Backed Strategy
 
-Checked-in example: [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
-
 ```bash
-target/debug/palmscript run market examples/strategies/cross_source_spread.palm \
+target/debug/palmscript run market spread_strategy.palm \
   --from 1704067200000 \
   --to 1704153600000
 ```
@@ -34,7 +32,7 @@ See [Market Mode](../tooling/market-mode.md) for supported source templates and 
 ## 5. Inspect Compiled Output
 
 ```bash
-target/debug/palmscript dump-bytecode examples/strategies/sma_cross.palm
+target/debug/palmscript dump-bytecode strategy.palm
 ```
 
 ## 6. Use The Editor Tooling

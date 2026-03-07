@@ -33,13 +33,6 @@ The current PalmScript surface includes:
 - literal-only series indexing, typed `ma_type.<variant>`, `tif.<variant>`, and `trigger_ref.<variant>` enum literals, and deterministic three-valued boolean logic
 - a TA-Lib-style builtin surface where some names are executable today and additional reserved names are exposed through diagnostics and IDE metadata
 
-Representative checked-in examples:
-
-- [`examples/strategies/sma_cross.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/sma_cross.palm)
-- [`examples/strategies/weekly_bias.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/weekly_bias.palm)
-- [`examples/strategies/macd_tuple.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/macd_tuple.palm)
-- [`examples/strategies/cross_source_spread.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/cross_source_spread.palm)
-
 ## Current Boundaries
 
 Important implementation boundaries:

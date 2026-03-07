@@ -17,7 +17,7 @@ Typical development flow:
 ## Validate Without Running
 
 ```bash
-palmscript check examples/strategies/sma_cross.palm
+palmscript check strategy.palm
 ```
 
 This compiles the script and reports source diagnostics without executing it.
@@ -42,7 +42,7 @@ See [Market Mode](market-mode.md) for supported templates and fetch behavior.
 ## Run A Backtest
 
 ```bash
-palmscript run backtest examples/strategies/multi_strategy_backtest.palm \
+palmscript run backtest strategy.palm \
   --from 1741348800000 \
   --to 1772884800000 \
   --fee-bps 10 \
@@ -86,8 +86,8 @@ Use these when testing pathological scripts or when tightening deterministic ope
 ## Inspect Bytecode
 
 ```bash
-palmscript dump-bytecode examples/strategies/sma_cross.palm
-palmscript dump-bytecode examples/strategies/sma_cross.palm --format json
+palmscript dump-bytecode strategy.palm
+palmscript dump-bytecode strategy.palm --format json
 ```
 
 This prints the compiled program rather than executing it.

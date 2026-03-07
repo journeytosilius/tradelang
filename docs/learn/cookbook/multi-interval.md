@@ -16,12 +16,10 @@ if spot.close > weekly_basis {
 }
 ```
 
-Related checked-in example: [`examples/strategies/weekly_bias.palm`](https://github.com/journeytosilius/palmscript/blob/main/examples/strategies/weekly_bias.palm)
-
 ## Run It
 
 ```bash
-palmscript run market examples/strategies/weekly_bias.palm \
+palmscript run market strategy.palm \
   --from 1704067200000 \
   --to 1705276800000
 ```

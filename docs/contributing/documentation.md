@@ -29,7 +29,7 @@ Update documentation whenever a change affects:
 - language behavior changes must update `Reference` first
 - guide pages may teach or summarize, but they must not override `Reference`
 - command or flag changes must update both the CLI guide and the CLI command reference when both are affected
-- for non-trivial language examples that represent contracts, prefer checked-in files under `examples/strategies/` and link to them from docs
+- keep docs examples inline and self-contained; repository demo strategies may evolve independently outside the docs tree
 - extend an existing page before creating a near-duplicate page
 
 ## Language-Doc Audit Checklist
