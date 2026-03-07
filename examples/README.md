@@ -27,7 +27,7 @@ Checked-in `.palm` strategies live under `examples/strategies/`.
 
 Representative files:
 
-- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe backtest strategy using `kama`, `macd`, `rsi`, pullback `limit(...)` entries, and protective `stop_market(...)` exits
+- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe short-biased backtest strategy using `kama`, `macd`, `rsi`, `market()` short entries, and protective `stop_market(...)` exits
 - `examples/strategies/sma_cross.palm`: single-source market-mode strategy
 - `examples/strategies/weekly_bias.palm`: single-source supplemental-interval strategy
 - `examples/strategies/macd_tuple.palm`: tuple destructuring and `ma_type`

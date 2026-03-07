@@ -41,12 +41,12 @@ palmscript run backtest examples/strategies/venue_orders_backtest.palm \
 On Binance spot `BTCUSDT`, that window corresponds to `2025-03-07T00:00:00Z`
 through `2026-03-07T00:00:00Z`. With default backtest settings
 (`initial_capital=10000`, `fee_bps=5`, `slippage_bps=2`), the checked-in
-strategy produced:
+short-biased strategy produced:
 
-- `ending_equity = 10803.97`
-- `total_return = 8.04%`
-- `trade_count = 43`
-- `max_drawdown = 1389.91`
+- `ending_equity = 12142.04`
+- `total_return = 21.42%`
+- `trade_count = 26`
+- `max_drawdown = 1550.96`
 
 Those numbers are an example snapshot, not a promise of future performance.
 

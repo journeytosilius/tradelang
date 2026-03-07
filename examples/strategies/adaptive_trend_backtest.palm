@@ -3,8 +3,8 @@ source spot = binance.spot("BTCUSDT")
 use spot 1d
 use spot 1w
 
-// Multi-timeframe trend strategy with adaptive 4h bias, pullback limit entries,
-// and protective stop exits.
+// Multi-timeframe short-biased trend strategy with adaptive 4h bias,
+// market short entries, and protective stop exits.
 input fast_len = 13
 input slow_len = 89
 input daily_fast_len = 30
@@ -39,7 +39,6 @@ let trend_long = above(fast, slow) and above(daily_fast, daily_slow) and above(w
 let trend_short = below(fast, slow) and below(daily_fast, daily_slow) and below(weekly_fast, weekly_slow) and below(spot.close, kama_4h)
 let breakout_long = above(spot.close, breakout_high)
 let breakout_short = below(spot.close, breakout_low)
-
 export trend_long_state = trend_long
 export trend_short_state = trend_short
 export breakout_long_state = breakout_long
@@ -48,14 +47,16 @@ export adaptive_bias = spot.close - kama_4h
 export long_stop_level = long_stop
 export short_stop_level = short_stop
 
-entry long = trend_long and (crossover(rsi_4h, long_rsi_threshold) or crossover(macd_hist, 0) or breakout_long)
+// Longs are disabled in this checked-in variant because diagnostics on the
+// current 1-year BTCUSDT window showed the short side carrying the edge.
+entry long = false
 entry short = trend_short and (crossunder(rsi_4h, short_rsi_threshold) or crossunder(macd_hist, 0) or breakout_short)
 exit long = true
 exit short = true
 
 order entry long = limit(fast, tif.gtc, false)
 order exit long = stop_market(long_stop, trigger_ref.last)
-order entry short = limit(fast, tif.gtc, false)
+order entry short = market()
 order exit short = stop_market(short_stop, trigger_ref.last)
 
 plot(fast - slow)
