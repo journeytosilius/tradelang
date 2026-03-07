@@ -316,6 +316,44 @@ fn golden_roc_uses_talib_default_window() {
 }
 
 #[test]
+fn golden_cmo_uses_talib_default_window() {
+    let compiled = compile(&with_interval("plot(cmo(close))")).expect("script compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][13]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][14]["value"],
+        serde_json::json!(100.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(100.0)
+    );
+}
+
+#[test]
+fn golden_willr_matches_trailing_high_low_close_window() {
+    let compiled = compile(&with_interval("plot(willr(high, low, close, 3))")).expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(
+        json["plots"][0]["points"][1]["value"],
+        serde_json::Value::Null
+    );
+    assert_eq!(
+        json["plots"][0]["points"][2]["value"],
+        serde_json::json!(-25.0)
+    );
+    assert_eq!(
+        json["plots"][0]["points"][19]["value"],
+        serde_json::json!(-25.0)
+    );
+}
+
+#[test]
 fn golden_apo_matches_explicit_sma_difference() {
     let compiled =
         compile(&with_interval("plot(apo(close, 3, 5, ma_type.sma))")).expect("script compiles");

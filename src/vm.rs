@@ -12,9 +12,9 @@ use crate::indicators::{
     apply_unary_math, calculate_avgdev, calculate_beta, calculate_correl,
     calculate_linear_regression, calculate_max_index, calculate_min_index, calculate_min_max,
     calculate_min_max_index, calculate_stddev, calculate_sum, calculate_trange, calculate_var,
-    calculate_wma, BarsSinceState, EmaState, FallingState, HighestState, IndicatorState,
-    LowestState, MacdState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
-    RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
+    calculate_willr, calculate_wma, BarsSinceState, CmoState, EmaState, FallingState, HighestState,
+    IndicatorState, LowestState, MacdState, ObvState, OscillatorKind, PriceOscillatorState,
+    RegressionOutput, RisingState, RsiState, SmaState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -429,6 +429,7 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Sma => self.call_sma(callsite, arity, args, pc),
             BuiltinId::Ema => self.call_ema(callsite, arity, args, pc),
             BuiltinId::Rsi => self.call_rsi(callsite, arity, args, pc),
+            BuiltinId::Cmo => self.call_cmo(callsite, arity, args, pc),
             BuiltinId::Ma => self.call_ma(callsite, arity, args, pc),
             BuiltinId::Macd => self.call_macd(callsite, arity, args, pc),
             BuiltinId::Acos => self.call_unary_math(UnaryMathTransform::Acos, arity, args, pc),
@@ -481,6 +482,7 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Tsf => self.call_tsf(arity, args, pc),
             BuiltinId::Beta => self.call_beta(arity, args, pc),
             BuiltinId::Correl => self.call_correl(arity, args, pc),
+            BuiltinId::Willr => self.call_willr(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -608,6 +610,49 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Rsi(RsiState::new(window)));
         let result = match &mut state {
             IndicatorState::Rsi(state) => {
+                let buffer_version = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?
+                    .version();
+                if buffer_version != state.last_seen_version() && state.requires_seed_step() {
+                    self.consume_steps(1, pc)?;
+                }
+                let buffer = self
+                    .series_values
+                    .get(series_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: series_slot })?;
+                state.update(buffer)
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_cmo(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "cmo",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let series_slot = series_ref(args[0].clone(), pc)?;
+        let window = expect_window(args[1].clone(), pc)?;
+        let key = (BuiltinId::Cmo, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Cmo(CmoState::new(window)));
+        let result = match &mut state {
+            IndicatorState::Cmo(state) => {
                 let buffer_version = self
                     .series_values
                     .get(series_slot)
@@ -1121,6 +1166,39 @@ impl<'a> VmEngine<'a> {
         pc: usize,
     ) -> Result<Value, RuntimeError> {
         self.call_stateless_double_window_builtin("correl", arity, args, pc, 0, calculate_correl)
+    }
+
+    fn call_willr(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "willr",
+                expected: 4,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let window = expect_window(args[3].clone(), pc)?;
+        self.consume_steps(window.max(1), pc)?;
+        let high = self
+            .series_values
+            .get(high_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+        let low = self
+            .series_values
+            .get(low_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+        let close = self
+            .series_values
+            .get(close_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+        calculate_willr(high, low, close, window, pc)
     }
 
     fn call_highest(

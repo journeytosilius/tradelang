@@ -39,6 +39,7 @@ pub enum BuiltinKind {
     RollingSingleInputTuple,
     RollingDoubleInput,
     RollingHighLow,
+    RollingHighLowClose,
     VolumeIndicator,
     VolatilityIndicator,
     Relation2,
@@ -135,10 +136,12 @@ pub enum BuiltinId {
     Rocr100 = 75,
     Apo = 76,
     Ppo = 77,
+    Cmo = 78,
+    Willr = 79,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 78] = [
+    pub const RESERVED: [Self; 80] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -217,9 +220,11 @@ impl BuiltinId {
         Self::Rocr100,
         Self::Apo,
         Self::Ppo,
+        Self::Cmo,
+        Self::Willr,
     ];
 
-    pub const CALLABLE: [Self; 72] = [
+    pub const CALLABLE: [Self; 74] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -292,6 +297,8 @@ impl BuiltinId {
         Self::Rocr100,
         Self::Apo,
         Self::Ppo,
+        Self::Cmo,
+        Self::Willr,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -374,6 +381,8 @@ impl BuiltinId {
             "rocr100" => Some(Self::Rocr100),
             "apo" => Some(Self::Apo),
             "ppo" => Some(Self::Ppo),
+            "cmo" => Some(Self::Cmo),
+            "willr" => Some(Self::Willr),
             _ => None,
         }
     }
@@ -458,6 +467,8 @@ impl BuiltinId {
             75 => Some(Self::Rocr100),
             76 => Some(Self::Apo),
             77 => Some(Self::Ppo),
+            78 => Some(Self::Cmo),
+            79 => Some(Self::Willr),
             _ => None,
         }
     }
@@ -542,6 +553,8 @@ impl BuiltinId {
             Self::Rocr100 => "rocr100",
             Self::Apo => "apo",
             Self::Ppo => "ppo",
+            Self::Cmo => "cmo",
+            Self::Willr => "willr",
         }
     }
 
@@ -584,9 +597,11 @@ impl BuiltinId {
             | Self::LinearRegAngle
             | Self::LinearRegIntercept
             | Self::LinearRegSlope
-            | Self::Tsf => BuiltinKind::RollingSingleInput,
+            | Self::Tsf
+            | Self::Cmo => BuiltinKind::RollingSingleInput,
             Self::Beta | Self::Correl => BuiltinKind::RollingDoubleInput,
             Self::Midprice => BuiltinKind::RollingHighLow,
+            Self::Willr => BuiltinKind::RollingHighLowClose,
             Self::Obv => BuiltinKind::VolumeIndicator,
             Self::Trange => BuiltinKind::VolatilityIndicator,
             Self::Above | Self::Below => BuiltinKind::Relation2,
@@ -651,6 +666,7 @@ impl BuiltinId {
             Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
+            Self::Cmo => BuiltinArity::Range { min: 1, max: 2 },
             Self::Avgprice => BuiltinArity::Exact(4),
             Self::Typprice
             | Self::Wclprice
@@ -659,6 +675,7 @@ impl BuiltinId {
             | Self::Outside
             | Self::ValueWhen
             | Self::Trange => BuiltinArity::Exact(3),
+            Self::Willr => BuiltinArity::Range { min: 3, max: 4 },
             Self::Macd => BuiltinArity::Exact(4),
             Self::Max
             | Self::Min
@@ -713,6 +730,7 @@ impl BuiltinId {
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Macd => "macd(series, fast_length, slow_length, signal_length)",
+            Self::Cmo => "cmo(series[, length=14])",
             Self::Acos => "acos(real)",
             Self::Asin => "asin(real)",
             Self::Atan => "atan(real)",
@@ -762,6 +780,7 @@ impl BuiltinId {
             Self::Rocp => "rocp(series[, length=10])",
             Self::Rocr => "rocr(series[, length=10])",
             Self::Rocr100 => "rocr100(series[, length=10])",
+            Self::Willr => "willr(high, low, close[, length=14])",
         }
     }
 
@@ -800,6 +819,7 @@ impl BuiltinId {
             Self::Apo => "Absolute price oscillator using a typed moving-average family.",
             Self::Ppo => "Percentage price oscillator using a typed moving-average family.",
             Self::Macd => "Moving average convergence/divergence tuple (macd, signal, histogram).",
+            Self::Cmo => "Chande momentum oscillator.",
             Self::Acos => "Vector trigonometric acos.",
             Self::Asin => "Vector trigonometric asin.",
             Self::Atan => "Vector trigonometric atan.",
@@ -845,6 +865,7 @@ impl BuiltinId {
             Self::Tsf => "Time series forecast for the next bar.",
             Self::Beta => "Beta over paired trailing series returns.",
             Self::Correl => "Pearson correlation over paired trailing series values.",
+            Self::Willr => "Williams' %R over a trailing high-low-close window.",
         }
     }
 }

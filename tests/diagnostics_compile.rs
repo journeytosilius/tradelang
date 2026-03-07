@@ -247,7 +247,7 @@ fn compile_diagnostic_catalog_matches_contract() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 31] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 33] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -445,6 +445,22 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "ppo requires ma_type as the fourth argument",
+            )],
+        ),
+        (
+            "type_cmo_requires_minimum_window",
+            with_interval("plot(cmo(close, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "cmo length must be greater than or equal to 2",
+            )],
+        ),
+        (
+            "type_willr_requires_series_close",
+            with_interval("plot(willr(high, low, 1))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "willr requires series<float> as the third argument",
             )],
         ),
         (

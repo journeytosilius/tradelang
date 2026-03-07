@@ -206,6 +206,67 @@ pub(crate) fn calculate_min_max_index(
     })
 }
 
+pub(crate) fn calculate_willr(
+    high: &SeriesBuffer,
+    low: &SeriesBuffer,
+    close: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    if high.len() < window || low.len() < window || close.is_empty() {
+        return Ok(Value::NA);
+    }
+
+    let mut highest = f64::NEG_INFINITY;
+    for value in high.iter_recent(window) {
+        match value {
+            Value::F64(value) => highest = highest.max(*value),
+            Value::NA => return Ok(Value::NA),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+
+    let mut lowest = f64::INFINITY;
+    for value in low.iter_recent(window) {
+        match value {
+            Value::F64(value) => lowest = lowest.min(*value),
+            Value::NA => return Ok(Value::NA),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+
+    let current_close = match close.get(0) {
+        Value::F64(value) => value,
+        Value::NA => return Ok(Value::NA),
+        other => {
+            return Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "f64",
+                found: other.type_name(),
+            });
+        }
+    };
+
+    let denominator = (highest - lowest) / -100.0;
+    if denominator != 0.0 {
+        Ok(Value::F64((highest - current_close) / denominator))
+    } else {
+        Ok(Value::F64(0.0))
+    }
+}
+
 fn fold_extrema(
     buffer: &SeriesBuffer,
     window: usize,
@@ -358,6 +419,7 @@ mod tests {
     use super::{
         calculate_falling, calculate_highest, calculate_lowest, calculate_max_index,
         calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_rising,
+        calculate_willr,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -437,6 +499,25 @@ mod tests {
         assert_eq!(
             calculate_min_max_index(&buffer, 3, 0).unwrap(),
             Value::Tuple2([Box::new(Value::F64(2.0)), Box::new(Value::F64(1.0))])
+        );
+    }
+
+    #[test]
+    fn willr_uses_trailing_high_low_close_window() {
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+        for (high_value, low_value, close_value) in
+            [(11.0, 9.0, 10.0), (12.0, 10.0, 11.0), (13.0, 11.0, 12.0)]
+        {
+            high.push(Value::F64(high_value));
+            low.push(Value::F64(low_value));
+            close.push(Value::F64(close_value));
+        }
+
+        assert_eq!(
+            calculate_willr(&high, &low, &close, 3, 0).unwrap(),
+            Value::F64(-25.0)
         );
     }
 }

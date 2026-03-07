@@ -56,6 +56,8 @@ PalmScript currently provides these callable builtins:
 - `tsf(series[, length=14])`
 - `beta(series0, series1[, length=5])`
 - `correl(series0, series1[, length=30])`
+- `cmo(series[, length=14])`
+- `willr(high, low, close[, length=14])`
 - `obv(series, volume)`
 - `trange(high, low, close)`
 - `plot(value)`
@@ -346,6 +348,28 @@ Rules:
 - `rocr100` evaluates as `(series / series[length]) * 100`
 - if the current or referenced sample is `na`, the result is `na`
 - if `series[length]` is `0`, `roc`, `rocp`, `rocr`, and `rocr100` return `na`
+
+### `cmo(series[, length=14])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be an integer literal greater than or equal to `2`
+- `cmo` uses TA-Lib's Wilder-style smoothed gain and loss state
+- the result type is `series<float>`
+- if the smoothed gain and loss sum to `0`, `cmo` returns `0`
+
+### `willr(high, low, close[, length=14])`
+
+Rules:
+
+- the first three arguments must be `series<float>`
+- omitted `length` uses the TA-Lib default of `14`
+- if provided, `length` must be an integer literal greater than or equal to `2`
+- `willr` uses the trailing highest high and lowest low over the requested window
+- the result type is `series<float>`
+- if the trailing high-low range is `0`, `willr` returns `0`
 - the result type is `series<float>`
 
 ### `highest(series, length)` and `lowest(series, length)`

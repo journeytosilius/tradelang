@@ -2197,6 +2197,39 @@ fn analyze_helper_builtin(
                 update_mask: high_info.update_mask | low_info.update_mask,
             }
         }
+        BuiltinKind::RollingHighLowClose => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            let close_info = arg_info[2];
+            if !high_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !low_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if !close_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the third argument"),
+                    args[2].span,
+                ));
+            }
+            if args.len() == 4 {
+                validate_min_window_literal(callee, &args[3], 2, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
+            }
+        }
         BuiltinKind::Relation2 => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !info.ty.is_numeric_like() {
@@ -2413,6 +2446,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::RollingSingleInputFactor
         | BuiltinKind::RollingDoubleInput
         | BuiltinKind::RollingHighLow
+        | BuiltinKind::RollingHighLowClose
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
@@ -3078,7 +3112,9 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Rocr
             | BuiltinId::Rocr100
             | BuiltinId::Apo
-            | BuiltinId::Ppo => {
+            | BuiltinId::Ppo
+            | BuiltinId::Cmo
+            | BuiltinId::Willr => {
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -3289,6 +3325,7 @@ impl<'a> Compiler<'a> {
                     BuiltinId::Midpoint => 14,
                     BuiltinId::Wma | BuiltinId::MaxIndex | BuiltinId::MinIndex => 30,
                     BuiltinId::Avgdev => 14,
+                    BuiltinId::Cmo => 14,
                     BuiltinId::LinearReg
                     | BuiltinId::LinearRegAngle
                     | BuiltinId::LinearRegIntercept
@@ -3415,6 +3452,24 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingHighLowClose => {
+                let required_history = args.get(3).and_then(literal_window).unwrap_or(14);
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(3) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(14.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(4)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

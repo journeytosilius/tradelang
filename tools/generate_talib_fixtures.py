@@ -192,6 +192,8 @@ class TalibOracle:
             return [self.call_window_factor(function, inputs[0], int_options[0], float_options[0])]
         if family == "window_high_low":
             return [self.call_window_high_low(function, inputs[0], inputs[1], int_options[0])]
+        if family == "window_high_low_close":
+            return [self.call_window_high_low_close(function, inputs[0], inputs[1], inputs[2], int_options[0])]
         if family == "window_double":
             return [self.call_window_double(function, inputs[0], inputs[1], int_options[0])]
         if family == "window_index":
@@ -268,6 +270,12 @@ class TalibOracle:
     ) -> list[float | None]:
         c_name = function.upper()
         return self._call_2in_1out_1int(c_name, high, low, time_period)
+
+    def call_window_high_low_close(
+        self, function: str, high: list[float], low: list[float], close: list[float], time_period: int
+    ) -> list[float | None]:
+        c_name = function.upper()
+        return self._call_3in_1out_1int(c_name, high, low, close, time_period)
 
     def call_window_double(
         self, function: str, input0: list[float], input1: list[float], time_period: int
@@ -488,6 +496,24 @@ class TalibOracle:
             ctypes.POINTER(ctypes.c_double),
         ]
         return self._invoke_1out(func, lookback, [input0, input1, input2])
+
+    def _call_3in_1out_1int(
+        self, c_name: str, input0: list[float], input1: list[float], input2: list[float], opt0: int
+    ) -> list[float | None]:
+        lookback = self._lookup_int(f"TA_{c_name}_Lookback")
+        func = getattr(self.lib, f"TA_{c_name}")
+        func.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.POINTER(ctypes.c_double),
+            ctypes.c_int,
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_double),
+        ]
+        return self._invoke_1out(func, lookback, [input0, input1, input2], [opt0])
 
     def _call_4in_1out_0opt(
         self,
@@ -792,11 +818,13 @@ def fixture_cases() -> list[Case]:
             Case("ppo_default", script_for_single_export("value", "ppo(close)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(12, 26)),
             Case("apo_ema_3_5", script_for_single_export("value", "apo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "apo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
             Case("ppo_ema_3_5", script_for_single_export("value", "ppo(close, 3, 5, ma_type.ema)"), ("value",), "ma_oscillator", "ppo", input_fields=("close",), int_options=(3, 5), ma_type="ema"),
+            Case("cmo_default", script_for_single_export("value", "cmo(close)"), ("value",), "window", "cmo", input_fields=("close",), int_options=(14,)),
             Case("mom_default", script_for_single_export("value", "mom(close)"), ("value",), "window", "mom", input_fields=("close",), int_options=(10,)),
             Case("roc_default", script_for_single_export("value", "roc(close)"), ("value",), "window", "roc", input_fields=("close",), int_options=(10,)),
             Case("rocp_default", script_for_single_export("value", "rocp(close)"), ("value",), "window", "rocp", input_fields=("close",), int_options=(10,)),
             Case("rocr_default", script_for_single_export("value", "rocr(close)"), ("value",), "window", "rocr", input_fields=("close",), int_options=(10,)),
             Case("rocr100_default", script_for_single_export("value", "rocr100(close)"), ("value",), "window", "rocr100", input_fields=("close",), int_options=(10,)),
+            Case("willr_default", script_for_single_export("value", "willr(high, low, close)"), ("value",), "window_high_low_close", "willr", input_fields=("high", "low", "close"), int_options=(14,)),
             Case(
                 "minmax_default",
                 "interval 1m\nlet (lo, hi) = minmax(close)\nexport min_value = lo\nexport max_value = hi\nplot(0)",

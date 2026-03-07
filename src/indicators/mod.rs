@@ -3,6 +3,7 @@
 //! Indicator math lives here so the VM keeps direct opcode dispatch while the
 //! per-indicator logic stays modular and independently testable.
 
+pub(crate) mod cmo;
 pub(crate) mod ema;
 pub(crate) mod event;
 pub(crate) mod extrema;
@@ -16,11 +17,12 @@ pub(crate) mod volatility;
 pub(crate) mod volume;
 pub(crate) mod wma;
 
+pub(crate) use cmo::CmoState;
 pub(crate) use ema::EmaState;
 pub(crate) use event::{BarsSinceState, ValueWhenState};
 pub(crate) use extrema::{
     calculate_max_index, calculate_min_index, calculate_min_max, calculate_min_max_index,
-    FallingState, HighestState, LowestState, RisingState,
+    calculate_willr, FallingState, HighestState, LowestState, RisingState,
 };
 pub(crate) use macd::MacdState;
 pub(crate) use math::{
@@ -41,6 +43,7 @@ pub(crate) use wma::calculate as calculate_wma;
 pub(crate) enum IndicatorState {
     Sma(SmaState),
     Ema(EmaState),
+    Cmo(CmoState),
     Rsi(RsiState),
     Highest(HighestState),
     Lowest(LowestState),
