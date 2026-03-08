@@ -87,13 +87,27 @@ pub struct BindingName {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SignalRole {
     LongEntry,
+    LongEntry2,
+    LongEntry3,
     LongExit,
     ShortEntry,
+    ShortEntry2,
+    ShortEntry3,
     ShortExit,
     ProtectLong,
+    ProtectAfterTarget1Long,
+    ProtectAfterTarget2Long,
+    ProtectAfterTarget3Long,
     ProtectShort,
+    ProtectAfterTarget1Short,
+    ProtectAfterTarget2Short,
+    ProtectAfterTarget3Short,
     TargetLong,
+    TargetLong2,
+    TargetLong3,
     TargetShort,
+    TargetShort2,
+    TargetShort3,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

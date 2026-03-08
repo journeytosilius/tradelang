@@ -96,34 +96,162 @@ pub enum OutputKind {
 pub enum SignalRole {
     #[default]
     LongEntry,
+    LongEntry2,
+    LongEntry3,
     LongExit,
     ShortEntry,
+    ShortEntry2,
+    ShortEntry3,
     ShortExit,
     ProtectLong,
+    ProtectAfterTarget1Long,
+    ProtectAfterTarget2Long,
+    ProtectAfterTarget3Long,
     ProtectShort,
+    ProtectAfterTarget1Short,
+    ProtectAfterTarget2Short,
+    ProtectAfterTarget3Short,
     TargetLong,
+    TargetLong2,
+    TargetLong3,
     TargetShort,
+    TargetShort2,
+    TargetShort3,
 }
 
 impl SignalRole {
     pub const fn canonical_name(self) -> &'static str {
         match self {
             Self::LongEntry => "long_entry",
+            Self::LongEntry2 => "long_entry2",
+            Self::LongEntry3 => "long_entry3",
             Self::LongExit => "long_exit",
             Self::ShortEntry => "short_entry",
+            Self::ShortEntry2 => "short_entry2",
+            Self::ShortEntry3 => "short_entry3",
             Self::ShortExit => "short_exit",
             Self::ProtectLong => "protect_long",
+            Self::ProtectAfterTarget1Long => "protect_after_target1_long",
+            Self::ProtectAfterTarget2Long => "protect_after_target2_long",
+            Self::ProtectAfterTarget3Long => "protect_after_target3_long",
             Self::ProtectShort => "protect_short",
+            Self::ProtectAfterTarget1Short => "protect_after_target1_short",
+            Self::ProtectAfterTarget2Short => "protect_after_target2_short",
+            Self::ProtectAfterTarget3Short => "protect_after_target3_short",
             Self::TargetLong => "target_long",
+            Self::TargetLong2 => "target_long2",
+            Self::TargetLong3 => "target_long3",
             Self::TargetShort => "target_short",
+            Self::TargetShort2 => "target_short2",
+            Self::TargetShort3 => "target_short3",
         }
     }
 
     pub const fn is_attached_exit(self) -> bool {
         matches!(
             self,
-            Self::ProtectLong | Self::ProtectShort | Self::TargetLong | Self::TargetShort
+            Self::ProtectLong
+                | Self::ProtectAfterTarget1Long
+                | Self::ProtectAfterTarget2Long
+                | Self::ProtectAfterTarget3Long
+                | Self::ProtectShort
+                | Self::ProtectAfterTarget1Short
+                | Self::ProtectAfterTarget2Short
+                | Self::ProtectAfterTarget3Short
+                | Self::TargetLong
+                | Self::TargetLong2
+                | Self::TargetLong3
+                | Self::TargetShort
+                | Self::TargetShort2
+                | Self::TargetShort3
         )
+    }
+
+    pub const fn is_entry(self) -> bool {
+        matches!(
+            self,
+            Self::LongEntry
+                | Self::LongEntry2
+                | Self::LongEntry3
+                | Self::ShortEntry
+                | Self::ShortEntry2
+                | Self::ShortEntry3
+        )
+    }
+
+    pub const fn is_target(self) -> bool {
+        matches!(
+            self,
+            Self::TargetLong
+                | Self::TargetLong2
+                | Self::TargetLong3
+                | Self::TargetShort
+                | Self::TargetShort2
+                | Self::TargetShort3
+        )
+    }
+
+    pub const fn is_protect(self) -> bool {
+        matches!(
+            self,
+            Self::ProtectLong
+                | Self::ProtectAfterTarget1Long
+                | Self::ProtectAfterTarget2Long
+                | Self::ProtectAfterTarget3Long
+                | Self::ProtectShort
+                | Self::ProtectAfterTarget1Short
+                | Self::ProtectAfterTarget2Short
+                | Self::ProtectAfterTarget3Short
+        )
+    }
+
+    pub const fn entry_stage(self) -> Option<u8> {
+        match self {
+            Self::LongEntry | Self::ShortEntry => Some(1),
+            Self::LongEntry2 | Self::ShortEntry2 => Some(2),
+            Self::LongEntry3 | Self::ShortEntry3 => Some(3),
+            _ => None,
+        }
+    }
+
+    pub const fn target_stage(self) -> Option<u8> {
+        match self {
+            Self::TargetLong | Self::TargetShort => Some(1),
+            Self::TargetLong2 | Self::TargetShort2 => Some(2),
+            Self::TargetLong3 | Self::TargetShort3 => Some(3),
+            _ => None,
+        }
+    }
+
+    pub const fn protect_stage(self) -> Option<u8> {
+        match self {
+            Self::ProtectLong | Self::ProtectShort => Some(0),
+            Self::ProtectAfterTarget1Long | Self::ProtectAfterTarget1Short => Some(1),
+            Self::ProtectAfterTarget2Long | Self::ProtectAfterTarget2Short => Some(2),
+            Self::ProtectAfterTarget3Long | Self::ProtectAfterTarget3Short => Some(3),
+            _ => None,
+        }
+    }
+
+    pub const fn is_long(self) -> bool {
+        matches!(
+            self,
+            Self::LongEntry
+                | Self::LongEntry2
+                | Self::LongEntry3
+                | Self::LongExit
+                | Self::ProtectLong
+                | Self::ProtectAfterTarget1Long
+                | Self::ProtectAfterTarget2Long
+                | Self::ProtectAfterTarget3Long
+                | Self::TargetLong
+                | Self::TargetLong2
+                | Self::TargetLong3
+        )
+    }
+
+    pub const fn is_short(self) -> bool {
+        !self.is_long()
     }
 }
 

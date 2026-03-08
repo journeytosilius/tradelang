@@ -1544,6 +1544,110 @@ plot(spot.close)"
 }
 
 #[test]
+fn staged_entries_and_targets_progress_sequentially() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry1 long = spot.time == {t0}
+entry2 long = spot.time == {}
+order entry1 long = market()
+order entry2 long = market()
+size entry1 long = 0.5
+size entry2 long = 0.5
+protect long = stop_market(position.entry_price - 5, trigger_ref.last)
+protect_after_target1 long = stop_market(position.entry_price + 1, trigger_ref.last)
+target1 long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+target2 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+size target1 long = 0.5
+plot(spot.close)",
+        t0 + support::MINUTE_MS
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                Bar {
+                    open: 10.0,
+                    high: 11.0,
+                    low: 9.5,
+                    close: 11.0,
+                    volume: 1_000.0,
+                    time: (t0 + support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 11.0,
+                    high: 11.8,
+                    low: 10.5,
+                    close: 11.5,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 11.5,
+                    high: 13.5,
+                    low: 11.0,
+                    close: 13.0,
+                    volume: 1_000.0,
+                    time: (t0 + 3 * support::MINUTE_MS) as f64,
+                },
+                Bar {
+                    open: 10.8,
+                    high: 11.2,
+                    low: 10.0,
+                    close: 10.5,
+                    volume: 1_000.0,
+                    time: (t0 + 4 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert!(result
+        .orders
+        .iter()
+        .any(|order| order.role == SignalRole::LongEntry && order.status == OrderStatus::Filled));
+    assert!(result
+        .orders
+        .iter()
+        .any(|order| order.role == SignalRole::LongEntry2 && order.status == OrderStatus::Filled));
+    assert!(result
+        .orders
+        .iter()
+        .any(|order| order.role == SignalRole::TargetLong && order.status == OrderStatus::Filled));
+    assert!(result.orders.iter().any(|order| {
+        order.role == SignalRole::ProtectAfterTarget1Long && order.status == OrderStatus::Filled
+    }));
+    assert!(result.orders.iter().any(|order| {
+        order.role == SignalRole::ProtectLong
+            && order.status == OrderStatus::Cancelled
+            && order.end_reason == Some(OrderEndReason::Rearmed)
+    }));
+    assert!(result.orders.iter().any(|order| {
+        order.role == SignalRole::TargetLong2
+            && order.status == OrderStatus::Cancelled
+            && order.end_reason == Some(OrderEndReason::OcoCancelled)
+    }));
+    assert_eq!(
+        result
+            .diagnostics
+            .trade_diagnostics
+            .last()
+            .expect("trade diagnostic")
+            .exit_role,
+        SignalRole::ProtectAfterTarget1Long
+    );
+    assert_eq!(result.open_position, None);
+}
+
+#[test]
 fn position_event_anchors_fire_on_fill_bar_and_drive_since_helpers() {
     let t0 = support::JAN_1_2024_UTC_MS;
     let compiled = compile(&format!(

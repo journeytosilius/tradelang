@@ -55,8 +55,8 @@ Use backtest mode when:
 - the script emits backtest signals through `entry` / `exit` declarations or legacy trigger names
 - the script may also declare attached exits through `protect` / `target`
 - the script optionally declares explicit order templates with `order entry ... = ...` or `order exit ... = ...`
-- the script may optionally size `order entry ...` fills with `size entry long ...` or `size entry short ...`
-- the script may optionally size attached `target` exits with `size target long ...` or `size target short ...`
+- the script may optionally size staged `order entry ...` fills with `size entry1..3 long|short ...`
+- the script may optionally size staged attached `target` exits with `size target1..3 long|short ...`
 - you want PalmScript to fetch exchange-backed candles and run the built-in deterministic portfolio simulator in one command
 
 Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, resolves venue-aware order templates, and simulates fills on the selected execution source.

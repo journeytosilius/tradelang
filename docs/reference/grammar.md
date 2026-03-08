@@ -143,9 +143,11 @@ The grammar does not by itself make a program valid. The implementation addition
 - `position.*` is valid only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
-- `size entry long = ...`, `size entry short = ...`, `size target long = ...`, and `size target short = ...` are the valid `size` declarations in v1
-- `size entry ...` requires a matching `order entry ...` declaration for the same side
-- `size target ...` requires a matching `target ...` declaration for the same side
+- `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
+- `entry long` and `target long|short` remain compatibility aliases for stage 1
+- `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
+- `size entry ...` requires a matching staged `order entry ...` declaration for the same role
+- `size target ...` requires a matching staged `target ...` declaration for the same role
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

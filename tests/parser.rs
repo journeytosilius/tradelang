@@ -205,6 +205,28 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_staged_entries_targets_and_protect_ratchets() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+entry1 long = src.close > src.close[1]
+entry2 long = src.close > src.close[1]
+order entry1 long = market()
+order entry2 long = market()
+size entry1 long = 0.5
+size entry2 long = 0.5
+protect long = stop_market(position.entry_price - 2, trigger_ref.last)
+protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
+target1 long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+target2 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+size target1 long = 0.5
+export target_stage = last_exit.stage
+plot(src.close)",
+    )
+    .expect("staged declarations should compile");
+}
+
+#[test]
 fn parses_position_event_anchors_with_since_helpers() {
     compile(
         "interval 1m
@@ -275,7 +297,7 @@ fn rejects_size_declarations_for_non_target_roles() {
     let message = compile_err(&with_interval(
         "entry long = src.close > src.close[1]\nsize exit long = 0.5\nplot(src.close)",
     ));
-    assert!(message.contains("expected `entry` or `target` after `size`"));
+    assert!(message.contains("expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`"));
 }
 
 #[test]

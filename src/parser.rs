@@ -228,6 +228,9 @@ impl<'a> Parser<'a> {
         if self.matches_keyword(&TokenKind::If) {
             return self.parse_if_stmt();
         }
+        if let Some(stmt) = self.parse_staged_top_level_stmt() {
+            return Some(stmt);
+        }
 
         let expr = self.parse_expr(0)?;
         let span = expr.span;
@@ -489,6 +492,127 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_staged_top_level_stmt(&mut self) -> Option<Stmt> {
+        let token = match self.tokens.get(self.cursor).cloned() {
+            Some(
+                token @ Token {
+                    kind: TokenKind::Ident(_),
+                    ..
+                },
+            ) => token,
+            _ => return None,
+        };
+        let TokenKind::Ident(name) = token.kind.clone() else {
+            return None;
+        };
+        if self.block_depth > 0 {
+            if staged_signal_role_for_ident(&name).is_some()
+                || staged_attached_role_for_ident(&name).is_some()
+                || staged_size_role_for_ident(&name).is_some()
+            {
+                self.push_diagnostic(
+                    "staged signal and order declarations are only allowed at the top level",
+                    token.span,
+                );
+                self.advance();
+                return None;
+            }
+            return None;
+        }
+
+        if let Some(role) = staged_signal_role_for_ident(&name) {
+            self.advance();
+            return self.parse_staged_signal_stmt(token.span, role);
+        }
+        if let Some(role) = staged_attached_role_for_ident(&name) {
+            self.advance();
+            return self.parse_staged_attached_order_stmt(token.span, role);
+        }
+        if let Some(role) = staged_size_role_for_ident(&name) {
+            self.advance();
+            return self.parse_staged_order_size_stmt(token.span, role);
+        }
+        None
+    }
+
+    fn parse_staged_signal_stmt(&mut self, start: Span, role: SignalRole) -> Option<Stmt> {
+        let side = self.advance()?.clone();
+        let role = match side.kind {
+            TokenKind::Long => long_role(role),
+            TokenKind::Short => short_role(role),
+            _ => {
+                self.push_diagnostic(
+                    "expected `long` or `short` after staged signal role",
+                    side.span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after signal side",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::Signal { role, expr },
+        })
+    }
+
+    fn parse_staged_attached_order_stmt(&mut self, start: Span, role: SignalRole) -> Option<Stmt> {
+        let side = self.advance()?.clone();
+        let role = match side.kind {
+            TokenKind::Long => long_role(role),
+            TokenKind::Short => short_role(role),
+            _ => {
+                self.push_diagnostic(
+                    "expected `long` or `short` after staged attached exit role",
+                    side.span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after attached exit side",
+        )?;
+        let spec = self.parse_order_spec()?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::Order {
+                role,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
+    fn parse_staged_order_size_stmt(&mut self, start: Span, role: SignalRole) -> Option<Stmt> {
+        let side = self.advance()?.clone();
+        let role = match side.kind {
+            TokenKind::Long => long_role(role),
+            TokenKind::Short => short_role(role),
+            _ => {
+                self.push_diagnostic(
+                    "expected `long` or `short` after staged order size role",
+                    side.span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after order size side",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::OrderSize { role, expr },
+        })
+    }
+
     fn parse_order_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
         let role = if self.matches_keyword(&TokenKind::Entry) {
@@ -510,9 +634,29 @@ impl<'a> Parser<'a> {
                     SignalRole::ShortExit
                 }
             })?
+        } else if let TokenKind::Ident(name) = self.peek_kind().clone() {
+            let Some(base_role) = staged_signal_role_for_ident(&name) else {
+                self.push_diagnostic(
+                    "expected `entry`, `exit`, or `entry1..3` after `order`",
+                    self.tokens[self.cursor].span,
+                );
+                return None;
+            };
+            let start_token = self.advance()?.clone();
+            match self.advance()?.kind.clone() {
+                TokenKind::Long => long_role(base_role),
+                TokenKind::Short => short_role(base_role),
+                _ => {
+                    self.push_diagnostic(
+                        "expected `long` or `short` after staged order role",
+                        start_token.span,
+                    );
+                    return None;
+                }
+            }
         } else {
             self.push_diagnostic(
-                "expected `entry` or `exit` after `order`",
+                "expected `entry`, `exit`, or `entry1..3` after `order`",
                 self.tokens[self.cursor].span,
             );
             return None;
@@ -568,19 +712,8 @@ impl<'a> Parser<'a> {
 
     fn parse_order_size_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        let role_prefix = if self.matches_keyword(&TokenKind::Target) {
-            "size target"
-        } else if self.matches_keyword(&TokenKind::Entry) {
-            "size entry"
-        } else {
-            self.push_diagnostic(
-                "expected `entry` or `target` after `size`",
-                self.tokens[self.cursor].span,
-            );
-            return None;
-        };
-        let role = match role_prefix {
-            "size target" => self.parse_side_role(
+        let role = if self.matches_keyword(&TokenKind::Target) {
+            self.parse_side_role(
                 "expected `long` or `short` after `size target`",
                 |is_long| {
                     if is_long {
@@ -589,17 +722,42 @@ impl<'a> Parser<'a> {
                         SignalRole::TargetShort
                     }
                 },
-            )?,
-            "size entry" => {
-                self.parse_side_role("expected `long` or `short` after `size entry`", |is_long| {
-                    if is_long {
-                        SignalRole::LongEntry
-                    } else {
-                        SignalRole::ShortEntry
-                    }
-                })?
-            }
-            _ => unreachable!(),
+            )?
+        } else if self.matches_keyword(&TokenKind::Entry) {
+            self.parse_side_role("expected `long` or `short` after `size entry`", |is_long| {
+                if is_long {
+                    SignalRole::LongEntry
+                } else {
+                    SignalRole::ShortEntry
+                }
+            })?
+        } else if let TokenKind::Ident(name) = self.peek_kind().clone() {
+            let Some(base_role) = staged_size_role_for_ident(&name) else {
+                self.push_diagnostic(
+                    "expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`",
+                    self.tokens[self.cursor].span,
+                );
+                return None;
+            };
+            let start_token = self.advance()?.clone();
+            let role = match self.advance()?.kind.clone() {
+                TokenKind::Long => long_role(base_role),
+                TokenKind::Short => short_role(base_role),
+                _ => {
+                    self.push_diagnostic(
+                        "expected `long` or `short` after staged order size role",
+                        start_token.span,
+                    );
+                    return None;
+                }
+            };
+            role
+        } else {
+            self.push_diagnostic(
+                "expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`",
+                self.tokens[self.cursor].span,
+            );
+            return None;
         };
         self.expect_kind(
             |kind| matches!(kind, TokenKind::Assign),
@@ -1224,6 +1382,58 @@ impl<'a> Parser<'a> {
                 None
             }
         }
+    }
+}
+
+fn staged_signal_role_for_ident(name: &str) -> Option<SignalRole> {
+    match name {
+        "entry1" => Some(SignalRole::LongEntry),
+        "entry2" => Some(SignalRole::LongEntry2),
+        "entry3" => Some(SignalRole::LongEntry3),
+        _ => None,
+    }
+}
+
+fn staged_attached_role_for_ident(name: &str) -> Option<SignalRole> {
+    match name {
+        "target1" => Some(SignalRole::TargetLong),
+        "target2" => Some(SignalRole::TargetLong2),
+        "target3" => Some(SignalRole::TargetLong3),
+        "protect_after_target1" => Some(SignalRole::ProtectAfterTarget1Long),
+        "protect_after_target2" => Some(SignalRole::ProtectAfterTarget2Long),
+        "protect_after_target3" => Some(SignalRole::ProtectAfterTarget3Long),
+        _ => None,
+    }
+}
+
+fn staged_size_role_for_ident(name: &str) -> Option<SignalRole> {
+    match name {
+        "entry1" => Some(SignalRole::LongEntry),
+        "entry2" => Some(SignalRole::LongEntry2),
+        "entry3" => Some(SignalRole::LongEntry3),
+        "target1" => Some(SignalRole::TargetLong),
+        "target2" => Some(SignalRole::TargetLong2),
+        "target3" => Some(SignalRole::TargetLong3),
+        _ => None,
+    }
+}
+
+fn long_role(role: SignalRole) -> SignalRole {
+    role
+}
+
+fn short_role(role: SignalRole) -> SignalRole {
+    match role {
+        SignalRole::LongEntry => SignalRole::ShortEntry,
+        SignalRole::LongEntry2 => SignalRole::ShortEntry2,
+        SignalRole::LongEntry3 => SignalRole::ShortEntry3,
+        SignalRole::TargetLong => SignalRole::TargetShort,
+        SignalRole::TargetLong2 => SignalRole::TargetShort2,
+        SignalRole::TargetLong3 => SignalRole::TargetShort3,
+        SignalRole::ProtectAfterTarget1Long => SignalRole::ProtectAfterTarget1Short,
+        SignalRole::ProtectAfterTarget2Long => SignalRole::ProtectAfterTarget2Short,
+        SignalRole::ProtectAfterTarget3Long => SignalRole::ProtectAfterTarget3Short,
+        other => other,
     }
 }
 

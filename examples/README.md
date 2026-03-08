@@ -27,8 +27,8 @@ Checked-in `.palm` strategies live under `examples/strategies/`.
 
 Representative files:
 
-- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe long-only backtest strategy that stays flat in bearish higher-timeframe regimes, uses breakout `market()` entries, applies a short cooldown after `protect long` exits, keeps a slower 4h trend-rollover `exit long`, a hybrid fixed-or-ATR `target long`, and ATR-based `protect long` chandelier exits
-- `examples/strategies/usdm_long_short_backtest.palm`: Binance USD-M BTCUSDT long-biased perp strategy with multi-timeframe breakout `market()` entries, mark-triggered ATR `protect long` chandelier exits, a hybrid fixed-or-ATR `target long`, and shorts intentionally disabled because tested hedge variants reduced profit under the current public risk snapshot path
+- `examples/strategies/adaptive_trend_backtest.palm`: adaptive multi-timeframe long-only backtest strategy with staged `entry1` / `entry2` market entries, staged `target1` / `target2` profit-taking, and `protect_after_target1 long` stop ratchets
+- `examples/strategies/usdm_long_short_backtest.palm`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
 - `examples/strategies/sma_cross.palm`: single-source market-mode strategy
 - `examples/strategies/weekly_bias.palm`: single-source supplemental-interval strategy
 - `examples/strategies/macd_tuple.palm`: tuple destructuring and `ma_type`
@@ -37,7 +37,7 @@ Representative files:
 - `examples/strategies/multi_strategy_backtest.palm`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
 - `examples/strategies/venue_orders_backtest.palm`: backtest strategy using explicit `order` declarations with `limit(...)` and `stop_market(...)`
 
-The backtester also supports fractional entry sizing through `size entry long = ...` and `size entry short = ...`, plus partial attached profit-taking through `size target long = ...` and `size target short = ...`.
+The backtester also supports staged entry sizing through `size entry1..3 long|short = ...`, plus staged partial attached profit-taking through `size target1..3 long|short = ...`.
 
 For runnable commands and workflow guidance, use the linked docs pages above.
 

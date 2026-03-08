@@ -3,10 +3,8 @@ source perp = binance.usdm("BTCUSDT")
 use perp 1d
 use perp 1w
 
-// Long-biased BTCUSDT USD-M strategy. The checked-in perp example keeps the
-// stronger long trend module and intentionally disables shorts because every
-// tested bearish hedge variant reduced multi-year profit under the current
-// public Binance risk snapshot path.
+// Long-biased BTCUSDT USD-M strategy with staged entries, staged targets, and
+// a mark-triggered post-target stop ratchet.
 input fast_len = 13
 input slow_len = 89
 input daily_fast_len = 20
@@ -46,6 +44,8 @@ let recent_protect_exit = coalesce(
     false
 )
 let chandelier_long = highest_since(position_event.long_entry_fill, perp.high) - protect_atr_mult * atr_4h
+let add_on_long = trend_long and crossover(perp.close, fast) and above(macd_hist, 0)
+let ratchet_long = highest_since(position_event.long_target1_fill, perp.high) - 2.5 * atr_4h
 
 export bullish_regime_state = above(weekly_fast, weekly_slow) and above(daily_fast, daily_slow)
 export bearish_regime_state = false
@@ -58,19 +58,31 @@ export recent_protect_exit_state = recent_protect_exit
 export long_stop_level = chandelier_long
 export short_stop_level = na
 
-entry long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_protect_exit == false
+entry1 long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_protect_exit == false
+entry2 long = add_on_long and recent_protect_exit == false
 entry short = false
 exit long = below(perp.close, fast) and below(fast, slow)
 exit short = true
 
-order entry long = market()
+order entry1 long = market()
+order entry2 long = market()
+size entry1 long = 0.7
+size entry2 long = 0.5
 protect long = stop_market(chandelier_long, trigger_ref.mark)
-target long = take_profit_market(
+protect_after_target1 long = stop_market(above(ratchet_long, position.entry_price) ? ratchet_long : position.entry_price, trigger_ref.mark)
+target1 long = take_profit_market(
     above(add(position.entry_price, target_atr_mult * atr_4h), position.entry_price * (1 + target_return))
         ? add(position.entry_price, target_atr_mult * atr_4h)
         : position.entry_price * (1 + target_return),
     trigger_ref.mark
 )
+target2 long = take_profit_market(
+    above(add(position.entry_price, 4 * atr_4h), position.entry_price * (1 + target_return * 2))
+        ? add(position.entry_price, 4 * atr_4h)
+        : position.entry_price * (1 + target_return * 2),
+    trigger_ref.mark
+)
+size target1 long = 0.5
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

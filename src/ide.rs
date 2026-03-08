@@ -1049,19 +1049,39 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Signal { role, expr } => {
             let header = match role {
                 crate::ast::SignalRole::LongEntry => "entry long",
+                crate::ast::SignalRole::LongEntry2 => "entry2 long",
+                crate::ast::SignalRole::LongEntry3 => "entry3 long",
                 crate::ast::SignalRole::LongExit => "exit long",
                 crate::ast::SignalRole::ShortEntry => "entry short",
+                crate::ast::SignalRole::ShortEntry2 => "entry2 short",
+                crate::ast::SignalRole::ShortEntry3 => "entry3 short",
                 crate::ast::SignalRole::ShortExit => "exit short",
                 crate::ast::SignalRole::ProtectLong => {
+                    unreachable!("attached exits use order declarations")
+                }
+                crate::ast::SignalRole::ProtectAfterTarget1Long
+                | crate::ast::SignalRole::ProtectAfterTarget2Long
+                | crate::ast::SignalRole::ProtectAfterTarget3Long => {
                     unreachable!("attached exits use order declarations")
                 }
                 crate::ast::SignalRole::ProtectShort => {
                     unreachable!("attached exits use order declarations")
                 }
+                crate::ast::SignalRole::ProtectAfterTarget1Short
+                | crate::ast::SignalRole::ProtectAfterTarget2Short
+                | crate::ast::SignalRole::ProtectAfterTarget3Short => {
+                    unreachable!("attached exits use order declarations")
+                }
                 crate::ast::SignalRole::TargetLong => {
                     unreachable!("attached exits use order declarations")
                 }
+                crate::ast::SignalRole::TargetLong2 | crate::ast::SignalRole::TargetLong3 => {
+                    unreachable!("attached exits use order declarations")
+                }
                 crate::ast::SignalRole::TargetShort => {
+                    unreachable!("attached exits use order declarations")
+                }
+                crate::ast::SignalRole::TargetShort2 | crate::ast::SignalRole::TargetShort3 => {
                     unreachable!("attached exits use order declarations")
                 }
             };
@@ -1070,26 +1090,54 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Order { role, spec } => {
             let header = match role {
                 crate::ast::SignalRole::LongEntry => "order entry long",
+                crate::ast::SignalRole::LongEntry2 => "order entry2 long",
+                crate::ast::SignalRole::LongEntry3 => "order entry3 long",
                 crate::ast::SignalRole::LongExit => "order exit long",
                 crate::ast::SignalRole::ShortEntry => "order entry short",
+                crate::ast::SignalRole::ShortEntry2 => "order entry2 short",
+                crate::ast::SignalRole::ShortEntry3 => "order entry3 short",
                 crate::ast::SignalRole::ShortExit => "order exit short",
                 crate::ast::SignalRole::ProtectLong => "protect long",
+                crate::ast::SignalRole::ProtectAfterTarget1Long => "protect_after_target1 long",
+                crate::ast::SignalRole::ProtectAfterTarget2Long => "protect_after_target2 long",
+                crate::ast::SignalRole::ProtectAfterTarget3Long => "protect_after_target3 long",
                 crate::ast::SignalRole::ProtectShort => "protect short",
+                crate::ast::SignalRole::ProtectAfterTarget1Short => "protect_after_target1 short",
+                crate::ast::SignalRole::ProtectAfterTarget2Short => "protect_after_target2 short",
+                crate::ast::SignalRole::ProtectAfterTarget3Short => "protect_after_target3 short",
                 crate::ast::SignalRole::TargetLong => "target long",
+                crate::ast::SignalRole::TargetLong2 => "target2 long",
+                crate::ast::SignalRole::TargetLong3 => "target3 long",
                 crate::ast::SignalRole::TargetShort => "target short",
+                crate::ast::SignalRole::TargetShort2 => "target2 short",
+                crate::ast::SignalRole::TargetShort3 => "target3 short",
             };
             lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
         }
         StmtKind::OrderSize { role, expr } => {
             let header = match role {
                 crate::ast::SignalRole::LongEntry => "size entry long",
+                crate::ast::SignalRole::LongEntry2 => "size entry2 long",
+                crate::ast::SignalRole::LongEntry3 => "size entry3 long",
                 crate::ast::SignalRole::ShortEntry => "size entry short",
+                crate::ast::SignalRole::ShortEntry2 => "size entry2 short",
+                crate::ast::SignalRole::ShortEntry3 => "size entry3 short",
                 crate::ast::SignalRole::TargetLong => "size target long",
+                crate::ast::SignalRole::TargetLong2 => "size target2 long",
+                crate::ast::SignalRole::TargetLong3 => "size target3 long",
                 crate::ast::SignalRole::TargetShort => "size target short",
+                crate::ast::SignalRole::TargetShort2 => "size target2 short",
+                crate::ast::SignalRole::TargetShort3 => "size target3 short",
                 crate::ast::SignalRole::LongExit
                 | crate::ast::SignalRole::ShortExit
                 | crate::ast::SignalRole::ProtectLong
-                | crate::ast::SignalRole::ProtectShort => {
+                | crate::ast::SignalRole::ProtectAfterTarget1Long
+                | crate::ast::SignalRole::ProtectAfterTarget2Long
+                | crate::ast::SignalRole::ProtectAfterTarget3Long
+                | crate::ast::SignalRole::ProtectShort
+                | crate::ast::SignalRole::ProtectAfterTarget1Short
+                | crate::ast::SignalRole::ProtectAfterTarget2Short
+                | crate::ast::SignalRole::ProtectAfterTarget3Short => {
                     unreachable!("order sizing is only supported for entries and targets")
                 }
             };

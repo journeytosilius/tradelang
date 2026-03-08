@@ -663,6 +663,23 @@ plot(src.close)",
 }
 
 #[test]
+fn rejects_duplicate_staged_order_declarations_for_same_role() {
+    assert_compile_diagnostics(
+        "duplicate_staged_order_role",
+        &with_interval(
+            "entry1 long = src.close > src.close[1]
+target2 long = take_profit_market(src.close + 1, trigger_ref.last)
+target2 long = take_profit_market(src.close + 2, trigger_ref.last)
+plot(src.close)",
+        ),
+        &[expected(
+            DiagnosticKind::Type,
+            "duplicate order declaration for `target_long2`",
+        )],
+    );
+}
+
+#[test]
 fn rejects_invalid_order_constructor_argument_types() {
     assert_compile_diagnostics(
         "invalid_limit_tif",

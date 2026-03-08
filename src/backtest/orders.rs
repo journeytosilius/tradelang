@@ -5,16 +5,30 @@ use crate::backtest::{
 use crate::bytecode::SignalRole;
 use crate::order::{OrderKind, TimeInForce, TriggerReference};
 
-pub(crate) const ROLE_COUNT: usize = 8;
+pub(crate) const ROLE_COUNT: usize = 22;
 pub(crate) const ROLE_PRIORITY: [SignalRole; ROLE_COUNT] = [
     SignalRole::ProtectLong,
+    SignalRole::ProtectAfterTarget1Long,
+    SignalRole::ProtectAfterTarget2Long,
+    SignalRole::ProtectAfterTarget3Long,
     SignalRole::ProtectShort,
+    SignalRole::ProtectAfterTarget1Short,
+    SignalRole::ProtectAfterTarget2Short,
+    SignalRole::ProtectAfterTarget3Short,
     SignalRole::TargetLong,
+    SignalRole::TargetLong2,
+    SignalRole::TargetLong3,
     SignalRole::TargetShort,
+    SignalRole::TargetShort2,
+    SignalRole::TargetShort3,
     SignalRole::LongExit,
     SignalRole::ShortExit,
     SignalRole::LongEntry,
+    SignalRole::LongEntry2,
+    SignalRole::LongEntry3,
     SignalRole::ShortEntry,
+    SignalRole::ShortEntry2,
+    SignalRole::ShortEntry3,
 ];
 
 #[derive(Clone, Debug)]
@@ -113,6 +127,12 @@ pub(crate) struct OpenTrade {
     pub remaining_entry_fee: f64,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct EntryProgressState {
+    pub long_stage: u8,
+    pub short_stage: u8,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct TradeEntryContext {
     pub order_id: usize,
@@ -143,83 +163,107 @@ pub(crate) struct CloseExecution<'a> {
 }
 
 pub(crate) fn empty_request_slots() -> [Option<CapturedOrderRequest>; ROLE_COUNT] {
-    [None, None, None, None, None, None, None, None]
+    std::array::from_fn(|_| None)
 }
 
 pub(crate) fn role_index(role: SignalRole) -> usize {
     match role {
         SignalRole::LongEntry => 0,
-        SignalRole::LongExit => 1,
-        SignalRole::ShortEntry => 2,
-        SignalRole::ShortExit => 3,
-        SignalRole::ProtectLong => 4,
-        SignalRole::ProtectShort => 5,
-        SignalRole::TargetLong => 6,
-        SignalRole::TargetShort => 7,
+        SignalRole::LongEntry2 => 1,
+        SignalRole::LongEntry3 => 2,
+        SignalRole::LongExit => 3,
+        SignalRole::ShortEntry => 4,
+        SignalRole::ShortEntry2 => 5,
+        SignalRole::ShortEntry3 => 6,
+        SignalRole::ShortExit => 7,
+        SignalRole::ProtectLong => 8,
+        SignalRole::ProtectAfterTarget1Long => 9,
+        SignalRole::ProtectAfterTarget2Long => 10,
+        SignalRole::ProtectAfterTarget3Long => 11,
+        SignalRole::ProtectShort => 12,
+        SignalRole::ProtectAfterTarget1Short => 13,
+        SignalRole::ProtectAfterTarget2Short => 14,
+        SignalRole::ProtectAfterTarget3Short => 15,
+        SignalRole::TargetLong => 16,
+        SignalRole::TargetLong2 => 17,
+        SignalRole::TargetLong3 => 18,
+        SignalRole::TargetShort => 19,
+        SignalRole::TargetShort2 => 20,
+        SignalRole::TargetShort3 => 21,
     }
 }
 
 pub(crate) fn fill_action_for_role(role: SignalRole) -> FillAction {
     match role {
-        SignalRole::LongEntry
-        | SignalRole::ShortExit
-        | SignalRole::ProtectShort
-        | SignalRole::TargetShort => FillAction::Buy,
-        SignalRole::ShortEntry
-        | SignalRole::LongExit
-        | SignalRole::ProtectLong
-        | SignalRole::TargetLong => FillAction::Sell,
+        SignalRole::LongEntry | SignalRole::LongEntry2 | SignalRole::LongEntry3 => FillAction::Buy,
+        SignalRole::ShortEntry | SignalRole::ShortEntry2 | SignalRole::ShortEntry3 => {
+            FillAction::Sell
+        }
+        SignalRole::ProtectLong
+        | SignalRole::ProtectAfterTarget1Long
+        | SignalRole::ProtectAfterTarget2Long
+        | SignalRole::ProtectAfterTarget3Long
+        | SignalRole::TargetLong
+        | SignalRole::TargetLong2
+        | SignalRole::TargetLong3
+        | SignalRole::LongExit => FillAction::Sell,
+        SignalRole::ProtectShort
+        | SignalRole::ProtectAfterTarget1Short
+        | SignalRole::ProtectAfterTarget2Short
+        | SignalRole::ProtectAfterTarget3Short
+        | SignalRole::TargetShort
+        | SignalRole::TargetShort2
+        | SignalRole::TargetShort3
+        | SignalRole::ShortExit => FillAction::Buy,
     }
 }
 
 pub(crate) fn position_side_for_entry(role: SignalRole) -> Option<PositionSide> {
     match role {
-        SignalRole::LongEntry => Some(PositionSide::Long),
-        SignalRole::ShortEntry => Some(PositionSide::Short),
-        SignalRole::LongExit
-        | SignalRole::ShortExit
-        | SignalRole::ProtectLong
-        | SignalRole::ProtectShort
-        | SignalRole::TargetLong
-        | SignalRole::TargetShort => None,
+        SignalRole::LongEntry | SignalRole::LongEntry2 | SignalRole::LongEntry3 => {
+            Some(PositionSide::Long)
+        }
+        SignalRole::ShortEntry | SignalRole::ShortEntry2 | SignalRole::ShortEntry3 => {
+            Some(PositionSide::Short)
+        }
+        _ => None,
     }
 }
 
 pub(crate) fn request_applicable(
     request: CapturedOrderRequest,
     position: Option<&PositionState>,
+    entry_progress: EntryProgressState,
 ) -> bool {
     match position.map(|state| state.side) {
-        None => matches!(request.role, SignalRole::LongEntry | SignalRole::ShortEntry),
+        None => request.role.is_entry() && request.role.entry_stage() == Some(1),
         Some(PositionSide::Long) => {
-            matches!(
-                request.role,
-                SignalRole::LongExit
-                    | SignalRole::ProtectLong
-                    | SignalRole::TargetLong
-                    | SignalRole::ShortEntry
-            ) || matches!(request.role, SignalRole::LongEntry) && request.has_size_fraction_field
+            matches!(request.role, SignalRole::LongExit)
+                || (request.role.is_protect() && request.role.is_long())
+                || (request.role.is_target() && request.role.is_long())
+                || (request.role.is_entry()
+                    && request.role.is_long()
+                    && (request.role.entry_stage() == Some(1)
+                        || request.role.entry_stage() == Some(entry_progress.long_stage + 1))
+                    && request.has_size_fraction_field)
+                || matches!(request.role, SignalRole::ShortEntry)
         }
         Some(PositionSide::Short) => {
-            matches!(
-                request.role,
-                SignalRole::ShortExit
-                    | SignalRole::ProtectShort
-                    | SignalRole::TargetShort
-                    | SignalRole::LongEntry
-            ) || matches!(request.role, SignalRole::ShortEntry) && request.has_size_fraction_field
+            matches!(request.role, SignalRole::ShortExit)
+                || (request.role.is_protect() && request.role.is_short())
+                || (request.role.is_target() && request.role.is_short())
+                || (request.role.is_entry()
+                    && request.role.is_short()
+                    && (request.role.entry_stage() == Some(1)
+                        || request.role.entry_stage() == Some(entry_progress.short_stage + 1))
+                    && request.has_size_fraction_field)
+                || matches!(request.role, SignalRole::LongEntry)
         }
     }
 }
 
 pub(crate) const fn is_attached_exit_role(role: SignalRole) -> bool {
-    matches!(
-        role,
-        SignalRole::ProtectLong
-            | SignalRole::ProtectShort
-            | SignalRole::TargetLong
-            | SignalRole::TargetShort
-    )
+    role.is_attached_exit()
 }
 
 pub(crate) fn order_record(

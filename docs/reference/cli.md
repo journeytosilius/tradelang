@@ -72,8 +72,8 @@ Requirements:
 - the script must declare at least one `source`
 - the script must emit at least one configured backtest trigger
 - the script may optionally declare attached exits through `protect` / `target`
-- the script may optionally size `order entry ...` fills with `size entry long ...` or `size entry short ...`
-- the script may optionally size attached `target` exits with `size target long ...` or `size target short ...`
+- the script may optionally size staged `order entry ...` fills with `size entry1..3 long|short ...`
+- the script may optionally size staged attached `target` exits with `size target1..3 long|short ...`
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
 - spot execution sources reject `--leverage` and `--margin-mode`

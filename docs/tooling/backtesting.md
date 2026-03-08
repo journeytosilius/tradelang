@@ -226,16 +226,18 @@ Optional execution templates:
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
 - `order entry short = limit(spot.close[1], tif.gtc, false)`
 - `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
-- `size entry long = 0.5`
-- `size entry short = 0.5`
-- `size target long = 0.5`
-- `size target short = 0.5`
+- `size entry1 long = 0.5`
+- `size entry2 long = 0.5`
+- `size entry1 short = 0.5`
+- `size target1 long = 0.5`
+- `size target2 long = 0.5`
+- `size target1 short = 0.5`
 
 Attached position-aware exits:
 
 - `protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
 - `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
-- `size target long = 0.5`
+- `size target1 long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
 
 Actual-fill anchor helpers:
@@ -271,21 +273,23 @@ The backtester stays intentionally simple and deterministic:
 - signals produced on bar `t` become active starting on the first execution-source base bar with `bar.time > signal_time`
 - only one net position is supported: `flat`, `long`, or `short`
 - the portfolio model remains net-position based with no explicit quantity expressions
-- same-side re-entry is ignored by default
-- `size entry long = <expr>` and `size entry short = <expr>` opt an entry role into fractional entry sizing and same-side scale-ins that spend a fraction of current cash
+- same-side re-entry is ignored by default except for explicit staged entries
+- `size entry1..3 long|short = <expr>` opt a staged entry role into fractional entry sizing and same-side scale-ins that spend a fraction of current cash
 - entry size expressions are evaluated as hidden numeric series like other order fields
 - valid entry size fractions are finite values in `(0, 1]`
 - opposite entry reverses on the same eligible open by closing first and then
   opening the new side
 - attached exits arm only after an actual entry fill exists and are reevaluated once per execution bar while that position stays open
-- `protect` and `target` for the same side are OCO
-- `size entry long = <expr>` and `size entry short = <expr>` optionally reduce an entry fill to a fraction of current cash instead of opening all-in
-- `size target long = <expr>` and `size target short = <expr>` optionally reduce a target fill to a fraction of the current position instead of closing it fully
+- only the currently active staged protect and next staged target are armed for a side at any time
+- `protect_after_target1..3` inherit from the most recent declared protect stage when an exact staged protect is absent
+- `size entry1..3 long|short = <expr>` optionally reduce a staged entry fill to a fraction of current cash instead of opening all-in
+- `size target1..3 long|short = <expr>` optionally reduce a staged target fill to a fraction of the current position instead of closing it fully
 - entry and target size expressions are evaluated as hidden numeric series like other order fields
-- v1 only supports explicit sizing for `entry` and attached `target` roles; other order roles still close or open the full position
+- v1 only supports explicit sizing for staged `entry` roles and staged attached `target` roles; other order roles still close or open the full position
 - valid target size fractions are finite values in `(0, 1]`
-- same-side scale-in fills do not emit `position_event.*_entry_fill`; those events still represent opening a new net position
-- a partial target is one-shot for the current position: once that side's target has filled, the remaining runner stays managed by `protect` / discretionary `exit` until the position fully closes
+- staged entry fills emit aggregate `position_event.long_entry_fill` / `short_entry_fill` plus staged fields such as `position_event.long_entry2_fill`
+- staged target fills emit aggregate `position_event.long_target_fill` / `short_target_fill` plus staged fields such as `position_event.long_target2_fill`
+- a partial staged target is one-shot for that stage: once `target1` has filled, `target2` becomes the active target and the remaining runner stays managed by the current staged protect / discretionary `exit`
 - if `protect` and `target` both become fillable on one execution bar, `protect` fills and `target` is cancelled
 - spot venues continue to use the original cash/notional model
 - perp venues now support isolated margin, per-venue risk tiers, leverage, and deterministic liquidation checks

@@ -1387,13 +1387,21 @@ impl<'a> Analyzer<'a> {
         if !matches!(
             role,
             CompiledSignalRole::LongEntry
+                | CompiledSignalRole::LongEntry2
+                | CompiledSignalRole::LongEntry3
                 | CompiledSignalRole::ShortEntry
+                | CompiledSignalRole::ShortEntry2
+                | CompiledSignalRole::ShortEntry3
                 | CompiledSignalRole::TargetLong
+                | CompiledSignalRole::TargetLong2
+                | CompiledSignalRole::TargetLong3
                 | CompiledSignalRole::TargetShort
+                | CompiledSignalRole::TargetShort2
+                | CompiledSignalRole::TargetShort3
         ) {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
-                "only `size entry long|short = ...` and `size target long|short = ...` are supported in v1",
+                "only `size entry long|short`, `size entry1..3 long|short`, `size target long|short`, and `size target1..3 long|short` are supported in v1",
                 stmt.span,
             ));
             return;
@@ -4162,13 +4170,27 @@ fn builtin_allowed_in_const(builtin: BuiltinId) -> bool {
 fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
     match role {
         AstSignalRole::LongEntry => CompiledSignalRole::LongEntry,
+        AstSignalRole::LongEntry2 => CompiledSignalRole::LongEntry2,
+        AstSignalRole::LongEntry3 => CompiledSignalRole::LongEntry3,
         AstSignalRole::LongExit => CompiledSignalRole::LongExit,
         AstSignalRole::ShortEntry => CompiledSignalRole::ShortEntry,
+        AstSignalRole::ShortEntry2 => CompiledSignalRole::ShortEntry2,
+        AstSignalRole::ShortEntry3 => CompiledSignalRole::ShortEntry3,
         AstSignalRole::ShortExit => CompiledSignalRole::ShortExit,
         AstSignalRole::ProtectLong => CompiledSignalRole::ProtectLong,
+        AstSignalRole::ProtectAfterTarget1Long => CompiledSignalRole::ProtectAfterTarget1Long,
+        AstSignalRole::ProtectAfterTarget2Long => CompiledSignalRole::ProtectAfterTarget2Long,
+        AstSignalRole::ProtectAfterTarget3Long => CompiledSignalRole::ProtectAfterTarget3Long,
         AstSignalRole::ProtectShort => CompiledSignalRole::ProtectShort,
+        AstSignalRole::ProtectAfterTarget1Short => CompiledSignalRole::ProtectAfterTarget1Short,
+        AstSignalRole::ProtectAfterTarget2Short => CompiledSignalRole::ProtectAfterTarget2Short,
+        AstSignalRole::ProtectAfterTarget3Short => CompiledSignalRole::ProtectAfterTarget3Short,
         AstSignalRole::TargetLong => CompiledSignalRole::TargetLong,
+        AstSignalRole::TargetLong2 => CompiledSignalRole::TargetLong2,
+        AstSignalRole::TargetLong3 => CompiledSignalRole::TargetLong3,
         AstSignalRole::TargetShort => CompiledSignalRole::TargetShort,
+        AstSignalRole::TargetShort2 => CompiledSignalRole::TargetShort2,
+        AstSignalRole::TargetShort3 => CompiledSignalRole::TargetShort3,
     }
 }
 
@@ -4573,6 +4595,7 @@ fn position_field_type(field: PositionField) -> Type {
 fn last_exit_field_type(field: LastExitField) -> Type {
     match field {
         LastExitField::Kind => Type::ExitKind,
+        LastExitField::Stage => Type::F64,
         LastExitField::Side => Type::PositionSide,
         LastExitField::Price
         | LastExitField::Time

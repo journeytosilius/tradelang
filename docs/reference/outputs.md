@@ -9,10 +9,18 @@ PalmScript exposes three output-producing constructs:
 - `plot(value)`
 - `export name = expr`
 - `trigger name = expr`
-- `entry long = expr`, `exit long = expr`, `entry short = expr`, `exit short = expr`
-- `protect long = order_spec`, `protect short = order_spec`, `target long = order_spec`, `target short = order_spec`
-- `size entry long = expr`, `size entry short = expr`
-- `size target long = expr`, `size target short = expr`
+- `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
+- `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
+- `exit long = expr`, `exit short = expr`
+- `protect long = order_spec`, `protect short = order_spec`
+- `protect_after_target1 long = order_spec`, `protect_after_target2 long = order_spec`, `protect_after_target3 long = order_spec`
+- `protect_after_target1 short = order_spec`, `protect_after_target2 short = order_spec`, `protect_after_target3 short = order_spec`
+- `target long = order_spec`, `target1 long = order_spec`, `target2 long = order_spec`, `target3 long = order_spec`
+- `target short = order_spec`, `target1 short = order_spec`, `target2 short = order_spec`, `target3 short = order_spec`
+- `size entry long = expr`, `size entry1 long = expr`, `size entry2 long = expr`, `size entry3 long = expr`
+- `size entry short = expr`, `size entry1 short = expr`, `size entry2 short = expr`, `size entry3 short = expr`
+- `size target long = expr`, `size target1 long = expr`, `size target2 long = expr`, `size target3 long = expr`
+- `size target short = expr`, `size target1 short = expr`, `size target2 short = expr`, `size target3 short = expr`
 
 `plot` is a builtin call. `export` and `trigger` are declarations.
 
@@ -83,6 +91,8 @@ Rules:
 - each expression must evaluate to `bool`, `series<bool>`, or `na`
 - they compile to trigger outputs with explicit signal-role metadata
 - runtime event emission follows the same `true`/`false`/`na` rules as ordinary triggers
+- `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
+- `entry2` and `entry3` are sequential same-side add-on signals that only become eligible after the previous stage has filled in the current position cycle
 
 ## Order Declarations
 
@@ -123,24 +133,27 @@ size target long = 0.5
 Rules:
 
 - attached exits are top-level only
-- `protect` and `target` are optional per side
-- `size entry long` and `size entry short` are optional per side and only apply to the matching `order entry`
-- `size target long` and `size target short` are optional per side and only apply to the matching attached `target`
-- `size entry ...` must evaluate to a finite fraction in `(0, 1]`
-- an entry size fraction below `1` leaves cash available for later same-side scale-ins on that entry role
-- same-side entry is still ignored by default and only becomes a scale-in path when that side declares `size entry ...`
+- `protect` is the base protection stage for a side
+- `protect_after_target1`, `protect_after_target2`, and `protect_after_target3` optionally ratchet the active protect order after each staged target fill
+- `target`, `target1`, `target2`, and `target3` are sequential attached profit-taking stages; `target` is a compatibility alias for `target1`
+- `size entry1..3` and `size target1..3` are optional per stage and only apply to the matching staged entry or target
+- staged entry size fractions must evaluate to a finite fraction in `(0, 1]`
+- an entry size fraction below `1` leaves cash available for later same-side scale-ins on later staged entries
 - they arm only after a matching entry fill exists
 - they are reevaluated once per execution bar while that position remains open
-- `protect` and `target` for one side are OCO: if one fills, the other is cancelled
-- `size target ...` must evaluate to a finite fraction in `(0, 1]`
-- a `size target ...` declaration turns the matching target into a partial take-profit when the fraction is below `1`
-- partial targets are one-shot per open position: once the target has filled, the remaining runner stays managed by the other exit paths until the position closes
+- only the current staged protect and the next staged target are active at the same time
+- when `target1` fills, the engine swaps from `protect` to `protect_after_target1` if declared, otherwise it inherits the most recent available protect stage
+- staged target size fractions must evaluate to a finite fraction in `(0, 1]`
+- a `size targetN ...` declaration turns the matching target stage into a partial take-profit when the fraction is below `1`
+- staged targets are one-shot within a position cycle and activate sequentially
 - if both become fillable on the same execution bar, `protect` wins deterministically
 - `position.*` is available only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven series namespace that exposes actual fill events such as `position_event.long_entry_fill`
 - `position_event.*` also exposes exit-kind-specific fill events such as `position_event.long_target_fill`, `position_event.long_protect_fill`, and `position_event.long_liquidation_fill`
+- staged fill events are also available, including `position_event.long_entry1_fill`, `position_event.long_entry2_fill`, `position_event.long_entry3_fill`, `position_event.long_target1_fill`, `position_event.long_target2_fill`, and `position_event.long_target3_fill` with matching short-side fields
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` expose the most recent closed-trade snapshot globally or per side
 - `last_*_exit.kind` is compared against typed enum literals such as `exit_kind.target` and `exit_kind.liquidation`
+- `last_*_exit.stage` exposes the staged target/protect stage number when applicable
 - outside backtests, `position_event.*` is defined but evaluates to `false` on every step
 - outside backtests, `last_*_exit.*` is defined but evaluates to `na`
 

@@ -564,13 +564,27 @@ fn fmt_position_side(side: PositionSide) -> &'static str {
 fn fmt_signal_role(role: SignalRole) -> &'static str {
     match role {
         SignalRole::LongEntry => "long_entry",
+        SignalRole::LongEntry2 => "long_entry2",
+        SignalRole::LongEntry3 => "long_entry3",
         SignalRole::LongExit => "long_exit",
         SignalRole::ShortEntry => "short_entry",
+        SignalRole::ShortEntry2 => "short_entry2",
+        SignalRole::ShortEntry3 => "short_entry3",
         SignalRole::ShortExit => "short_exit",
         SignalRole::ProtectLong => "protect_long",
+        SignalRole::ProtectAfterTarget1Long => "protect_after_target1_long",
+        SignalRole::ProtectAfterTarget2Long => "protect_after_target2_long",
+        SignalRole::ProtectAfterTarget3Long => "protect_after_target3_long",
         SignalRole::ProtectShort => "protect_short",
+        SignalRole::ProtectAfterTarget1Short => "protect_after_target1_short",
+        SignalRole::ProtectAfterTarget2Short => "protect_after_target2_short",
+        SignalRole::ProtectAfterTarget3Short => "protect_after_target3_short",
         SignalRole::TargetLong => "target_long",
+        SignalRole::TargetLong2 => "target_long2",
+        SignalRole::TargetLong3 => "target_long3",
         SignalRole::TargetShort => "target_short",
+        SignalRole::TargetShort2 => "target_short2",
+        SignalRole::TargetShort3 => "target_short3",
     }
 }
 

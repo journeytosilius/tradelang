@@ -135,11 +135,16 @@ Rules:
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 trigger long_entry = spot.close > spot.high[1]
-entry long = spot.close > spot.high[1]
-order entry long = limit(spot.close[1], tif.gtc, false)
+entry1 long = spot.close > spot.high[1]
+entry2 long = crossover(spot.close, ema(spot.close, 20))
+order entry1 long = limit(spot.close[1], tif.gtc, false)
 protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
-size entry long = 0.5
-size target long = 0.5
+protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
+target1 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+target2 long = take_profit_market(position.entry_price + 8, trigger_ref.last)
+size entry1 long = 0.5
+size entry2 long = 0.5
+size target1 long = 0.5
 ```
 
 Rules:
@@ -147,17 +152,18 @@ Rules:
 - all forms are top-level only
 - duplicate names in the same scope are rejected
 - `trigger` names become bindings after the declaration point
-- `entry long`, `exit long`, `entry short`, and `exit short` are first-class backtest signal declarations
-- `order entry long`, `order exit long`, `order entry short`, and `order exit short` attach an execution template to an existing backtest signal role
-- `protect long`, `protect short`, `target long`, and `target short` declare attached exits that arm only while the matching position is open
-- `size entry long` and `size entry short` optionally size an entry fill as a fraction of current cash and enable same-side scale-ins for that entry role
-- `size target long` and `size target short` optionally size an attached `target` fill as a fraction of the open position
+- `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
+- `entry1`, `entry2`, and `entry3` are staged backtest entry signal declarations
+- `exit long` and `exit short` remain single discretionary full-position exits
+- `order entry ...` and `order exit ...` attach an execution template to a matching signal role
+- `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
+- `size entry1..3 long|short` optionally size a staged entry fill as a fraction of current cash and enable staged same-side scale-ins
+- `size target1..3 long|short` optionally size a staged `target` fill as a fraction of the open position
 - at most one `order` declaration is allowed per signal role
-- at most one `protect` and one `target` declaration are allowed per side
-- at most one `size entry` and one `size target` declaration are allowed per side
+- at most one declaration is allowed per staged role
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
-- `size entry ...` and `size target ...` each require a matching `order ...` or attached `target ...` declaration for the same side
-- current v1 support is intentionally narrow: only `size entry long|short = ...` and `size target long|short = ...` are valid
+- `size entry ...` and `size target ...` each require a matching staged `order ...` or staged attached `target ...` declaration for the same role
+- staged attached exits are sequential: only the next target stage and the current protect stage are active at once
 - `position.*` is only available inside `protect` and `target` declarations
 - `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills
 - current `position_event` fields are:
@@ -165,8 +171,11 @@ Rules:
   `long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
   `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
   `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
+- staged entry and target fill fields are also available:
+  `long_entry1_fill` .. `long_entry3_fill`, `short_entry1_fill` .. `short_entry3_fill`,
+  `long_target1_fill` .. `long_target3_fill`, and `short_target1_fill` .. `short_target3_fill`
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are available anywhere ordinary expressions are valid
-- current `last_*_exit` fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
+- current `last_*_exit` fields are `kind`, `stage`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
 - `last_*_exit.kind` includes `exit_kind.liquidation` in addition to the existing exit kinds
 - legacy `trigger long_entry = ...` style scripts remain supported as a compatibility bridge when no first-class signal declarations are present
 

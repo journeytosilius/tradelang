@@ -3,10 +3,8 @@ source spot = binance.spot("BTCUSDT")
 use spot 1d
 use spot 1w
 
-// Multi-timeframe long-only trend strategy with adaptive 4h bias,
-// breakout market entries, a slower 4h trend-rollover discretionary exit,
-// a hybrid profit target, and ATR-based chandelier protection anchored to the
-// actual fill bar.
+// Multi-timeframe long-only trend strategy with staged entries, staged profit
+// targets, and a tighter post-target stop ratchet.
 input fast_len = 13
 input slow_len = 89
 input daily_fast_len = 20
@@ -46,6 +44,8 @@ let recent_protect_exit = coalesce(
     false
 )
 let chandelier_long = highest_since(position_event.long_entry_fill, spot.high) - protect_atr_mult * atr_4h
+let add_on_long = trend_long and crossover(spot.close, fast) and above(macd_hist, 0)
+let ratchet_long = highest_since(position_event.long_target1_fill, spot.high) - 2.5 * atr_4h
 
 export trend_long_state = trend_long
 export trend_short_state = false
@@ -56,29 +56,38 @@ export recent_protect_exit_state = recent_protect_exit
 export long_stop_level = chandelier_long
 export short_stop_level = na
 
-// This checked-in variant stays flat during weak or bearish higher-timeframe
-// regimes instead of forcing shorts into BTC's structurally bullish periods.
-// ATR protection is handled by an attached `protect long` order so the normal
-// `exit long` signal can still act as a discretionary regime exit, while
-// `target long` uses the wider of a fixed 5% objective and an ATR-scaled
-// extension so strong breakouts can run further before they round-trip back to
-// the trailing stop. A short cooldown after `protect long` exits avoids
-// immediately re-entering the same failed breakout regime.
-entry long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_protect_exit == false
+// Stage 1 opens the starter position on a clean regime breakout. Stage 2 adds
+// only after the trend is already working and 4h momentum reclaims the fast
+// EMA. Target 1 de-risks half the position, then `protect_after_target1 long`
+// ratchets the stop toward breakeven while the runner aims for a wider second
+// target.
+entry1 long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_protect_exit == false
+entry2 long = add_on_long and recent_protect_exit == false
 entry short = false
 exit long = below(spot.close, fast) and below(fast, slow)
 exit short = true
 
-order entry long = market()
+order entry1 long = market()
+order entry2 long = market()
+size entry1 long = 0.7
+size entry2 long = 0.5
 order entry short = market()
 order exit short = stop_market(fast, trigger_ref.last)
 protect long = stop_market(chandelier_long, trigger_ref.last)
-target long = take_profit_market(
+protect_after_target1 long = stop_market(above(ratchet_long, position.entry_price) ? ratchet_long : position.entry_price, trigger_ref.last)
+target1 long = take_profit_market(
     above(add(position.entry_price, target_atr_mult * atr_4h), position.entry_price * (1 + target_return))
         ? add(position.entry_price, target_atr_mult * atr_4h)
         : position.entry_price * (1 + target_return),
     trigger_ref.last
 )
+target2 long = take_profit_market(
+    above(add(position.entry_price, 4 * atr_4h), position.entry_price * (1 + target_return * 2))
+        ? add(position.entry_price, 4 * atr_4h)
+        : position.entry_price * (1 + target_return * 2),
+    trigger_ref.last
+)
+size target1 long = 0.5
 
 plot(fast - slow)
 plot(macd_line - macd_signal)

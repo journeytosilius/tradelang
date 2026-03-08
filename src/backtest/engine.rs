@@ -9,8 +9,8 @@ use crate::backtest::orders::{
     liquidation_trigger_price, missing_field_reason, open_position, position_side_for_entry,
     realize_perp_close, refresh_position_risk, request_applicable, role_index,
     unrealized_pnl_for_position, update_open_trade_excursions, AccountingMode, ActiveOrder,
-    CapturedOrderRequest, CloseExecution, FillExecutionContext, OpenTrade, PositionState,
-    TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
+    CapturedOrderRequest, CloseExecution, EntryProgressState, FillExecutionContext, OpenTrade,
+    PositionState, TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
@@ -46,13 +46,25 @@ struct CloseOutcome {
 #[derive(Clone, Copy, Debug, Default)]
 struct PositionEventStep {
     long_entry_fill: bool,
+    long_entry1_fill: bool,
+    long_entry2_fill: bool,
+    long_entry3_fill: bool,
     short_entry_fill: bool,
+    short_entry1_fill: bool,
+    short_entry2_fill: bool,
+    short_entry3_fill: bool,
     long_exit_fill: bool,
     short_exit_fill: bool,
     long_protect_fill: bool,
     short_protect_fill: bool,
     long_target_fill: bool,
+    long_target1_fill: bool,
+    long_target2_fill: bool,
+    long_target3_fill: bool,
     short_target_fill: bool,
+    short_target1_fill: bool,
+    short_target2_fill: bool,
+    short_target3_fill: bool,
     long_signal_exit_fill: bool,
     short_signal_exit_fill: bool,
     long_reversal_exit_fill: bool,
@@ -64,6 +76,7 @@ struct PositionEventStep {
 #[derive(Clone, Copy, Debug)]
 struct LastExitSnapshot {
     kind: ExitKind,
+    stage: Option<u8>,
     side: PositionSide,
     price: f64,
     time: f64,
@@ -75,8 +88,8 @@ struct LastExitSnapshot {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct TargetConsumptionState {
-    long_consumed: bool,
-    short_consumed: bool,
+    long_stage: u8,
+    short_stage: u8,
 }
 
 pub(crate) fn simulate_backtest(
@@ -98,11 +111,10 @@ pub(crate) fn simulate_backtest(
     let mut orders = Vec::<OrderRecord>::new();
     let mut order_contexts = Vec::<OrderDiagnosticContext>::new();
     let mut equity_curve = Vec::with_capacity(execution_bars.len());
-    let mut active_orders: [Option<ActiveOrder>; ROLE_COUNT] =
-        [None, None, None, None, None, None, None, None];
+    let mut active_orders: [Option<ActiveOrder>; ROLE_COUNT] = std::array::from_fn(|_| None);
     let mut pending_requests = empty_request_slots();
     let mut pending_snapshots: [Option<FeatureSnapshot>; ROLE_COUNT] =
-        [None, None, None, None, None, None, None, None];
+        std::array::from_fn(|_| None);
     let mut pending_signal_names: [Option<String>; ROLE_COUNT] = std::array::from_fn(|_| None);
     let mut pending_conflict_time = None::<f64>;
     let mut total_realized_pnl = 0.0;
@@ -116,6 +128,7 @@ pub(crate) fn simulate_backtest(
     let mut last_long_exit = None::<LastExitSnapshot>;
     let mut last_short_exit = None::<LastExitSnapshot>;
     let mut target_consumption = TargetConsumptionState::default();
+    let mut entry_progress = EntryProgressState::default();
     let mut diagnostics = DiagnosticsAccumulator::new(&prepared.exports);
 
     while let Some(open_time) = stepper.peek_open_time() {
@@ -131,7 +144,8 @@ pub(crate) fn simulate_backtest(
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
             }
 
-            if pending_entry_requests_conflict(&pending_requests, position.as_ref()) {
+            if pending_entry_requests_conflict(&pending_requests, position.as_ref(), entry_progress)
+            {
                 return Err(BacktestError::ConflictingSignals {
                     time: pending_conflict_time.unwrap_or(bar.time),
                 });
@@ -146,6 +160,7 @@ pub(crate) fn simulate_backtest(
                 &mut order_contexts,
                 &mut diagnostics,
                 position.as_ref(),
+                entry_progress,
                 last_snapshot.clone(),
                 current_position_snapshot(position.as_ref(), bar.open, bar.time),
                 execution_cursor,
@@ -249,8 +264,17 @@ pub(crate) fn simulate_backtest(
                             mark_target_consumed(&mut target_consumption, side);
                         }
 
+                        if role.is_target() {
+                            set_target_stage_event(
+                                &mut position_events,
+                                current_side_for_role(role),
+                                role.target_stage(),
+                            );
+                        }
+
                         if let Some(side) = close_outcome.fully_closed_side {
                             reset_target_consumption(&mut target_consumption, side);
+                            reset_entry_progress(&mut entry_progress, side);
                             cancel_orders_for_closed_side(
                                 &mut active_orders,
                                 side,
@@ -315,6 +339,24 @@ pub(crate) fn simulate_backtest(
                                         bar.low,
                                     );
                                     fills.push(entry_fill);
+                                    match next_side {
+                                        PositionSide::Long => {
+                                            position_events.long_entry_fill = true
+                                        }
+                                        PositionSide::Short => {
+                                            position_events.short_entry_fill = true
+                                        }
+                                    }
+                                    mark_entry_filled(
+                                        &mut entry_progress,
+                                        next_side,
+                                        role.entry_stage().unwrap_or(1),
+                                    );
+                                    set_entry_stage_event(
+                                        &mut position_events,
+                                        next_side,
+                                        role.entry_stage(),
+                                    );
                                     reset_target_consumption(&mut target_consumption, next_side);
                                 }
                             } else {
@@ -344,6 +386,16 @@ pub(crate) fn simulate_backtest(
                                     PositionSide::Long => position_events.long_entry_fill = true,
                                     PositionSide::Short => position_events.short_entry_fill = true,
                                 }
+                                mark_entry_filled(
+                                    &mut entry_progress,
+                                    next_side,
+                                    role.entry_stage().unwrap_or(1),
+                                );
+                                set_entry_stage_event(
+                                    &mut position_events,
+                                    next_side,
+                                    role.entry_stage(),
+                                );
                                 reset_target_consumption(&mut target_consumption, next_side);
                                 position = Some(next_position);
                                 open_trade = Some(next_trade);
@@ -367,6 +419,14 @@ pub(crate) fn simulate_backtest(
                         invalidate_inapplicable_orders(
                             &mut active_orders,
                             position.as_ref(),
+                            entry_progress,
+                            &mut orders,
+                        );
+                        invalidate_stale_attached_orders(
+                            &mut active_orders,
+                            position.as_ref(),
+                            target_consumption,
+                            &prepared,
                             &mut orders,
                         );
                         filled_this_bar = true;
@@ -408,6 +468,7 @@ pub(crate) fn simulate_backtest(
                         }
                         if let Some(side) = liquidation_outcome.fully_closed_side {
                             reset_target_consumption(&mut target_consumption, side);
+                            reset_entry_progress(&mut entry_progress, side);
                             cancel_orders_for_closed_side(
                                 &mut active_orders,
                                 side,
@@ -699,13 +760,25 @@ fn build_runtime_overrides(
     overrides.extend(position_event_fields.iter().map(|decl| {
         let value = match decl.field {
             PositionEventField::LongEntryFill => Value::Bool(position_events.long_entry_fill),
+            PositionEventField::LongEntry1Fill => Value::Bool(position_events.long_entry1_fill),
+            PositionEventField::LongEntry2Fill => Value::Bool(position_events.long_entry2_fill),
+            PositionEventField::LongEntry3Fill => Value::Bool(position_events.long_entry3_fill),
             PositionEventField::ShortEntryFill => Value::Bool(position_events.short_entry_fill),
+            PositionEventField::ShortEntry1Fill => Value::Bool(position_events.short_entry1_fill),
+            PositionEventField::ShortEntry2Fill => Value::Bool(position_events.short_entry2_fill),
+            PositionEventField::ShortEntry3Fill => Value::Bool(position_events.short_entry3_fill),
             PositionEventField::LongExitFill => Value::Bool(position_events.long_exit_fill),
             PositionEventField::ShortExitFill => Value::Bool(position_events.short_exit_fill),
             PositionEventField::LongProtectFill => Value::Bool(position_events.long_protect_fill),
             PositionEventField::ShortProtectFill => Value::Bool(position_events.short_protect_fill),
             PositionEventField::LongTargetFill => Value::Bool(position_events.long_target_fill),
+            PositionEventField::LongTarget1Fill => Value::Bool(position_events.long_target1_fill),
+            PositionEventField::LongTarget2Fill => Value::Bool(position_events.long_target2_fill),
+            PositionEventField::LongTarget3Fill => Value::Bool(position_events.long_target3_fill),
             PositionEventField::ShortTargetFill => Value::Bool(position_events.short_target_fill),
+            PositionEventField::ShortTarget1Fill => Value::Bool(position_events.short_target1_fill),
+            PositionEventField::ShortTarget2Fill => Value::Bool(position_events.short_target2_fill),
+            PositionEventField::ShortTarget3Fill => Value::Bool(position_events.short_target3_fill),
             PositionEventField::LongSignalExitFill => {
                 Value::Bool(position_events.long_signal_exit_fill)
             }
@@ -744,6 +817,9 @@ fn last_exit_value(snapshot: Option<&LastExitSnapshot>, field: LastExitField) ->
     };
     match field {
         LastExitField::Kind => Value::ExitKind(snapshot.kind),
+        LastExitField::Stage => snapshot
+            .stage
+            .map_or(Value::NA, |stage| Value::F64(stage as f64)),
         LastExitField::Side => Value::PositionSide(snapshot.side),
         LastExitField::Price => Value::F64(snapshot.price),
         LastExitField::Time => Value::F64(snapshot.time),
@@ -776,6 +852,38 @@ fn set_exit_events(position_events: &mut PositionEventStep, side: PositionSide, 
                 ExitKind::Liquidation => position_events.short_liquidation_fill = true,
             }
         }
+    }
+}
+
+fn set_target_stage_event(
+    position_events: &mut PositionEventStep,
+    side: PositionSide,
+    stage: Option<u8>,
+) {
+    match (side, stage) {
+        (PositionSide::Long, Some(1)) => position_events.long_target1_fill = true,
+        (PositionSide::Long, Some(2)) => position_events.long_target2_fill = true,
+        (PositionSide::Long, Some(3)) => position_events.long_target3_fill = true,
+        (PositionSide::Short, Some(1)) => position_events.short_target1_fill = true,
+        (PositionSide::Short, Some(2)) => position_events.short_target2_fill = true,
+        (PositionSide::Short, Some(3)) => position_events.short_target3_fill = true,
+        _ => {}
+    }
+}
+
+fn set_entry_stage_event(
+    position_events: &mut PositionEventStep,
+    side: PositionSide,
+    stage: Option<u8>,
+) {
+    match (side, stage) {
+        (PositionSide::Long, Some(1)) => position_events.long_entry1_fill = true,
+        (PositionSide::Long, Some(2)) => position_events.long_entry2_fill = true,
+        (PositionSide::Long, Some(3)) => position_events.long_entry3_fill = true,
+        (PositionSide::Short, Some(1)) => position_events.short_entry1_fill = true,
+        (PositionSide::Short, Some(2)) => position_events.short_entry2_fill = true,
+        (PositionSide::Short, Some(3)) => position_events.short_entry3_fill = true,
+        _ => {}
     }
 }
 
@@ -814,9 +922,13 @@ fn enqueue_signal_requests(
             continue;
         };
         let slot = role_index(role);
-        let event_kind = if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry)
-            && pending_requests[role_index(opposite_entry_role(role))].is_some()
-        {
+        let has_pending_opposite_entry = role.is_entry()
+            && pending_requests.iter().flatten().any(|request| {
+                request.role.is_entry()
+                    && request.role.is_long() != role.is_long()
+                    && request.signal_time == signal_time
+            });
+        let event_kind = if has_pending_opposite_entry {
             OpportunityEventKind::SignalConflicted
         } else if pending_requests[slot].is_some() {
             OpportunityEventKind::SignalReplacedPendingOrder
@@ -835,7 +947,7 @@ fn enqueue_signal_requests(
         pending_requests[slot] = Some(capture_request(template, signal_time, output));
         pending_snapshots[slot] = snapshot.cloned();
         pending_signal_names[slot] = Some(event.name.clone());
-        if matches!(role, SignalRole::LongEntry | SignalRole::ShortEntry) {
+        if role.is_entry() {
             *pending_conflict_time = Some(signal_time);
         }
     }
@@ -864,17 +976,11 @@ fn enqueue_attached_requests(
         return;
     }
 
-    let roles = match before.side {
-        PositionSide::Long => [SignalRole::ProtectLong, SignalRole::TargetLong],
-        PositionSide::Short => [SignalRole::ProtectShort, SignalRole::TargetShort],
-    };
-    for role in roles {
-        if target_role_consumed(target_consumption, role) {
-            continue;
-        }
-        let Some(template) = prepared.order_templates.get(&role).copied() else {
-            continue;
-        };
+    let mut roles = [None, None];
+    roles[0] = resolve_active_protect_role(before.side, target_consumption, prepared);
+    roles[1] = resolve_active_target_role(before.side, target_consumption, prepared);
+    for role in roles.into_iter().flatten() {
+        let template = prepared.order_templates[&role];
         let slot = role_index(role);
         diagnostics.record_signal_event(
             if pending_requests[slot].is_some() {
@@ -905,6 +1011,7 @@ fn place_pending_requests(
     order_contexts: &mut Vec<OrderDiagnosticContext>,
     diagnostics: &mut DiagnosticsAccumulator,
     position: Option<&PositionState>,
+    entry_progress: EntryProgressState,
     placed_snapshot: Option<FeatureSnapshot>,
     placed_position: Option<PositionSnapshot>,
     bar_index: usize,
@@ -917,12 +1024,16 @@ fn place_pending_requests(
         };
         let signal_snapshot = pending_snapshots[slot].take();
         let signal_name = pending_signal_names[slot].take();
-        if !request_applicable(request, position) {
+        if !request_applicable(request, position, entry_progress) {
             diagnostics.record_signal_event(
                 if matches!(
-                    (role, position.map(|state| state.side)),
-                    (SignalRole::LongEntry, Some(PositionSide::Long))
-                        | (SignalRole::ShortEntry, Some(PositionSide::Short))
+                    (
+                        role.is_entry(),
+                        role.is_long(),
+                        position.map(|state| state.side)
+                    ),
+                    (true, true, Some(PositionSide::Long))
+                        | (true, false, Some(PositionSide::Short))
                 ) {
                     OpportunityEventKind::SignalIgnoredSameSide
                 } else {
@@ -997,36 +1108,114 @@ fn place_pending_requests(
 fn pending_entry_requests_conflict(
     pending_requests: &[Option<CapturedOrderRequest>; ROLE_COUNT],
     position: Option<&PositionState>,
+    entry_progress: EntryProgressState,
 ) -> bool {
-    let Some(long_request) = pending_requests[role_index(SignalRole::LongEntry)] else {
-        return false;
-    };
-    let Some(short_request) = pending_requests[role_index(SignalRole::ShortEntry)] else {
-        return false;
-    };
-    request_applicable(long_request, position) && request_applicable(short_request, position)
-}
-
-fn target_role_consumed(state: TargetConsumptionState, role: SignalRole) -> bool {
-    match role {
-        SignalRole::TargetLong => state.long_consumed,
-        SignalRole::TargetShort => state.short_consumed,
-        _ => false,
-    }
+    let has_long = pending_requests.iter().flatten().any(|request| {
+        request.role.is_entry()
+            && request.role.is_long()
+            && request_applicable(*request, position, entry_progress)
+    });
+    let has_short = pending_requests.iter().flatten().any(|request| {
+        request.role.is_entry()
+            && request.role.is_short()
+            && request_applicable(*request, position, entry_progress)
+    });
+    has_long && has_short
 }
 
 fn mark_target_consumed(state: &mut TargetConsumptionState, side: PositionSide) {
     match side {
-        PositionSide::Long => state.long_consumed = true,
-        PositionSide::Short => state.short_consumed = true,
+        PositionSide::Long => state.long_stage = (state.long_stage + 1).min(3),
+        PositionSide::Short => state.short_stage = (state.short_stage + 1).min(3),
     }
 }
 
 fn reset_target_consumption(state: &mut TargetConsumptionState, side: PositionSide) {
     match side {
-        PositionSide::Long => state.long_consumed = false,
-        PositionSide::Short => state.short_consumed = false,
+        PositionSide::Long => state.long_stage = 0,
+        PositionSide::Short => state.short_stage = 0,
     }
+}
+
+fn mark_entry_filled(state: &mut EntryProgressState, side: PositionSide, stage: u8) {
+    match side {
+        PositionSide::Long => state.long_stage = state.long_stage.max(stage),
+        PositionSide::Short => state.short_stage = state.short_stage.max(stage),
+    }
+}
+
+fn reset_entry_progress(state: &mut EntryProgressState, side: PositionSide) {
+    match side {
+        PositionSide::Long => state.long_stage = 0,
+        PositionSide::Short => state.short_stage = 0,
+    }
+}
+
+fn resolve_active_target_role(
+    side: PositionSide,
+    state: TargetConsumptionState,
+    prepared: &PreparedBacktest,
+) -> Option<SignalRole> {
+    let next_stage = match side {
+        PositionSide::Long => state.long_stage + 1,
+        PositionSide::Short => state.short_stage + 1,
+    };
+    let role = match (side, next_stage) {
+        (PositionSide::Long, 1) => SignalRole::TargetLong,
+        (PositionSide::Long, 2) => SignalRole::TargetLong2,
+        (PositionSide::Long, 3) => SignalRole::TargetLong3,
+        (PositionSide::Short, 1) => SignalRole::TargetShort,
+        (PositionSide::Short, 2) => SignalRole::TargetShort2,
+        (PositionSide::Short, 3) => SignalRole::TargetShort3,
+        _ => return None,
+    };
+    prepared.order_templates.contains_key(&role).then_some(role)
+}
+
+fn resolve_active_protect_role(
+    side: PositionSide,
+    state: TargetConsumptionState,
+    prepared: &PreparedBacktest,
+) -> Option<SignalRole> {
+    let stage = match side {
+        PositionSide::Long => state.long_stage,
+        PositionSide::Short => state.short_stage,
+    };
+    let roles: &[SignalRole] = match (side, stage) {
+        (PositionSide::Long, 0) => &[SignalRole::ProtectLong],
+        (PositionSide::Long, 1) => &[SignalRole::ProtectAfterTarget1Long, SignalRole::ProtectLong],
+        (PositionSide::Long, 2) => &[
+            SignalRole::ProtectAfterTarget2Long,
+            SignalRole::ProtectAfterTarget1Long,
+            SignalRole::ProtectLong,
+        ],
+        (PositionSide::Long, _) => &[
+            SignalRole::ProtectAfterTarget3Long,
+            SignalRole::ProtectAfterTarget2Long,
+            SignalRole::ProtectAfterTarget1Long,
+            SignalRole::ProtectLong,
+        ],
+        (PositionSide::Short, 0) => &[SignalRole::ProtectShort],
+        (PositionSide::Short, 1) => &[
+            SignalRole::ProtectAfterTarget1Short,
+            SignalRole::ProtectShort,
+        ],
+        (PositionSide::Short, 2) => &[
+            SignalRole::ProtectAfterTarget2Short,
+            SignalRole::ProtectAfterTarget1Short,
+            SignalRole::ProtectShort,
+        ],
+        (PositionSide::Short, _) => &[
+            SignalRole::ProtectAfterTarget3Short,
+            SignalRole::ProtectAfterTarget2Short,
+            SignalRole::ProtectAfterTarget1Short,
+            SignalRole::ProtectShort,
+        ],
+    };
+    roles
+        .iter()
+        .copied()
+        .find(|role| prepared.order_templates.contains_key(role))
 }
 
 fn cancel_orders_for_closed_side(
@@ -1035,16 +1224,34 @@ fn cancel_orders_for_closed_side(
     filled_role: SignalRole,
     orders: &mut [OrderRecord],
 ) {
-    let (signal_role, protect_role, target_role) = match side {
+    let (signal_role, protect_roles, target_roles) = match side {
         PositionSide::Long => (
             SignalRole::LongExit,
-            SignalRole::ProtectLong,
-            SignalRole::TargetLong,
+            [
+                SignalRole::ProtectLong,
+                SignalRole::ProtectAfterTarget1Long,
+                SignalRole::ProtectAfterTarget2Long,
+                SignalRole::ProtectAfterTarget3Long,
+            ],
+            [
+                SignalRole::TargetLong,
+                SignalRole::TargetLong2,
+                SignalRole::TargetLong3,
+            ],
         ),
         PositionSide::Short => (
             SignalRole::ShortExit,
-            SignalRole::ProtectShort,
-            SignalRole::TargetShort,
+            [
+                SignalRole::ProtectShort,
+                SignalRole::ProtectAfterTarget1Short,
+                SignalRole::ProtectAfterTarget2Short,
+                SignalRole::ProtectAfterTarget3Short,
+            ],
+            [
+                SignalRole::TargetShort,
+                SignalRole::TargetShort2,
+                SignalRole::TargetShort3,
+            ],
         ),
     };
 
@@ -1055,35 +1262,43 @@ fn cancel_orders_for_closed_side(
         OrderEndReason::PositionClosed,
     );
     match filled_role {
-        role if role == protect_role => {
-            cancel_active_role(
-                active_orders,
-                target_role,
-                orders,
-                OrderEndReason::OcoCancelled,
-            );
+        role if role.is_protect() => {
+            for target_role in target_roles {
+                cancel_active_role(
+                    active_orders,
+                    target_role,
+                    orders,
+                    OrderEndReason::OcoCancelled,
+                );
+            }
         }
-        role if role == target_role => {
-            cancel_active_role(
-                active_orders,
-                protect_role,
-                orders,
-                OrderEndReason::OcoCancelled,
-            );
+        role if role.is_target() => {
+            for protect_role in protect_roles {
+                cancel_active_role(
+                    active_orders,
+                    protect_role,
+                    orders,
+                    OrderEndReason::OcoCancelled,
+                );
+            }
         }
         _ => {
-            cancel_active_role(
-                active_orders,
-                protect_role,
-                orders,
-                OrderEndReason::PositionClosed,
-            );
-            cancel_active_role(
-                active_orders,
-                target_role,
-                orders,
-                OrderEndReason::PositionClosed,
-            );
+            for protect_role in protect_roles {
+                cancel_active_role(
+                    active_orders,
+                    protect_role,
+                    orders,
+                    OrderEndReason::PositionClosed,
+                );
+            }
+            for target_role in target_roles {
+                cancel_active_role(
+                    active_orders,
+                    target_role,
+                    orders,
+                    OrderEndReason::PositionClosed,
+                );
+            }
         }
     }
 }
@@ -1134,20 +1349,19 @@ fn maybe_close_position_for_role(
     total_realized_pnl: &mut f64,
 ) -> CloseOutcome {
     let should_close = matches!(
-        (position.as_ref().map(|state| state.side), role),
-        (
-            Some(PositionSide::Long),
-            SignalRole::LongExit
-                | SignalRole::ProtectLong
-                | SignalRole::TargetLong
-                | SignalRole::ShortEntry
-        ) | (
-            Some(PositionSide::Short),
-            SignalRole::ShortExit
-                | SignalRole::ProtectShort
-                | SignalRole::TargetShort
-                | SignalRole::LongEntry
-        )
+        position.as_ref().map(|state| state.side),
+        Some(PositionSide::Long)
+            if matches!(role, SignalRole::LongExit)
+                || (role.is_protect() && role.is_long())
+                || (role.is_target() && role.is_long())
+                || (role.is_entry() && role.is_short())
+    ) || matches!(
+        position.as_ref().map(|state| state.side),
+        Some(PositionSide::Short)
+            if matches!(role, SignalRole::ShortExit)
+                || (role.is_protect() && role.is_short())
+                || (role.is_target() && role.is_short())
+                || (role.is_entry() && role.is_long())
     );
     if !should_close {
         return CloseOutcome {
@@ -1161,8 +1375,8 @@ fn maybe_close_position_for_role(
         .as_ref()
         .map(|state| state.side)
         .expect("open position should exist");
-    let full_close = !matches!(role, SignalRole::TargetLong | SignalRole::TargetShort)
-        || size_fraction.unwrap_or(1.0) >= 1.0 - crate::backtest::EPSILON;
+    let full_close =
+        !role.is_target() || size_fraction.unwrap_or(1.0) >= 1.0 - crate::backtest::EPSILON;
     let close_quantity = position
         .as_ref()
         .map(|state| {
@@ -1305,6 +1519,7 @@ fn maybe_close_position_for_role(
     trades.push(trade);
     let snapshot = LastExitSnapshot {
         kind: exit_kind_for_role(role),
+        stage: role.target_stage().or(role.protect_stage()),
         side,
         price: exit_fill.price,
         time: exit_fill.time,
@@ -1352,13 +1567,14 @@ fn maybe_close_position_for_role(
 fn invalidate_inapplicable_orders(
     active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
     position: Option<&PositionState>,
+    entry_progress: EntryProgressState,
     orders: &mut [OrderRecord],
 ) {
     for slot in active_orders.iter_mut() {
         let Some(active) = slot.as_ref() else {
             continue;
         };
-        if request_applicable(active.request, position) {
+        if request_applicable(active.request, position, entry_progress) {
             continue;
         }
         let record_index = active.record_index;
@@ -1383,6 +1599,66 @@ fn invalidate_inapplicable_orders(
     }
 }
 
+fn invalidate_stale_attached_orders(
+    active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
+    position: Option<&PositionState>,
+    target_consumption: TargetConsumptionState,
+    prepared: &PreparedBacktest,
+    orders: &mut [OrderRecord],
+) {
+    let Some(position) = position else {
+        return;
+    };
+    let active_protect = resolve_active_protect_role(position.side, target_consumption, prepared);
+    let active_target = resolve_active_target_role(position.side, target_consumption, prepared);
+
+    for slot in active_orders.iter_mut() {
+        let Some(active) = slot.as_ref() else {
+            continue;
+        };
+        let role = active.request.role;
+        let is_same_side_attached = role.is_attached_exit()
+            && ((position.side == PositionSide::Long && role.is_long())
+                || (position.side == PositionSide::Short && role.is_short()));
+        if !is_same_side_attached {
+            continue;
+        }
+        let should_keep = if role.is_protect() {
+            Some(role) == active_protect
+        } else if role.is_target() {
+            Some(role) == active_target
+        } else {
+            true
+        };
+        if should_keep {
+            continue;
+        }
+
+        let record_index = active.record_index;
+        *slot = None;
+        update_order_record(
+            &mut orders[record_index],
+            OrderRecordUpdate {
+                trigger_time: None,
+                fill_bar_index: None,
+                fill_time: None,
+                raw_price: None,
+                fill_price: None,
+                status: OrderStatus::Cancelled,
+                end_reason: Some(OrderEndReason::Rearmed),
+            },
+        );
+    }
+}
+
+fn current_side_for_role(role: SignalRole) -> PositionSide {
+    if role.is_long() {
+        PositionSide::Long
+    } else {
+        PositionSide::Short
+    }
+}
+
 fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
     if let Some(trigger_time) = update.trigger_time {
         record.trigger_time = Some(trigger_time);
@@ -1397,9 +1673,26 @@ fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
 
 fn classify_exit(role: SignalRole) -> TradeExitClassification {
     match role {
-        SignalRole::LongEntry | SignalRole::ShortEntry => TradeExitClassification::Reversal,
-        SignalRole::ProtectLong | SignalRole::ProtectShort => TradeExitClassification::Protect,
-        SignalRole::TargetLong | SignalRole::TargetShort => TradeExitClassification::Target,
+        SignalRole::LongEntry
+        | SignalRole::LongEntry2
+        | SignalRole::LongEntry3
+        | SignalRole::ShortEntry
+        | SignalRole::ShortEntry2
+        | SignalRole::ShortEntry3 => TradeExitClassification::Reversal,
+        SignalRole::ProtectLong
+        | SignalRole::ProtectAfterTarget1Long
+        | SignalRole::ProtectAfterTarget2Long
+        | SignalRole::ProtectAfterTarget3Long
+        | SignalRole::ProtectShort
+        | SignalRole::ProtectAfterTarget1Short
+        | SignalRole::ProtectAfterTarget2Short
+        | SignalRole::ProtectAfterTarget3Short => TradeExitClassification::Protect,
+        SignalRole::TargetLong
+        | SignalRole::TargetLong2
+        | SignalRole::TargetLong3
+        | SignalRole::TargetShort
+        | SignalRole::TargetShort2
+        | SignalRole::TargetShort3 => TradeExitClassification::Target,
         SignalRole::LongExit | SignalRole::ShortExit => TradeExitClassification::Signal,
     }
 }
@@ -1411,14 +1704,6 @@ fn exit_kind_for_role(role: SignalRole) -> ExitKind {
         TradeExitClassification::Target => ExitKind::Target,
         TradeExitClassification::Reversal => ExitKind::Reversal,
         TradeExitClassification::Liquidation => ExitKind::Liquidation,
-    }
-}
-
-fn opposite_entry_role(role: SignalRole) -> SignalRole {
-    match role {
-        SignalRole::LongEntry => SignalRole::ShortEntry,
-        SignalRole::ShortEntry => SignalRole::LongEntry,
-        _ => role,
     }
 }
 
@@ -1591,6 +1876,7 @@ fn force_liquidation(
     CloseOutcome {
         snapshot: Some(LastExitSnapshot {
             kind: ExitKind::Liquidation,
+            stage: None,
             side,
             price: exit_fill.price,
             time: exit_fill.time,
