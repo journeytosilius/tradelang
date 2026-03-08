@@ -92,6 +92,7 @@ pub(crate) fn capture_request(
         tif: template.tif,
         post_only: template.post_only,
         trigger_ref: template.trigger_ref,
+        size_mode: template.size_mode,
         price: template
             .price_field_id
             .and_then(|_| lookup(template.role, OrderFieldKind::Price)),
@@ -101,10 +102,13 @@ pub(crate) fn capture_request(
         expire_time: template
             .expire_time_field_id
             .and_then(|_| lookup(template.role, OrderFieldKind::ExpireTime)),
-        has_size_fraction_field: template.size_field_id.is_some(),
-        size_fraction: template
+        has_size_field: template.size_field_id.is_some(),
+        size_value: template
             .size_field_id
             .and_then(|_| lookup(template.role, OrderFieldKind::SizeFraction)),
+        size_stop_price: template
+            .risk_stop_field_id
+            .and_then(|_| lookup(template.role, OrderFieldKind::RiskStopPrice)),
         signal_time,
     }
 }
@@ -185,10 +189,12 @@ fn default_market_order(role: SignalRole) -> OrderDecl {
         tif: None,
         post_only: false,
         trigger_ref: None,
+        size_mode: None,
         price_field_id: None,
         trigger_price_field_id: None,
         expire_time_field_id: None,
         size_field_id: None,
+        risk_stop_field_id: None,
     }
 }
 

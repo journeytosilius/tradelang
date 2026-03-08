@@ -3,7 +3,7 @@
 //! The compiler emits a [`Program`] made of typed locals, constants, and
 //! fixed-layout instructions. The VM executes this representation directly.
 
-use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
+use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::position::{LastExitField, LastExitScope, PositionEventField, PositionField};
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
@@ -298,10 +298,12 @@ pub struct OrderDecl {
     pub tif: Option<TimeInForce>,
     pub post_only: bool,
     pub trigger_ref: Option<TriggerReference>,
+    pub size_mode: Option<SizeMode>,
     pub price_field_id: Option<u16>,
     pub trigger_price_field_id: Option<u16>,
     pub expire_time_field_id: Option<u16>,
     pub size_field_id: Option<u16>,
+    pub risk_stop_field_id: Option<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

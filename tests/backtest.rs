@@ -2,7 +2,7 @@ use palmscript::{
     compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar,
     BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, Interval, MarkPriceBasis, OrderEndReason,
     OrderKind, OrderStatus, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, RiskTier,
-    SignalRole, SourceFeed, SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
+    SignalRole, SizeMode, SourceFeed, SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -1645,6 +1645,127 @@ plot(spot.close)",
         SignalRole::ProtectAfterTarget1Long
     );
     assert_eq!(result.open_position, None);
+}
+
+#[test]
+fn risk_sized_long_entry_uses_stop_distance() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+let stop_price = 8
+entry long = spot.time == {t0}
+order entry long = market()
+size entry long = risk_pct(0.1, stop_price)
+protect long = stop_market(stop_price, trigger_ref.last)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 10.0, 10.0),
+                Bar {
+                    open: 8.0,
+                    high: 10.0,
+                    low: 7.0,
+                    close: 8.0,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    approx_eq(result.trades[0].quantity, 50.0);
+    approx_eq(result.trades[0].realized_pnl, -100.0);
+    let entry_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::LongEntry && order.status == OrderStatus::Filled)
+        .expect("entry order should fill");
+    assert_eq!(entry_order.size_mode, Some(SizeMode::RiskPct));
+    approx_eq(
+        entry_order
+            .requested_risk_pct
+            .expect("risk pct should be recorded"),
+        0.1,
+    );
+    approx_eq(
+        entry_order
+            .requested_stop_price
+            .expect("stop price should be recorded"),
+        8.0,
+    );
+    approx_eq(
+        entry_order
+            .effective_risk_per_unit
+            .expect("risk per unit should be recorded"),
+        2.0,
+    );
+    assert!(!entry_order.capital_limited);
+}
+
+#[test]
+fn risk_sized_entry_marks_capital_limited_when_cash_caps_quantity() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+let stop_price = 9.5
+entry long = spot.time == {t0}
+order entry long = market()
+size entry long = risk_pct(0.1, stop_price)
+protect long = stop_market(stop_price, trigger_ref.last)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 10.0, 10.0),
+                Bar {
+                    open: 9.5,
+                    high: 10.0,
+                    low: 9.0,
+                    close: 9.5,
+                    volume: 1_000.0,
+                    time: (t0 + 2 * support::MINUTE_MS) as f64,
+                },
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    approx_eq(result.trades[0].quantity, 100.0);
+    approx_eq(result.trades[0].realized_pnl, -50.0);
+    let entry_order = result
+        .orders
+        .iter()
+        .find(|order| order.role == SignalRole::LongEntry && order.status == OrderStatus::Filled)
+        .expect("entry order should fill");
+    assert!(entry_order.capital_limited);
+    approx_eq(
+        entry_order
+            .effective_risk_per_unit
+            .expect("risk per unit should be recorded"),
+        0.5,
+    );
 }
 
 #[test]

@@ -82,6 +82,21 @@ impl TriggerReference {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SizeMode {
+    CapitalFraction,
+    RiskPct,
+}
+
+impl SizeMode {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::CapitalFraction => "capital_fraction",
+            Self::RiskPct => "risk_pct",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OrderFieldKind {
     #[default]
@@ -89,6 +104,7 @@ pub enum OrderFieldKind {
     TriggerPrice,
     ExpireTime,
     SizeFraction,
+    RiskStopPrice,
 }
 
 impl OrderFieldKind {
@@ -98,6 +114,7 @@ impl OrderFieldKind {
             Self::TriggerPrice => "trigger_price",
             Self::ExpireTime => "expire_time",
             Self::SizeFraction => "size_fraction",
+            Self::RiskStopPrice => "risk_stop_price",
         }
     }
 }

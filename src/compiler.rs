@@ -20,7 +20,7 @@ use crate::interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
 };
 use crate::lexer;
-use crate::order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
+use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::parser;
 use crate::position::{ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField};
 use crate::span::Span;
@@ -165,7 +165,7 @@ struct Analysis {
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
     resolved_order_field_slots: HashMap<NodeId, ResolvedOrderFieldSlots>,
-    order_size_field_ids: HashMap<CompiledSignalRole, u16>,
+    order_size_decls: HashMap<CompiledSignalRole, ResolvedOrderSizeDecl>,
     immutable_slots: HashMap<NodeId, u16>,
     immutable_bindings: HashMap<String, ExprInfo>,
     immutable_binding_slots: HashMap<String, u16>,
@@ -190,6 +190,14 @@ struct ResolvedOrderFieldSlots {
     trigger_price_slot: Option<u16>,
     expire_time_slot: Option<u16>,
     size_slot: Option<u16>,
+    risk_stop_slot: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ResolvedOrderSizeDecl {
+    mode: SizeMode,
+    size_field_id: u16,
+    risk_stop_field_id: Option<u16>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -244,7 +252,7 @@ impl<'a> Analyzer<'a> {
         for stmt in &ast.statements {
             self.analyze_stmt(stmt);
         }
-        for role in self.analysis.order_size_field_ids.keys().copied() {
+        for role in self.analysis.order_size_decls.keys().copied() {
             if self.analysis.orders.iter().any(|order| order.role == role) {
                 continue;
             }
@@ -1164,16 +1172,19 @@ impl<'a> Analyzer<'a> {
         }
 
         let mut resolved = ResolvedOrderFieldSlots::default();
+        let size_decl = self.analysis.order_size_decls.get(&role).copied();
         let mut order = OrderDecl {
             role,
             kind: OrderKind::Market,
             tif: None,
             post_only: false,
             trigger_ref: None,
+            size_mode: size_decl.map(|decl| decl.mode),
             price_field_id: None,
             trigger_price_field_id: None,
             expire_time_field_id: None,
-            size_field_id: self.analysis.order_size_field_ids.get(&role).copied(),
+            size_field_id: size_decl.map(|decl| decl.size_field_id),
+            risk_stop_field_id: size_decl.and_then(|decl| decl.risk_stop_field_id),
         };
 
         match &spec.kind {
@@ -1406,7 +1417,7 @@ impl<'a> Analyzer<'a> {
             ));
             return;
         }
-        if self.analysis.order_size_field_ids.contains_key(&role) {
+        if self.analysis.order_size_decls.contains_key(&role) {
             self.diagnostics.push(Diagnostic::new(
                 DiagnosticKind::Type,
                 format!("duplicate size declaration for `{}`", role.canonical_name()),
@@ -1416,18 +1427,77 @@ impl<'a> Analyzer<'a> {
         }
 
         let mut resolved = ResolvedOrderFieldSlots::default();
-        if let Some((field_id, slot)) =
-            self.analyze_order_numeric_field(role, OrderFieldKind::SizeFraction, expr)
-        {
-            self.analysis.order_size_field_ids.insert(role, field_id);
-            resolved.size_slot = Some(slot);
+        let size_decl = match classify_order_size_expr(expr) {
+            OrderSizeExpr::CapitalFraction(size_expr) => {
+                let Some((field_id, slot)) =
+                    self.analyze_order_numeric_field(role, OrderFieldKind::SizeFraction, size_expr)
+                else {
+                    return;
+                };
+                resolved.size_slot = Some(slot);
+                Some(ResolvedOrderSizeDecl {
+                    mode: SizeMode::CapitalFraction,
+                    size_field_id: field_id,
+                    risk_stop_field_id: None,
+                })
+            }
+            OrderSizeExpr::RiskPct { pct, stop_price } => {
+                if !role.is_entry() {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        "`risk_pct(...)` is only supported on staged entry size declarations in v1",
+                        expr.span,
+                    ));
+                    return;
+                }
+                let Some((size_field_id, size_slot)) =
+                    self.analyze_order_numeric_field(role, OrderFieldKind::SizeFraction, pct)
+                else {
+                    return;
+                };
+                let Some((risk_stop_field_id, risk_stop_slot)) = self.analyze_order_numeric_field(
+                    role,
+                    OrderFieldKind::RiskStopPrice,
+                    stop_price,
+                ) else {
+                    return;
+                };
+                resolved.size_slot = Some(size_slot);
+                resolved.risk_stop_slot = Some(risk_stop_slot);
+                Some(ResolvedOrderSizeDecl {
+                    mode: SizeMode::RiskPct,
+                    size_field_id,
+                    risk_stop_field_id: Some(risk_stop_field_id),
+                })
+            }
+            OrderSizeExpr::InvalidCapitalFractionArity => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "`capital_fraction(...)` expects exactly one argument",
+                    expr.span,
+                ));
+                None
+            }
+            OrderSizeExpr::InvalidRiskPctArity => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    "`risk_pct(...)` expects exactly two arguments: risk_pct(pct, stop_price)",
+                    expr.span,
+                ));
+                None
+            }
+        };
+        if let Some(size_decl) = size_decl {
+            self.analysis.order_size_decls.insert(role, size_decl);
             if let Some(order) = self
                 .analysis
                 .orders
                 .iter_mut()
                 .find(|decl| decl.role == role)
             {
-                order.size_field_id = Some(field_id);
+                order.size_mode = Some(size_decl.mode);
+                order.size_field_id = Some(size_decl.size_field_id);
+                order.risk_stop_field_id = size_decl.risk_stop_field_id;
             }
         }
         self.analysis
@@ -2297,6 +2367,36 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).copied())
+    }
+}
+
+enum OrderSizeExpr<'a> {
+    CapitalFraction(&'a Expr),
+    RiskPct { pct: &'a Expr, stop_price: &'a Expr },
+    InvalidCapitalFractionArity,
+    InvalidRiskPctArity,
+}
+
+fn classify_order_size_expr(expr: &Expr) -> OrderSizeExpr<'_> {
+    match &expr.kind {
+        ExprKind::Call { callee, args, .. } if callee == "capital_fraction" => {
+            if args.len() == 1 {
+                OrderSizeExpr::CapitalFraction(&args[0])
+            } else {
+                OrderSizeExpr::InvalidCapitalFractionArity
+            }
+        }
+        ExprKind::Call { callee, args, .. } if callee == "risk_pct" => {
+            if args.len() == 2 {
+                OrderSizeExpr::RiskPct {
+                    pct: &args[0],
+                    stop_price: &args[1],
+                }
+            } else {
+                OrderSizeExpr::InvalidRiskPctArity
+            }
+        }
+        _ => OrderSizeExpr::CapitalFraction(expr),
     }
 }
 
@@ -4883,13 +4983,37 @@ impl<'a> Compiler<'a> {
             }
             StmtKind::OrderSize { expr, .. } => {
                 let resolved = self.analysis.resolved_order_field_slots[&stmt.id];
-                if let Some(slot) = resolved.size_slot {
-                    self.emit_expr(expr, expr_info, user_calls);
-                    self.emit(
-                        Instruction::new(OpCode::StoreLocal)
-                            .with_a(slot)
-                            .with_span(stmt.span),
-                    );
+                match classify_order_size_expr(expr) {
+                    OrderSizeExpr::CapitalFraction(size_expr) => {
+                        if let Some(slot) = resolved.size_slot {
+                            self.emit_expr(size_expr, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                    }
+                    OrderSizeExpr::RiskPct { pct, stop_price } => {
+                        if let Some(slot) = resolved.size_slot {
+                            self.emit_expr(pct, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                        if let Some(slot) = resolved.risk_stop_slot {
+                            self.emit_expr(stop_price, expr_info, user_calls);
+                            self.emit(
+                                Instruction::new(OpCode::StoreLocal)
+                                    .with_a(slot)
+                                    .with_span(stmt.span),
+                            );
+                        }
+                    }
+                    OrderSizeExpr::InvalidCapitalFractionArity
+                    | OrderSizeExpr::InvalidRiskPctArity => {}
                 }
             }
             StmtKind::If {

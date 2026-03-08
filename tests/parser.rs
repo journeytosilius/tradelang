@@ -205,6 +205,21 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_risk_based_entry_size_declarations() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+let stop_price = src.close - 2
+entry long = src.close > src.close[1]
+order entry long = market()
+size entry long = risk_pct(0.01, stop_price)
+protect long = stop_market(stop_price, trigger_ref.last)
+plot(src.close)",
+    )
+    .expect("risk-based entry size declarations should compile");
+}
+
+#[test]
 fn parses_staged_entries_targets_and_protect_ratchets() {
     compile(
         "interval 1m

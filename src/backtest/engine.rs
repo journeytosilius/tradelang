@@ -5,12 +5,13 @@ use crate::backtest::diagnostics::{
 };
 use crate::backtest::orders::{
     add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
-    entry_quantity_for_capital, evaluate_active_order, fill_action_for_role, is_attached_exit_role,
-    liquidation_trigger_price, missing_field_reason, open_position, position_side_for_entry,
-    realize_perp_close, refresh_position_risk, request_applicable, role_index,
+    evaluate_active_order, fill_action_for_role, is_attached_exit_role, liquidation_trigger_price,
+    missing_field_reason, open_position, position_side_for_entry, realize_perp_close,
+    refresh_position_risk, request_applicable, resolve_entry_sizing, role_index,
     unrealized_pnl_for_position, update_open_trade_excursions, AccountingMode, ActiveOrder,
-    CapturedOrderRequest, CloseExecution, EntryProgressState, FillExecutionContext, OpenTrade,
-    PositionState, TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
+    CapturedOrderRequest, CloseExecution, EntryProgressState, EntrySizingSpec,
+    FillExecutionContext, OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT,
+    ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
@@ -33,6 +34,8 @@ pub(crate) struct OrderRecordUpdate {
     pub fill_time: Option<f64>,
     pub raw_price: Option<f64>,
     pub fill_price: Option<f64>,
+    pub effective_risk_per_unit: Option<f64>,
+    pub capital_limited: Option<bool>,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
 }
@@ -194,6 +197,8 @@ pub(crate) fn simulate_backtest(
                                 fill_time: None,
                                 raw_price: None,
                                 fill_price: None,
+                                effective_risk_per_unit: None,
+                                capital_limited: None,
                                 status: OrderStatus::Expired,
                                 end_reason: None,
                             },
@@ -208,6 +213,8 @@ pub(crate) fn simulate_backtest(
                                 fill_time: None,
                                 raw_price: None,
                                 fill_price: None,
+                                effective_risk_per_unit: None,
+                                capital_limited: None,
                                 status: OrderStatus::Cancelled,
                                 end_reason: Some(reason),
                             },
@@ -233,7 +240,14 @@ pub(crate) fn simulate_backtest(
                             role,
                             active.record_index,
                             active.request.kind,
-                            active.request.size_fraction,
+                            if matches!(
+                                active.request.size_mode,
+                                Some(crate::order::SizeMode::RiskPct)
+                            ) {
+                                None
+                            } else {
+                                active.request.size_value
+                            },
                             last_snapshot.clone(),
                             execution_cursor,
                             bar.time,
@@ -284,14 +298,38 @@ pub(crate) fn simulate_backtest(
                         }
 
                         if let Some(next_side) = position_side_for_entry(role) {
-                            let entry_quantity = entry_quantity_for_capital(
+                            let sizing = match resolve_entry_sizing(
                                 cash,
-                                active.request.size_fraction,
+                                EntrySizingSpec {
+                                    size_mode: active.request.size_mode,
+                                    size_value: active.request.size_value,
+                                    stop_price: active.request.size_stop_price,
+                                },
+                                next_side,
                                 &accounting,
                                 execution_price,
                                 fee_rate,
-                            );
-                            if entry_quantity <= crate::backtest::EPSILON {
+                            ) {
+                                Ok(sizing) => sizing,
+                                Err(reason) => {
+                                    update_order_record(
+                                        &mut orders[active.record_index],
+                                        OrderRecordUpdate {
+                                            trigger_time: execution.trigger_time,
+                                            fill_bar_index: None,
+                                            fill_time: None,
+                                            raw_price: None,
+                                            fill_price: None,
+                                            effective_risk_per_unit: None,
+                                            capital_limited: None,
+                                            status: OrderStatus::Cancelled,
+                                            end_reason: Some(reason),
+                                        },
+                                    );
+                                    continue;
+                                }
+                            };
+                            if sizing.quantity <= crate::backtest::EPSILON {
                                 update_order_record(
                                     &mut orders[active.record_index],
                                     OrderRecordUpdate {
@@ -300,6 +338,8 @@ pub(crate) fn simulate_backtest(
                                         fill_time: None,
                                         raw_price: None,
                                         fill_price: None,
+                                        effective_risk_per_unit: None,
+                                        capital_limited: None,
                                         status: OrderStatus::Cancelled,
                                         end_reason: Some(OrderEndReason::InsufficientCollateral),
                                     },
@@ -319,15 +359,38 @@ pub(crate) fn simulate_backtest(
                                 if let (Some(position_state), Some(open_trade_state)) =
                                     (position.as_mut(), open_trade.as_mut())
                                 {
-                                    let entry_fill = add_to_position(
+                                    let (entry_fill, entry_sizing) = match add_to_position(
                                         execution_context,
                                         position_state,
                                         open_trade_state,
-                                        active.request.size_fraction,
+                                        EntrySizingSpec {
+                                            size_mode: active.request.size_mode,
+                                            size_value: active.request.size_value,
+                                            stop_price: active.request.size_stop_price,
+                                        },
                                         &accounting,
                                         fee_rate,
                                         &mut cash,
-                                    );
+                                    ) {
+                                        Ok(result) => result,
+                                        Err(reason) => {
+                                            update_order_record(
+                                                &mut orders[active.record_index],
+                                                OrderRecordUpdate {
+                                                    trigger_time: execution.trigger_time,
+                                                    fill_bar_index: None,
+                                                    fill_time: None,
+                                                    raw_price: None,
+                                                    fill_price: None,
+                                                    effective_risk_per_unit: None,
+                                                    capital_limited: None,
+                                                    status: OrderStatus::Cancelled,
+                                                    end_reason: Some(reason),
+                                                },
+                                            );
+                                            continue;
+                                        }
+                                    };
                                     refresh_position_risk(
                                         position_state,
                                         &accounting,
@@ -358,22 +421,50 @@ pub(crate) fn simulate_backtest(
                                         role.entry_stage(),
                                     );
                                     reset_target_consumption(&mut target_consumption, next_side);
+                                    orders[active.record_index].effective_risk_per_unit =
+                                        entry_sizing.effective_risk_per_unit;
+                                    orders[active.record_index].capital_limited =
+                                        entry_sizing.capital_limited;
                                 }
                             } else {
-                                let (next_position, mut next_trade, entry_fill) = open_position(
-                                    execution_context,
-                                    next_side,
-                                    TradeEntryContext {
-                                        order_id: active.record_index,
-                                        role,
-                                        kind: active.request.kind,
-                                        snapshot: last_snapshot.clone(),
-                                    },
-                                    active.request.size_fraction,
-                                    &accounting,
-                                    fee_rate,
-                                    &mut cash,
-                                );
+                                let (next_position, mut next_trade, entry_fill, entry_sizing) =
+                                    match open_position(
+                                        execution_context,
+                                        next_side,
+                                        TradeEntryContext {
+                                            order_id: active.record_index,
+                                            role,
+                                            kind: active.request.kind,
+                                            snapshot: last_snapshot.clone(),
+                                        },
+                                        EntrySizingSpec {
+                                            size_mode: active.request.size_mode,
+                                            size_value: active.request.size_value,
+                                            stop_price: active.request.size_stop_price,
+                                        },
+                                        &accounting,
+                                        fee_rate,
+                                        &mut cash,
+                                    ) {
+                                        Ok(result) => result,
+                                        Err(reason) => {
+                                            update_order_record(
+                                                &mut orders[active.record_index],
+                                                OrderRecordUpdate {
+                                                    trigger_time: execution.trigger_time,
+                                                    fill_bar_index: None,
+                                                    fill_time: None,
+                                                    raw_price: None,
+                                                    fill_price: None,
+                                                    effective_risk_per_unit: None,
+                                                    capital_limited: None,
+                                                    status: OrderStatus::Cancelled,
+                                                    end_reason: Some(reason),
+                                                },
+                                            );
+                                            continue;
+                                        }
+                                    };
                                 let mut next_position = next_position;
                                 refresh_position_risk(
                                     &mut next_position,
@@ -399,9 +490,16 @@ pub(crate) fn simulate_backtest(
                                 reset_target_consumption(&mut target_consumption, next_side);
                                 position = Some(next_position);
                                 open_trade = Some(next_trade);
+                                orders[active.record_index].effective_risk_per_unit =
+                                    entry_sizing.effective_risk_per_unit;
+                                orders[active.record_index].capital_limited =
+                                    entry_sizing.capital_limited;
                             }
                         }
 
+                        let effective_risk_per_unit =
+                            orders[active.record_index].effective_risk_per_unit;
+                        let capital_limited = orders[active.record_index].capital_limited;
                         update_order_record(
                             &mut orders[active.record_index],
                             OrderRecordUpdate {
@@ -410,6 +508,8 @@ pub(crate) fn simulate_backtest(
                                 fill_time: Some(bar.time),
                                 raw_price: Some(execution.raw_price),
                                 fill_price: Some(execution_price),
+                                effective_risk_per_unit,
+                                capital_limited: Some(capital_limited),
                                 status: OrderStatus::Filled,
                                 end_reason: None,
                             },
@@ -1067,6 +1167,8 @@ fn place_pending_requests(
                     fill_time: None,
                     raw_price: None,
                     fill_price: None,
+                    effective_risk_per_unit: None,
+                    capital_limited: None,
                     status: OrderStatus::Cancelled,
                     end_reason: Some(if is_attached_exit_role(role) {
                         OrderEndReason::Rearmed
@@ -1321,6 +1423,8 @@ fn cancel_active_role(
             fill_time: None,
             raw_price: None,
             fill_price: None,
+            effective_risk_per_unit: None,
+            capital_limited: None,
             status: OrderStatus::Cancelled,
             end_reason: Some(reason),
         },
@@ -1588,6 +1692,8 @@ fn invalidate_inapplicable_orders(
                 fill_time: None,
                 raw_price: None,
                 fill_price: None,
+                effective_risk_per_unit: None,
+                capital_limited: None,
                 status: OrderStatus::Cancelled,
                 end_reason: Some(if is_attached_exit_role(role) {
                     OrderEndReason::PositionClosed
@@ -1644,6 +1750,8 @@ fn invalidate_stale_attached_orders(
                 fill_time: None,
                 raw_price: None,
                 fill_price: None,
+                effective_risk_per_unit: None,
+                capital_limited: None,
                 status: OrderStatus::Cancelled,
                 end_reason: Some(OrderEndReason::Rearmed),
             },
@@ -1662,6 +1770,12 @@ fn current_side_for_role(role: SignalRole) -> PositionSide {
 fn update_order_record(record: &mut OrderRecord, update: OrderRecordUpdate) {
     if let Some(trigger_time) = update.trigger_time {
         record.trigger_time = Some(trigger_time);
+    }
+    if let Some(effective_risk_per_unit) = update.effective_risk_per_unit {
+        record.effective_risk_per_unit = Some(effective_risk_per_unit);
+    }
+    if let Some(capital_limited) = update.capital_limited {
+        record.capital_limited = capital_limited;
     }
     record.fill_bar_index = update.fill_bar_index;
     record.fill_time = update.fill_time;

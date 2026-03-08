@@ -626,6 +626,42 @@ fn parse_diagnostics_aggregate_cleanly_without_panics() {
 }
 
 #[test]
+fn rejects_risk_pct_for_target_size_declarations() {
+    let source = with_interval(
+        "entry long = close > close[1]
+target long = take_profit_market(position.entry_price + 2, trigger_ref.last)
+size target long = risk_pct(0.01, close)
+plot(close)",
+    );
+    assert_compile_diagnostics(
+        "risk_pct_target_size",
+        &source,
+        &[expected(
+            DiagnosticKind::Type,
+            "`risk_pct(...)` is only supported on staged entry size declarations in v1",
+        )],
+    );
+}
+
+#[test]
+fn rejects_invalid_risk_pct_arity() {
+    let source = with_interval(
+        "entry long = close > close[1]
+order entry long = market()
+size entry long = risk_pct(0.01)
+plot(close)",
+    );
+    assert_compile_diagnostics(
+        "risk_pct_invalid_arity",
+        &source,
+        &[expected(
+            DiagnosticKind::Type,
+            "`risk_pct(...)` expects exactly two arguments: risk_pct(pct, stop_price)",
+        )],
+    );
+}
+
+#[test]
 fn compile_api_keeps_internal_compile_diagnostics_internal() {
     let cases = [
         "plot(\"x\")",

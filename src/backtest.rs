@@ -17,7 +17,7 @@ use thiserror::Error;
 use crate::bytecode::SignalRole;
 use crate::compiler::CompiledProgram;
 use crate::diagnostic::RuntimeError;
-use crate::order::{OrderKind, TimeInForce, TriggerReference};
+use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::output::{OutputValue, Outputs};
 use crate::position::PositionSide;
 use crate::runtime::{Bar, RuntimeStepper, SourceRuntimeConfig, VmLimits};
@@ -200,6 +200,9 @@ pub enum OrderEndReason {
     MissingExpireTime,
     MissingSizeFraction,
     InvalidSizeFraction,
+    MissingRiskStopPrice,
+    InvalidRiskPct,
+    InvalidRiskDistance,
     InsufficientCollateral,
     IocUnfilled,
     FokUnfilled,
@@ -226,7 +229,12 @@ pub struct OrderRecord {
     pub limit_price: Option<f64>,
     pub trigger_price: Option<f64>,
     pub expire_time: Option<f64>,
+    pub size_mode: Option<SizeMode>,
     pub size_fraction: Option<f64>,
+    pub requested_risk_pct: Option<f64>,
+    pub requested_stop_price: Option<f64>,
+    pub effective_risk_per_unit: Option<f64>,
+    pub capital_limited: bool,
     pub status: OrderStatus,
     pub end_reason: Option<OrderEndReason>,
 }

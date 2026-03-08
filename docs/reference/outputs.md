@@ -137,8 +137,14 @@ Rules:
 - `protect_after_target1`, `protect_after_target2`, and `protect_after_target3` optionally ratchet the active protect order after each staged target fill
 - `target`, `target1`, `target2`, and `target3` are sequential attached profit-taking stages; `target` is a compatibility alias for `target1`
 - `size entry1..3` and `size target1..3` are optional per stage and only apply to the matching staged entry or target
-- staged entry size fractions must evaluate to a finite fraction in `(0, 1]`
+- staged entry sizing supports:
+  - a legacy bare numeric fraction such as `0.5`
+  - `capital_fraction(x)`
+  - `risk_pct(pct, stop_price)`
+- `capital_fraction(...)` values must evaluate to a finite fraction in `(0, 1]`
 - an entry size fraction below `1` leaves cash available for later same-side scale-ins on later staged entries
+- `risk_pct(...)` is entry-only in v1 and sizes from actual fill price and stop distance at fill time
+- if a `risk_pct(...)` size wants more than current cash or free collateral can support, the backtester clamps the fill and records `capital_limited = true`
 - they arm only after a matching entry fill exists
 - they are reevaluated once per execution bar while that position remains open
 - only the current staged protect and the next staged target are active at the same time

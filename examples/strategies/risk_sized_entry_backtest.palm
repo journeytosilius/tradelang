@@ -1,0 +1,32 @@
+interval 4h
+source spot = binance.spot("BTCUSDT")
+use spot 1d
+
+input fast_len = 20
+input slow_len = 50
+input stop_len = 10
+input atr_len = 14
+const risk_budget_pct = 0.02
+
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let atr_4h = atr(spot.high, spot.low, spot.close, atr_len)
+let breakout_high = highest(spot.high, 20)[1]
+let initial_long_stop = lowest(spot.low, stop_len)[1]
+let trailing_stop = highest_since(position_event.long_entry_fill, spot.high) - 3 * atr_4h
+let protect_base = above(trailing_stop, initial_long_stop) ? trailing_stop : initial_long_stop
+
+entry long = above(fast, slow) and above(spot.close, breakout_high)
+exit long = below(spot.close, fast)
+
+order entry long = market()
+size entry long = risk_pct(risk_budget_pct, initial_long_stop)
+protect long = stop_market(protect_base, trigger_ref.last)
+target long = take_profit_market(position.entry_price + 3 * atr_4h, trigger_ref.last)
+size target long = 0.5
+
+export trend_long_state = above(fast, slow)
+export risk_stop_level = initial_long_stop
+export trailing_stop_level = protect_base
+
+plot(fast - slow)

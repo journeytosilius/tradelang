@@ -3,7 +3,7 @@ use crate::backtest::{
     RiskTier, EPSILON,
 };
 use crate::bytecode::SignalRole;
-use crate::order::{OrderKind, TimeInForce, TriggerReference};
+use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 
 pub(crate) const ROLE_COUNT: usize = 22;
 pub(crate) const ROLE_PRIORITY: [SignalRole; ROLE_COUNT] = [
@@ -60,11 +60,13 @@ pub(crate) struct CapturedOrderRequest {
     pub tif: Option<TimeInForce>,
     pub post_only: bool,
     pub trigger_ref: Option<TriggerReference>,
+    pub size_mode: Option<SizeMode>,
     pub price: Option<f64>,
     pub trigger_price: Option<f64>,
     pub expire_time: Option<f64>,
-    pub has_size_fraction_field: bool,
-    pub size_fraction: Option<f64>,
+    pub has_size_field: bool,
+    pub size_value: Option<f64>,
+    pub size_stop_price: Option<f64>,
     pub signal_time: f64,
 }
 
@@ -147,6 +149,20 @@ pub(crate) struct FillExecutionContext {
     pub time: f64,
     pub raw_price: f64,
     pub execution_price: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct SizingResolution {
+    pub quantity: f64,
+    pub capital_limited: bool,
+    pub effective_risk_per_unit: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EntrySizingSpec {
+    pub size_mode: Option<SizeMode>,
+    pub size_value: Option<f64>,
+    pub stop_price: Option<f64>,
 }
 
 pub(crate) struct PerpCloseRealization {
@@ -245,7 +261,7 @@ pub(crate) fn request_applicable(
                     && request.role.is_long()
                     && (request.role.entry_stage() == Some(1)
                         || request.role.entry_stage() == Some(entry_progress.long_stage + 1))
-                    && request.has_size_fraction_field)
+                    && request.has_size_field)
                 || matches!(request.role, SignalRole::ShortEntry)
         }
         Some(PositionSide::Short) => {
@@ -256,7 +272,7 @@ pub(crate) fn request_applicable(
                     && request.role.is_short()
                     && (request.role.entry_stage() == Some(1)
                         || request.role.entry_stage() == Some(entry_progress.short_stage + 1))
-                    && request.has_size_fraction_field)
+                    && request.has_size_field)
                 || matches!(request.role, SignalRole::LongEntry)
         }
     }
@@ -291,7 +307,21 @@ pub(crate) fn order_record(
         limit_price: request.price,
         trigger_price: request.trigger_price,
         expire_time: request.expire_time,
-        size_fraction: request.size_fraction,
+        size_mode: request.size_mode,
+        size_fraction: match request.size_mode {
+            Some(SizeMode::CapitalFraction) => request.size_value,
+            _ => None,
+        },
+        requested_risk_pct: match request.size_mode {
+            Some(SizeMode::RiskPct) => request.size_value,
+            _ => None,
+        },
+        requested_stop_price: match request.size_mode {
+            Some(SizeMode::RiskPct) => request.size_stop_price,
+            _ => None,
+        },
+        effective_risk_per_unit: None,
+        capital_limited: false,
         status: OrderStatus::Open,
         end_reason: None,
     }
@@ -313,20 +343,40 @@ pub(crate) fn missing_field_reason(request: CapturedOrderRequest) -> Option<Orde
         _ if matches!(request.tif, Some(TimeInForce::Gtd)) && request.expire_time.is_none() => {
             Some(OrderEndReason::MissingExpireTime)
         }
-        _ if request.has_size_fraction_field && request.size_fraction.is_none() => {
-            Some(OrderEndReason::MissingSizeFraction)
+        _ if request.has_size_field && request.size_value.is_none() => {
+            Some(match request.size_mode {
+                Some(SizeMode::RiskPct) => OrderEndReason::InvalidRiskPct,
+                _ => OrderEndReason::MissingSizeFraction,
+            })
+        }
+        _ if matches!(request.size_mode, Some(SizeMode::RiskPct))
+            && request.size_stop_price.is_none() =>
+        {
+            Some(OrderEndReason::MissingRiskStopPrice)
+        }
+        _ if request.size_value.is_some_and(|value| !value.is_finite()) => {
+            Some(match request.size_mode {
+                Some(SizeMode::RiskPct) => OrderEndReason::InvalidRiskPct,
+                _ => OrderEndReason::InvalidSizeFraction,
+            })
+        }
+        _ if matches!(request.size_mode, Some(SizeMode::RiskPct))
+            && request.size_value.is_some_and(|value| value <= 0.0) =>
+        {
+            Some(OrderEndReason::InvalidRiskPct)
+        }
+        _ if !matches!(request.size_mode, Some(SizeMode::RiskPct))
+            && request
+                .size_value
+                .is_some_and(|value| value <= 0.0 || value > 1.0) =>
+        {
+            Some(OrderEndReason::InvalidSizeFraction)
         }
         _ if request
-            .size_fraction
+            .size_stop_price
             .is_some_and(|value| !value.is_finite()) =>
         {
-            Some(OrderEndReason::InvalidSizeFraction)
-        }
-        _ if request
-            .size_fraction
-            .is_some_and(|value| value <= 0.0 || value > 1.0) =>
-        {
-            Some(OrderEndReason::InvalidSizeFraction)
+            Some(OrderEndReason::MissingRiskStopPrice)
         }
         _ => None,
     }
@@ -563,14 +613,83 @@ pub(crate) fn adjusted_price(raw_price: f64, action: FillAction, slippage_rate: 
     }
 }
 
-pub(crate) fn entry_quantity_for_capital(
+pub(crate) fn resolve_entry_sizing(
     cash: f64,
-    size_fraction: Option<f64>,
+    sizing: EntrySizingSpec,
+    side: PositionSide,
     accounting: &AccountingMode,
     execution_price: f64,
     fee_rate: f64,
+) -> Result<SizingResolution, OrderEndReason> {
+    if execution_price <= EPSILON {
+        return Ok(SizingResolution::default());
+    }
+    let max_quantity =
+        capital_limited_entry_quantity(cash, accounting, execution_price, fee_rate, 1.0);
+    if max_quantity <= EPSILON {
+        return Ok(SizingResolution::default());
+    }
+    match sizing.size_mode.unwrap_or(SizeMode::CapitalFraction) {
+        SizeMode::CapitalFraction => {
+            let fraction = sizing.size_value.unwrap_or(1.0);
+            if !fraction.is_finite() || fraction <= 0.0 || fraction > 1.0 {
+                return Err(OrderEndReason::InvalidSizeFraction);
+            }
+            let quantity = capital_limited_entry_quantity(
+                cash,
+                accounting,
+                execution_price,
+                fee_rate,
+                fraction,
+            );
+            Ok(SizingResolution {
+                quantity,
+                capital_limited: false,
+                effective_risk_per_unit: None,
+            })
+        }
+        SizeMode::RiskPct => {
+            let pct = sizing.size_value.ok_or(OrderEndReason::InvalidRiskPct)?;
+            let stop_price = sizing
+                .stop_price
+                .ok_or(OrderEndReason::MissingRiskStopPrice)?;
+            if !pct.is_finite() || pct <= 0.0 {
+                return Err(OrderEndReason::InvalidRiskPct);
+            }
+            let risk_per_unit = match side {
+                PositionSide::Long => execution_price - stop_price,
+                PositionSide::Short => stop_price - execution_price,
+            };
+            if !risk_per_unit.is_finite() || risk_per_unit <= EPSILON {
+                return Err(OrderEndReason::InvalidRiskDistance);
+            }
+            let risk_budget = cash.max(0.0) * pct;
+            if risk_budget <= EPSILON {
+                return Ok(SizingResolution {
+                    quantity: 0.0,
+                    capital_limited: false,
+                    effective_risk_per_unit: Some(risk_per_unit),
+                });
+            }
+            let desired_quantity = risk_budget / risk_per_unit;
+            let quantity = desired_quantity.min(max_quantity);
+            Ok(SizingResolution {
+                quantity,
+                capital_limited: quantity + EPSILON < desired_quantity,
+                effective_risk_per_unit: Some(risk_per_unit),
+            })
+        }
+    }
+}
+
+fn capital_limited_entry_quantity(
+    cash: f64,
+    accounting: &AccountingMode,
+    execution_price: f64,
+    fee_rate: f64,
+    capital_fraction: f64,
 ) -> f64 {
-    let capital = cash.max(0.0) * size_fraction.unwrap_or(1.0);
+    let capital = cash.max(0.0) * capital_fraction;
     if capital <= EPSILON || execution_price <= EPSILON {
         return 0.0;
     }
@@ -586,22 +705,24 @@ pub(crate) fn open_position(
     execution: FillExecutionContext,
     side: PositionSide,
     entry_context: TradeEntryContext,
-    size_fraction: Option<f64>,
+    sizing: EntrySizingSpec,
     accounting: &AccountingMode,
     fee_rate: f64,
     cash: &mut f64,
-) -> (PositionState, OpenTrade, Fill) {
+) -> Result<(PositionState, OpenTrade, Fill, SizingResolution), OrderEndReason> {
     let action = match side {
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let quantity = entry_quantity_for_capital(
+    let sizing = resolve_entry_sizing(
         *cash,
-        size_fraction,
+        sizing,
+        side,
         accounting,
         execution.execution_price,
         fee_rate,
-    );
+    )?;
+    let quantity = sizing.quantity;
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     let isolated_margin = match accounting {
@@ -654,29 +775,31 @@ pub(crate) fn open_position(
         mfe_price_delta: 0.0,
         remaining_entry_fee: fill.fee,
     };
-    (position, trade, fill)
+    Ok((position, trade, fill, sizing))
 }
 
 pub(crate) fn add_to_position(
     execution: FillExecutionContext,
     position: &mut PositionState,
     open_trade: &mut OpenTrade,
-    size_fraction: Option<f64>,
+    sizing: EntrySizingSpec,
     accounting: &AccountingMode,
     fee_rate: f64,
     cash: &mut f64,
-) -> Fill {
+) -> Result<(Fill, SizingResolution), OrderEndReason> {
     let action = match position.side {
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let quantity = entry_quantity_for_capital(
+    let sizing = resolve_entry_sizing(
         *cash,
-        size_fraction,
+        sizing,
+        position.side,
         accounting,
         execution.execution_price,
         fee_rate,
-    );
+    )?;
+    let quantity = sizing.quantity;
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     let isolated_margin = match accounting {
@@ -734,7 +857,7 @@ pub(crate) fn add_to_position(
     open_trade.entry.fee += fee;
     open_trade.remaining_entry_fee += fee;
 
-    fill
+    Ok((fill, sizing))
 }
 
 pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {

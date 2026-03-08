@@ -144,6 +144,7 @@ target1 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
 target2 long = take_profit_market(position.entry_price + 8, trigger_ref.last)
 size entry1 long = 0.5
 size entry2 long = 0.5
+size entry3 long = risk_pct(0.01, stop_price)
 size target1 long = 0.5
 ```
 
@@ -157,12 +158,13 @@ Rules:
 - `exit long` and `exit short` remain single discretionary full-position exits
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role
 - `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
-- `size entry1..3 long|short` optionally size a staged entry fill as a fraction of current cash and enable staged same-side scale-ins
+- `size entry1..3 long|short` optionally size a staged entry fill with either `capital_fraction(x)` / legacy bare numeric fraction semantics, or `risk_pct(pct, stop_price)` for risk-based entry sizing
 - `size target1..3 long|short` optionally size a staged `target` fill as a fraction of the open position
 - at most one `order` declaration is allowed per signal role
 - at most one declaration is allowed per staged role
 - if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
 - `size entry ...` and `size target ...` each require a matching staged `order ...` or staged attached `target ...` declaration for the same role
+- `risk_pct(...)` is only valid on staged entry size declarations in v1
 - staged attached exits are sequential: only the next target stage and the current protect stage are active at once
 - `position.*` is only available inside `protect` and `target` declarations
 - `position_event.*` is available anywhere a `series<bool>` is valid and is intended to anchor logic to actual backtest fills

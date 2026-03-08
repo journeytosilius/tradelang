@@ -227,6 +227,7 @@ Optional execution templates:
 - `order entry short = limit(spot.close[1], tif.gtc, false)`
 - `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
 - `size entry1 long = 0.5`
+- `size entry1 long = risk_pct(0.01, stop_price)`
 - `size entry2 long = 0.5`
 - `size entry1 short = 0.5`
 - `size target1 long = 0.5`
@@ -274,19 +275,23 @@ The backtester stays intentionally simple and deterministic:
 - only one net position is supported: `flat`, `long`, or `short`
 - the portfolio model remains net-position based with no explicit quantity expressions
 - same-side re-entry is ignored by default except for explicit staged entries
-- `size entry1..3 long|short = <expr>` opt a staged entry role into fractional entry sizing and same-side scale-ins that spend a fraction of current cash
+- `size entry1..3 long|short = <expr>` opt a staged entry role into explicit entry sizing
+- `size entry1..3 long|short = capital_fraction(x)` uses a finite fraction in `(0, 1]` of current cash or free collateral at fill time
+- `size entry1..3 long|short = risk_pct(pct, stop_price)` sizes from actual fill price and stop distance so the requested loss at `stop_price` is `pct` of current equity, then clamps to capital or margin limits
 - entry size expressions are evaluated as hidden numeric series like other order fields
-- valid entry size fractions are finite values in `(0, 1]`
+- valid `capital_fraction(...)` values are finite values in `(0, 1]`
+- valid `risk_pct(...)` values are finite values `> 0`
 - opposite entry reverses on the same eligible open by closing first and then
   opening the new side
 - attached exits arm only after an actual entry fill exists and are reevaluated once per execution bar while that position stays open
 - only the currently active staged protect and next staged target are armed for a side at any time
 - `protect_after_target1..3` inherit from the most recent declared protect stage when an exact staged protect is absent
-- `size entry1..3 long|short = <expr>` optionally reduce a staged entry fill to a fraction of current cash instead of opening all-in
+- `size entry1..3 long|short = <expr>` optionally reduce a staged entry fill to a fraction of current cash or compute a risk-based quantity instead of opening all-in
 - `size target1..3 long|short = <expr>` optionally reduce a staged target fill to a fraction of the current position instead of closing it fully
 - entry and target size expressions are evaluated as hidden numeric series like other order fields
 - v1 only supports explicit sizing for staged `entry` roles and staged attached `target` roles; other order roles still close or open the full position
 - valid target size fractions are finite values in `(0, 1]`
+- `risk_pct(...)` is entry-only in v1 and records the requested risk percentage, stop price, effective risk-per-unit, and whether the final size was capital-limited
 - staged entry fills emit aggregate `position_event.long_entry_fill` / `short_entry_fill` plus staged fields such as `position_event.long_entry2_fill`
 - staged target fills emit aggregate `position_event.long_target_fill` / `short_target_fill` plus staged fields such as `position_event.long_target2_fill`
 - a partial staged target is one-shot for that stage: once `target1` has filled, `target2` becomes the active target and the remaining runner stays managed by the current staged protect / discretionary `exit`

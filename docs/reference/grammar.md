@@ -146,8 +146,10 @@ The grammar does not by itself make a program valid. The implementation addition
 - `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
 - `entry long` and `target long|short` remain compatibility aliases for stage 1
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
+- staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role
 - `size target ...` requires a matching staged `target ...` declaration for the same role
+- `risk_pct(...)` is only valid on staged entry size declarations
 - user-defined functions are expression-bodied, top-level only, non-recursive, and may not capture surrounding `let` bindings
 - user-defined functions may capture top-level immutable `const` and `input` bindings
 - source, interval, scope, and type rules are enforced as described in the other `Reference` pages

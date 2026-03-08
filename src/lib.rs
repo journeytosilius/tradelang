@@ -54,7 +54,7 @@ pub use interval::{
     DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
     SourceTemplate, INTERVAL_SPECS,
 };
-pub use order::{OrderFieldKind, OrderKind, TimeInForce, TriggerReference};
+pub use order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 pub use output::{
     Alert, OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,
     PlotPoint, PlotSeries, StepOutput, TriggerEvent,
