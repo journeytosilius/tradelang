@@ -58,6 +58,7 @@ pub enum BuiltinKind {
     SinceExtrema,
     SinceOffset,
     SinceValueWhen,
+    SinceCount,
     NullCheck,
     NullCoalesce,
     Cumulative,
@@ -211,10 +212,11 @@ pub enum BuiltinId {
     HighestBarsSince = 128,
     LowestBarsSince = 129,
     ValueWhenSince = 130,
+    CountSince = 131,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 131] = [
+    pub const RESERVED: [Self; 132] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -346,9 +348,10 @@ impl BuiltinId {
         Self::HighestBarsSince,
         Self::LowestBarsSince,
         Self::ValueWhenSince,
+        Self::CountSince,
     ];
 
-    pub const CALLABLE: [Self; 120] = [
+    pub const CALLABLE: [Self; 121] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -368,6 +371,7 @@ impl BuiltinId {
         Self::Falling,
         Self::BarsSince,
         Self::ValueWhen,
+        Self::CountSince,
         Self::Ma,
         Self::Macd,
         Self::Acos,
@@ -503,6 +507,7 @@ impl BuiltinId {
             "highestbars_since" => Some(Self::HighestBarsSince),
             "lowestbars_since" => Some(Self::LowestBarsSince),
             "valuewhen_since" => Some(Self::ValueWhenSince),
+            "count_since" => Some(Self::CountSince),
             "ma" => Some(Self::Ma),
             "macd" => Some(Self::Macd),
             "acos" => Some(Self::Acos),
@@ -741,6 +746,7 @@ impl BuiltinId {
             128 => Some(Self::HighestBarsSince),
             129 => Some(Self::LowestBarsSince),
             130 => Some(Self::ValueWhenSince),
+            131 => Some(Self::CountSince),
             _ => None,
         }
     }
@@ -777,6 +783,7 @@ impl BuiltinId {
             Self::HighestBarsSince => "highestbars_since",
             Self::LowestBarsSince => "lowestbars_since",
             Self::ValueWhenSince => "valuewhen_since",
+            Self::CountSince => "count_since",
             Self::Ma => "ma",
             Self::Macd => "macd",
             Self::Acos => "acos",
@@ -945,6 +952,7 @@ impl BuiltinId {
             Self::HighestSince | Self::LowestSince => BuiltinKind::SinceExtrema,
             Self::HighestBarsSince | Self::LowestBarsSince => BuiltinKind::SinceOffset,
             Self::ValueWhenSince => BuiltinKind::SinceValueWhen,
+            Self::CountSince => BuiltinKind::SinceCount,
             Self::Nz => BuiltinKind::NullCoalesce,
             Self::NaFunc => BuiltinKind::NullCheck,
             Self::Coalesce => BuiltinKind::NullCoalesce,
@@ -1036,7 +1044,8 @@ impl BuiltinId {
             | Self::HighestSince
             | Self::LowestSince
             | Self::HighestBarsSince
-            | Self::LowestBarsSince => BuiltinArity::Exact(2),
+            | Self::LowestBarsSince
+            | Self::CountSince => BuiltinArity::Exact(2),
             Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
@@ -1141,6 +1150,7 @@ impl BuiltinId {
             Self::HighestBarsSince => "highestbars_since(anchor, source)",
             Self::LowestBarsSince => "lowestbars_since(anchor, source)",
             Self::ValueWhenSince => "valuewhen_since(anchor, condition, source, occurrence)",
+            Self::CountSince => "count_since(anchor, condition)",
             Self::Nz => "nz(value[, fallback])",
             Self::NaFunc => "na(value)",
             Self::Coalesce => "coalesce(value, fallback)",
@@ -1283,6 +1293,7 @@ impl BuiltinId {
             Self::HighestBarsSince => "Bars since the highest value inside the current anchored epoch.",
             Self::LowestBarsSince => "Bars since the lowest value inside the current anchored epoch.",
             Self::ValueWhenSince => "Captured source value from the current anchored epoch only.",
+            Self::CountSince => "Count of true condition samples inside the current anchored epoch.",
             Self::Nz => "Replace na with a fallback value.",
             Self::NaFunc => "True when the current sample is na.",
             Self::Coalesce => "Return the first non-na value.",

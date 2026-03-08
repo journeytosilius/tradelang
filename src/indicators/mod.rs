@@ -34,8 +34,8 @@ pub(crate) use cycle::{
 pub(crate) use directional::{DirectionalKind, DirectionalState, DmKind, DmState};
 pub(crate) use ema::EmaState;
 pub(crate) use event::{
-    AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState, BarsSinceState, CumState,
-    ValueWhenState,
+    AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
+    BarsSinceState, CumState, ValueWhenState,
 };
 pub(crate) use extrema::{
     calculate_aroon, calculate_aroonosc, calculate_highest_bars, calculate_lowest_bars,
@@ -74,6 +74,7 @@ pub(crate) enum IndicatorState {
     ValueWhen(ValueWhenState),
     AnchoredExtrema(AnchoredExtremaState),
     AnchoredValueWhen(AnchoredValueWhenState),
+    AnchoredCount(AnchoredCountState),
     Cum(CumState),
     Macd(MacdState),
     PriceOscillator(Box<PriceOscillatorState>),

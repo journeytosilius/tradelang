@@ -14,13 +14,14 @@ use crate::indicators::{
     calculate_linear_regression, calculate_lowest_bars, calculate_max_index, calculate_mfi,
     calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
     calculate_sum, calculate_trange, calculate_var, calculate_willr, calculate_wma, AccbandsState,
-    AdOscState, AdState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
-    BarsSinceState, BbandsState, CmoState, CumState, DirectionalKind, DirectionalState, DmKind,
-    DmState, EmaState, FallingState, HighestState, HtDcPeriodState, HtDcPhaseState, HtPhasorState,
-    HtSineState, HtTrendModeState, HtTrendlineState, IndicatorState, LowestState, MacdExtState,
-    MacdState, MamaState, MavpState, MovingAverageState, ObvState, OscillatorKind,
-    PriceOscillatorState, RegressionOutput, RisingState, RsiState, SarConfig, SarState, SmaState,
-    StochFastState, StochRsiState, StochState, TrixState, UnaryMathTransform, ValueWhenState,
+    AdOscState, AdState, AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState,
+    AnchoredValueWhenState, BarsSinceState, BbandsState, CmoState, CumState, DirectionalKind,
+    DirectionalState, DmKind, DmState, EmaState, FallingState, HighestState, HtDcPeriodState,
+    HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState, HtTrendlineState, IndicatorState,
+    LowestState, MacdExtState, MacdState, MamaState, MavpState, MovingAverageState, ObvState,
+    OscillatorKind, PriceOscillatorState, RegressionOutput, RisingState, RsiState, SarConfig,
+    SarState, SmaState, StochFastState, StochRsiState, StochState, TrixState, UnaryMathTransform,
+    ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -499,6 +500,7 @@ impl<'a> VmEngine<'a> {
                 self.call_anchored_extrema(callsite, arity, args, pc, builtin)
             }
             BuiltinId::ValueWhenSince => self.call_valuewhen_since(callsite, arity, args, pc),
+            BuiltinId::CountSince => self.call_count_since(callsite, arity, args, pc),
             BuiltinId::Nz => self.call_nz(arity, args, pc),
             BuiltinId::NaFunc => self.call_na(arity, args, pc),
             BuiltinId::Coalesce => self.call_coalesce(arity, args, pc),
@@ -2572,6 +2574,45 @@ impl<'a> VmEngine<'a> {
             IndicatorState::AnchoredValueWhen(state) => {
                 state.update(anchor, condition, source, pc)?
             }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_count_since(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "count_since",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let anchor_slot = series_ref(args[0].clone(), pc)?;
+        let condition_slot = series_ref(args[1].clone(), pc)?;
+        let anchor = self
+            .series_values
+            .get(anchor_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: anchor_slot })?;
+        let condition =
+            self.series_values
+                .get(condition_slot)
+                .ok_or(RuntimeError::InvalidSeriesSlot {
+                    slot: condition_slot,
+                })?;
+        let key = (BuiltinId::CountSince, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::AnchoredCount(AnchoredCountState::new()));
+        let result = match &mut state {
+            IndicatorState::AnchoredCount(state) => state.update(anchor, condition, pc)?,
             _ => unreachable!(),
         };
         self.indicator_state.insert(key, state);

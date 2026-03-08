@@ -3696,6 +3696,28 @@ fn analyze_helper_builtin(
                 update_mask: anchor_info.update_mask | source_info.update_mask,
             }
         }
+        BuiltinKind::SinceCount => {
+            let anchor_info = arg_info[0];
+            let condition_info = arg_info[1];
+            if !anchor_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !condition_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: anchor_info.update_mask | condition_info.update_mask,
+            }
+        }
         BuiltinKind::NullCheck => ExprInfo {
             ty: if arg_info[0].concrete().is_some_and(Type::is_series) {
                 InferredType::Concrete(Type::SeriesBool)
@@ -3937,9 +3959,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
             let right = arg_info.get(1).copied().unwrap_or(left);
             coalesce_result(left, right)
         }
-        BuiltinKind::ValueWhen | BuiltinKind::SinceExtrema | BuiltinKind::SinceOffset => {
-            ExprInfo::series(0)
-        }
+        BuiltinKind::ValueWhen
+        | BuiltinKind::SinceExtrema
+        | BuiltinKind::SinceOffset
+        | BuiltinKind::SinceCount => ExprInfo::series(0),
         BuiltinKind::SinceValueWhen => ExprInfo::series(0),
         BuiltinKind::IndicatorTuple => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
@@ -5191,6 +5214,7 @@ impl<'a> Compiler<'a> {
             | BuiltinId::HighestBarsSince
             | BuiltinId::LowestBarsSince
             | BuiltinId::ValueWhenSince
+            | BuiltinId::CountSince
             | BuiltinId::Cross
             | BuiltinId::Crossover
             | BuiltinId::Crossunder
@@ -6262,6 +6286,17 @@ impl<'a> Compiler<'a> {
                 );
             }
             BuiltinKind::SinceExtrema | BuiltinKind::SinceOffset => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::SinceCount => {
                 self.emit_series_ref(&args[0], 2, expr_info, user_calls);
                 self.emit_series_ref(&args[1], 2, expr_info, user_calls);
                 self.emit(

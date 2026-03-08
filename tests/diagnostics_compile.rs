@@ -257,7 +257,7 @@ fn rejects_position_namespace_outside_attached_exits() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 36] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 37] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -417,6 +417,14 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
             vec![expected(
                 DiagnosticKind::Type,
                 "barssince requires series<bool> as the first argument",
+            )],
+        ),
+        (
+            "type_count_since_requires_series_bool",
+            with_interval("plot(count_since(close > open, close))"),
+            vec![expected(
+                DiagnosticKind::Type,
+                "count_since requires series<bool> as the second argument",
             )],
         ),
         (

@@ -795,6 +795,27 @@ fn event_memory_helpers_track_matches() {
         &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 12.0, 8.0]),
     );
     assert_eq!(valuewhen, vec![None, None, None, Some(11.0), Some(11.0)]);
+
+    let count_since = plot_values(
+        "plot(count_since(close == 11, close > close[1]))",
+        &bars_with_spacing(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 10.0, 11.0, 12.0],
+        ),
+    );
+    assert_eq!(
+        count_since,
+        vec![
+            None,
+            Some(1.0),
+            Some(2.0),
+            Some(0.0),
+            Some(0.0),
+            Some(1.0),
+            Some(2.0),
+        ]
+    );
 }
 
 #[test]

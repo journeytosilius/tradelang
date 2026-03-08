@@ -53,6 +53,15 @@ pub(crate) struct AnchoredValueWhenState {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct AnchoredCountState {
+    active: bool,
+    count: usize,
+    last_anchor_version: u64,
+    last_condition_version: u64,
+    cached_output: Value,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct CumState {
     total: f64,
     initialized: bool,
@@ -395,6 +404,79 @@ impl AnchoredValueWhenState {
     }
 }
 
+impl AnchoredCountState {
+    pub(crate) fn new() -> Self {
+        Self {
+            active: false,
+            count: 0,
+            last_anchor_version: 0,
+            last_condition_version: 0,
+            cached_output: Value::NA,
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        anchor: &SeriesBuffer,
+        condition: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if anchor.version() == self.last_anchor_version
+            && condition.version() == self.last_condition_version
+        {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_anchor_version = anchor.version();
+        self.last_condition_version = condition.version();
+
+        match anchor.get(0) {
+            Value::Bool(true) => {
+                self.active = true;
+                self.count = 0;
+            }
+            Value::Bool(false) => {}
+            Value::NA => {
+                self.cached_output = Value::NA;
+                return Ok(self.cached_output.clone());
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        }
+
+        if !self.active {
+            self.cached_output = Value::NA;
+            return Ok(self.cached_output.clone());
+        }
+
+        match condition.get(0) {
+            Value::Bool(true) => {
+                self.count += 1;
+                self.cached_output = Value::F64(self.count as f64);
+            }
+            Value::Bool(false) => {
+                self.cached_output = Value::F64(self.count as f64);
+            }
+            Value::NA => {
+                self.cached_output = Value::NA;
+            }
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        }
+
+        Ok(self.cached_output.clone())
+    }
+}
+
 impl CumState {
     pub(crate) fn new() -> Self {
         Self {
@@ -433,8 +515,8 @@ impl CumState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState, BarsSinceState,
-        CumState, ValueWhenState,
+        AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
+        BarsSinceState, CumState, ValueWhenState,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -553,6 +635,70 @@ mod tests {
         assert_eq!(
             state.update(&anchor, &cond, &source, 0).unwrap(),
             Value::F64(3.0)
+        );
+    }
+
+    #[test]
+    fn anchored_count_resets_on_anchor_and_includes_anchor_bar() {
+        let mut state = AnchoredCountState::new();
+        let mut anchor = SeriesBuffer::new(8);
+        let mut condition = SeriesBuffer::new(8);
+
+        anchor.push(Value::Bool(false));
+        condition.push(Value::Bool(true));
+        assert_eq!(state.update(&anchor, &condition, 0).unwrap(), Value::NA);
+
+        anchor.push(Value::Bool(true));
+        condition.push(Value::Bool(true));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(1.0)
+        );
+
+        anchor.push(Value::Bool(false));
+        condition.push(Value::Bool(false));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(1.0)
+        );
+
+        anchor.push(Value::Bool(false));
+        condition.push(Value::Bool(true));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(2.0)
+        );
+
+        anchor.push(Value::Bool(true));
+        condition.push(Value::Bool(false));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(0.0)
+        );
+    }
+
+    #[test]
+    fn anchored_count_propagates_na_without_erasing_count() {
+        let mut state = AnchoredCountState::new();
+        let mut anchor = SeriesBuffer::new(8);
+        let mut condition = SeriesBuffer::new(8);
+
+        anchor.push(Value::Bool(true));
+        condition.push(Value::Bool(true));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(1.0)
+        );
+
+        anchor.push(Value::Bool(false));
+        condition.push(Value::NA);
+        assert_eq!(state.update(&anchor, &condition, 0).unwrap(), Value::NA);
+
+        anchor.push(Value::Bool(false));
+        condition.push(Value::Bool(false));
+        assert_eq!(
+            state.update(&anchor, &condition, 0).unwrap(),
+            Value::F64(1.0)
         );
     }
 }

@@ -23,7 +23,7 @@ PalmScript currently exposes these builtin categories:
 - crossing helpers: `cross`, `crossover`, `crossunder`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
-- event-memory helpers: `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`
+- event-memory helpers: `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
@@ -263,6 +263,19 @@ Rules:
 - occurrence `0` means the most recent matching event inside the current anchored epoch
 - before the first anchor, the result is `na`
 - the result type matches the third argument type
+
+### `count_since(anchor, condition)`
+
+Rules:
+
+- it requires exactly two arguments
+- both arguments must be `series<bool>`
+- when the current anchor sample is `true`, the running count resets and a new anchored epoch starts on the current bar
+- the current bar contributes immediately to the new anchored epoch
+- the count increments only on bars where the current `condition` sample is `true`
+- before the first anchor, the result is `na`
+- later true anchors discard the prior anchored epoch and start a fresh one
+- the result type is `series<float>`
 
 ## `plot(value)`
 
