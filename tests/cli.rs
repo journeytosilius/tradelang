@@ -709,7 +709,7 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
         "1704067440000",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "backtest mode requires --execution-source when the script declares multiple `source`s",
+        "this mode requires --execution-source when the script declares multiple `source`s",
     ));
 }
 
@@ -830,4 +830,127 @@ fn run_walk_forward_supports_text_output() {
         .stdout(predicate::str::contains("Walk-Forward Config"))
         .stdout(predicate::str::contains("Recent Segments"))
         .stdout(predicate::str::contains("Worst Segments"));
+}
+
+#[test]
+fn run_walk_forward_sweep_emits_ranked_json() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "walk_forward_sweep.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "walk-forward-sweep",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--train-bars",
+            "2",
+            "--test-bars",
+            "2",
+            "--step-bars",
+            "2",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--set",
+            "threshold=0,100",
+        ])
+        .output()
+        .expect("walk-forward sweep command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["candidate_count"], Value::from(2));
+    assert!(json["best_candidate"].is_object());
+    assert!(json["top_candidates"].is_array());
+    assert_eq!(
+        json["best_candidate"]["input_overrides"]["threshold"],
+        Value::from(0.0)
+    );
+}
+
+#[test]
+fn run_walk_forward_sweep_supports_text_output() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "walk_forward_sweep.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+
+    let mut cmd = palmscript_cmd();
+    cmd.env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "walk-forward-sweep",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--train-bars",
+            "2",
+            "--test-bars",
+            "2",
+            "--step-bars",
+            "2",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--set",
+            "threshold=0,100",
+            "--format",
+            "text",
+        ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Walk-Forward Sweep Summary"))
+        .stdout(predicate::str::contains("Best Candidate"))
+        .stdout(predicate::str::contains("Top Candidates"))
+        .stdout(predicate::str::contains("threshold=0"));
 }

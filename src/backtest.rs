@@ -10,6 +10,7 @@ mod engine;
 mod orders;
 mod venue;
 mod walk_forward;
+mod walk_forward_sweep;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -461,6 +462,11 @@ pub use walk_forward::{
     run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,
     WalkForwardSegmentDiagnostics, WalkForwardSegmentResult, WalkForwardStitchedSummary,
     WalkForwardWindowSummary,
+};
+pub use walk_forward_sweep::{
+    run_walk_forward_sweep_with_source, InputSweepDefinition, WalkForwardSweepCandidateSummary,
+    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    WalkForwardSweepResult,
 };
 
 #[derive(Debug, Error, PartialEq)]

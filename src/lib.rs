@@ -28,20 +28,23 @@ pub mod types;
 pub mod vm;
 
 pub use backtest::{
-    run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
-    BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, BoolExportDiagnosticSummary,
-    EquityPoint, ExportDiagnosticSummary, ExportValueType, FeatureSnapshot, FeatureValue, Fill,
-    FillAction, ForwardReturnMetric, HyperliquidPerpsRiskSnapshot, MarkPriceBasis,
+    run_backtest_with_sources, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
+    BacktestCaptureSummary, BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics,
+    BacktestError, BacktestResult, BacktestSummary, BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource,
+    BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary, ExportValueType,
+    FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric,
+    HyperliquidPerpsRiskSnapshot, InputSweepDefinition, MarkPriceBasis,
     NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind, OrderDiagnostic,
     OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig, PerpBacktestContext,
     PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, RiskTier, SideDiagnosticSummary, Trade,
     TradeDiagnostic, TradeExitClassification, VenueRiskSnapshot, WalkForwardConfig,
     WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
+    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    WalkForwardSweepResult, WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
-pub use compiler::{compile, CompiledProgram};
+pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use exchange::{
     fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError,

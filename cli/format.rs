@@ -4,7 +4,7 @@ use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
     BacktestResult, BinanceUsdmRiskSource, CompiledProgram, ExportDiagnosticSummary, OrderStatus,
     OutputKind, OutputValue, Outputs, PositionSide, SignalRole, Value, VenueRiskSnapshot,
-    WalkForwardResult,
+    WalkForwardResult, WalkForwardSweepResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -479,6 +479,60 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
     out
 }
 
+pub fn render_walk_forward_sweep_text(result: &WalkForwardSweepResult) -> String {
+    let mut out = String::new();
+    out.push_str("Walk-Forward Sweep Summary\n");
+    let _ = writeln!(out, "candidate_count={}", result.candidate_count);
+    let _ = writeln!(out, "objective={:?}", result.config.objective);
+    let _ = writeln!(out, "top_n={}", result.config.top_n);
+    let _ = writeln!(out, "train_bars={}", result.config.walk_forward.train_bars);
+    let _ = writeln!(out, "test_bars={}", result.config.walk_forward.test_bars);
+    let _ = writeln!(out, "step_bars={}", result.config.walk_forward.step_bars);
+
+    out.push_str("Best Candidate\n");
+    let _ = writeln!(
+        out,
+        "objective_score={:.6}",
+        result.best_candidate.objective_score
+    );
+    let _ = writeln!(
+        out,
+        "ending_equity={:.2}",
+        result.best_candidate.stitched_summary.ending_equity
+    );
+    let _ = writeln!(
+        out,
+        "total_return_pct={:.2}",
+        result.best_candidate.stitched_summary.total_return * 100.0
+    );
+    let _ = writeln!(
+        out,
+        "max_drawdown={:.2}",
+        result.best_candidate.stitched_summary.max_drawdown
+    );
+    let _ = writeln!(
+        out,
+        "overrides={}",
+        fmt_input_overrides(&result.best_candidate.input_overrides)
+    );
+
+    out.push_str("Top Candidates\n");
+    for (index, candidate) in result.top_candidates.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "rank={} objective_score={:.6} ending_equity={:.2} total_return_pct={:.2} max_drawdown={:.2} overrides={}",
+            index + 1,
+            candidate.objective_score,
+            candidate.stitched_summary.ending_equity,
+            candidate.stitched_summary.total_return * 100.0,
+            candidate.stitched_summary.max_drawdown,
+            fmt_input_overrides(&candidate.input_overrides),
+        );
+    }
+
+    out
+}
+
 fn render_instructions(out: &mut String, program: &Program) {
     let _ = writeln!(out, "Instructions");
     for (index, instruction) in program.instructions.iter().enumerate() {
@@ -515,6 +569,14 @@ fn fmt_constant(constant: &Constant) -> String {
     match constant {
         Constant::Value(value) => fmt_value(value),
     }
+}
+
+fn fmt_input_overrides(overrides: &std::collections::BTreeMap<String, f64>) -> String {
+    overrides
+        .iter()
+        .map(|(name, value)| format!("{name}={value}"))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn fmt_value(value: &Value) -> String {

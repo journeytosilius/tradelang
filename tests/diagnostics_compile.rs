@@ -1,4 +1,6 @@
-use palmscript::DiagnosticKind;
+use std::collections::BTreeMap;
+
+use palmscript::{compile_with_input_overrides, DiagnosticKind};
 
 #[path = "support/mod.rs"]
 mod support;
@@ -240,6 +242,20 @@ fn compile_diagnostic_catalog_matches_contract() {
     for (name, source, expected_diags) in cases {
         assert_compile_diagnostics(name, &source, &expected_diags);
     }
+}
+
+#[test]
+fn compile_with_input_overrides_rejects_unknown_inputs() {
+    let source = with_interval("input fast_len = 10\nplot(fast_len)");
+    let mut overrides = BTreeMap::new();
+    overrides.insert("slow_len".to_string(), 21.0);
+    let err = compile_with_input_overrides(&source, &overrides)
+        .expect_err("unknown input override should fail");
+    assert_eq!(err.diagnostics.len(), 1);
+    assert_eq!(err.diagnostics[0].kind, DiagnosticKind::Compile);
+    assert!(err.diagnostics[0]
+        .message
+        .contains("unknown input override `slow_len`"));
 }
 
 #[test]

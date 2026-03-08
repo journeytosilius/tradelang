@@ -136,6 +136,63 @@ Walk-forward output:
 - text output renders a stitched summary, the configured walk-forward window sizes, recent segment rows, and a short weakest-segment section
 - v1 does not auto-optimize parameters; it evaluates the fixed script/inputs over rolling train/test slices
 
+## `palmscript run walk-forward-sweep`
+
+```bash
+palmscript run walk-forward-sweep <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--execution-source <alias>] \
+  [--initial-capital <amount>] \
+  [--fee-bps <bps>] \
+  [--slippage-bps <bps>] \
+  [--leverage <N>] \
+  [--margin-mode isolated] \
+  --train-bars <N> \
+  --test-bars <N> \
+  [--step-bars <N>] \
+  --set <input=v1,v2,...> \
+  [--set <input=v1,v2,...>] \
+  [--objective total-return|ending-equity|return-over-drawdown] \
+  [--top <N>] \
+  [--format json|text] \
+  [--max-instructions-per-bar <N>] \
+  [--max-history-capacity <N>]
+```
+
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
+- `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
+- `--initial-capital <amount>`: starting equity for each stitched out-of-sample run, default `10000`
+- `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
+- `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
+- `--leverage <N>`: isolated leverage for perp execution sources, default `1`
+- `--margin-mode isolated`: isolated perp margin mode; this is the only accepted v1 value
+- `--train-bars <N>`: in-sample context window size in execution bars
+- `--test-bars <N>`: out-of-sample window size in execution bars
+- `--step-bars <N>`: segment advance in execution bars, default `test-bars`
+- `--set <input=v1,v2,...>`: numeric input grid for one `input` declaration; repeat to sweep multiple inputs
+- `--objective ...`: stitched OOS ranking objective, default `total-return`
+- `--top <N>`: number of ranked candidates to keep in the result, default `10`
+- `--format json|text`: output rendering format, default `json`
+- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
+- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
+
+Requirements:
+
+- the script must declare at least one `source`
+- each `--set` must target an existing numeric `input`
+- `--train-bars`, `--test-bars`, `--step-bars`, and `--top` must be positive
+- the explicit candidate grid is bounded to `10000` combinations in v1
+- spot execution sources reject `--leverage` and `--margin-mode`
+
+Walk-forward sweep output:
+
+- JSON includes the sweep config, candidate count, best stitched OOS candidate, and ranked `top_candidates`
+- text output renders the best candidate plus a compact ranked top-candidate table
+- v1 only overrides numeric `input` declarations and recompiles the script per candidate; it does not mutate non-`input` bindings
+
 ## `palmscript dump-bytecode`
 
 ```bash

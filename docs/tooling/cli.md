@@ -12,6 +12,7 @@ Typical development flow:
 2. run it in `market` mode
 3. backtest it with `palmscript run backtest` when the script emits trading triggers
 4. run `palmscript run walk-forward` when you want rolling out-of-sample evaluation
+5. run `palmscript run walk-forward-sweep` when you want to rank explicit `input` grids by stitched out-of-sample results
 5. inspect outputs in `json` or `text`
 6. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
 
@@ -101,6 +102,35 @@ V1 semantics:
 
 When the script declares exactly one `source`, walk-forward mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
 
+## Run Walk-Forward Parameter Sweeps
+
+```bash
+palmscript run walk-forward-sweep strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --set fast_len=13,21,34 \
+  --set target_atr_mult=2.0,2.5,3.0 \
+  --objective total-return \
+  --top 5
+```
+
+Use walk-forward sweep mode when:
+
+- the strategy already has `input` declarations you want to tune systematically
+- you want stitched out-of-sample ranking instead of hand-running one variant at a time
+- you want a bounded explicit grid search rather than unconstrained optimization
+
+V1 semantics:
+
+- PalmScript fetches the requested source window once
+- each candidate recompiles the same script with numeric `input` overrides from `--set`
+- every candidate reuses the same deterministic walk-forward engine and venue rules
+- the explicit candidate grid is bounded to `10000` combinations
+- the output ranks candidates by stitched OOS `total-return`, `ending-equity`, or `return-over-drawdown`
+
 ## Output Formats
 
 Market mode supports:
@@ -121,6 +151,11 @@ Walk-forward mode also supports `json` and `text`.
 
 - JSON output includes per-segment in-sample and out-of-sample summaries, per-segment out-of-sample diagnostics, plus a stitched out-of-sample summary
 - text output includes a compact stitched summary, config, recent segment rows, and a short weakest-segment section with out-of-sample protect/target counts
+
+Walk-forward sweep mode also supports `json` and `text`.
+
+- JSON output includes the sweep config, candidate count, and ranked stitched OOS candidates
+- text output includes a compact best-candidate summary plus the ranked top candidates
 
 ## Execution Limits
 

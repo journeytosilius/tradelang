@@ -35,9 +35,60 @@ pub struct CompiledProgram {
 }
 
 pub fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
+    compile_with_input_overrides(source, &BTreeMap::new())
+}
+
+pub fn compile_with_input_overrides(
+    source: &str,
+    overrides: &BTreeMap<String, f64>,
+) -> Result<CompiledProgram, CompileError> {
     let tokens = lexer::lex(source)?;
-    let ast = parser::parse(&tokens)?;
+    let mut ast = parser::parse(&tokens)?;
+    apply_input_overrides(&mut ast, overrides)?;
     Compiler::new(source, &ast).compile()
+}
+
+fn apply_input_overrides(
+    ast: &mut Ast,
+    overrides: &BTreeMap<String, f64>,
+) -> Result<(), CompileError> {
+    if overrides.is_empty() {
+        return Ok(());
+    }
+
+    let mut seen = BTreeSet::new();
+    let mut diagnostics = Vec::new();
+    for stmt in &mut ast.statements {
+        if let StmtKind::Input { name, expr, .. } = &mut stmt.kind {
+            if let Some(value) = overrides.get(name) {
+                if !value.is_finite() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!("input override `{name}` must be finite"),
+                        expr.span,
+                    ));
+                    continue;
+                }
+                seen.insert(name.clone());
+                expr.kind = ExprKind::Number(*value);
+            }
+        }
+    }
+    for name in overrides.keys() {
+        if seen.contains(name) {
+            continue;
+        }
+        diagnostics.push(Diagnostic::new(
+            DiagnosticKind::Compile,
+            format!("unknown input override `{name}`"),
+            Span::default(),
+        ));
+    }
+    if diagnostics.is_empty() {
+        Ok(())
+    } else {
+        Err(CompileError::new(diagnostics))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

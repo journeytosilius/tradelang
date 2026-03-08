@@ -12,6 +12,9 @@ backtester. Walk-forward reuses the existing fill semantics and venue rules,
 but evaluates the strategy over rolling train/test windows and stitches only
 the out-of-sample slices together.
 
+PalmScript also exposes a bounded walk-forward sweep layer that ranks explicit
+numeric `input` grids by stitched out-of-sample performance.
+
 ## CLI
 
 Run a backtest end to end:
@@ -58,6 +61,29 @@ V1 notes:
 - each segment uses the leading `train-bars` as in-sample context and reports the trailing `test-bars` as out-of-sample
 - `step-bars` controls how far each segment advances
 - v1 does not optimize parameters automatically; it evaluates the fixed script and inputs you passed in
+
+Run a bounded walk-forward sweep:
+
+```bash
+palmscript run walk-forward-sweep strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --set fast_len=13,21,34 \
+  --set target_atr_mult=2.0,2.5,3.0 \
+  --objective total-return \
+  --top 5
+```
+
+V1 sweep notes:
+
+- sweeps only override numeric `input` declarations
+- each candidate recompiles the same script with one explicit override combination
+- each candidate reuses the same fetched runtime data and deterministic walk-forward engine
+- the explicit candidate grid is bounded to `10000` combinations
+- stitched OOS ranking supports `total-return`, `ending-equity`, and `return-over-drawdown`
 
 ## Rust API
 
@@ -145,6 +171,60 @@ println!(
     "stitched out-of-sample return = {:.2}%",
     result.stitched_summary.total_return * 100.0
 );
+```
+
+Use `run_walk_forward_sweep_with_source` to rank explicit numeric `input` grids:
+
+```rust
+use palmscript::{
+    run_walk_forward_sweep_with_source, BacktestConfig, InputSweepDefinition, Interval, SourceFeed,
+    SourceRuntimeConfig, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
+    WalkForwardSweepObjective,
+};
+
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_walk_forward_sweep_with_source(
+    source,
+    runtime,
+    VmLimits::default(),
+    WalkForwardSweepConfig {
+        walk_forward: WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 10_000.0,
+                fee_bps: 5.0,
+                slippage_bps: 2.0,
+                perp: None,
+                perp_context: None,
+            },
+            train_bars: 252,
+            test_bars: 63,
+            step_bars: 63,
+        },
+        inputs: vec![
+            InputSweepDefinition {
+                name: "fast_len".to_string(),
+                values: vec![13.0, 21.0, 34.0],
+            },
+            InputSweepDefinition {
+                name: "target_atr_mult".to_string(),
+                values: vec![2.0, 2.5, 3.0],
+            },
+        ],
+        objective: WalkForwardSweepObjective::TotalReturn,
+        top_n: 5,
+    },
+)
+.expect("walk-forward sweep succeeds");
+
+println!("best ending equity = {}", result.best_candidate.stitched_summary.ending_equity);
 ```
 
 The result includes:
