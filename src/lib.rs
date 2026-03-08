@@ -30,9 +30,9 @@ pub mod vm;
 pub use backtest::{
     run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
     BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult,
-    BacktestSummary, BinanceUsdmRiskSnapshot, BoolExportDiagnosticSummary, EquityPoint,
-    ExportDiagnosticSummary, ExportValueType, FeatureSnapshot, FeatureValue, Fill, FillAction,
-    ForwardReturnMetric, HyperliquidPerpsRiskSnapshot, MarkPriceBasis,
+    BacktestSummary, BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, BoolExportDiagnosticSummary,
+    EquityPoint, ExportDiagnosticSummary, ExportValueType, FeatureSnapshot, FeatureValue, Fill,
+    FillAction, ForwardReturnMetric, HyperliquidPerpsRiskSnapshot, MarkPriceBasis,
     NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind, OrderDiagnostic,
     OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig, PerpBacktestContext,
     PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, RiskTier, SideDiagnosticSummary, Trade,

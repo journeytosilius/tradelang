@@ -1,8 +1,8 @@
 use palmscript::{
     compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar,
-    BinanceUsdmRiskSnapshot, Interval, MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus,
-    PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, RiskTier, SignalRole, SourceFeed,
-    SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
+    BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, Interval, MarkPriceBasis, OrderEndReason,
+    OrderKind, OrderStatus, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, RiskTier,
+    SignalRole, SourceFeed, SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -46,6 +46,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
             risk_snapshot: VenueRiskSnapshot::BinanceUsdm(BinanceUsdmRiskSnapshot {
                 symbol: "BTCUSDT".to_string(),
                 fetched_at_ms: support::JAN_1_2024_UTC_MS,
+                source: BinanceUsdmRiskSource::SignedLeverageBrackets,
                 brackets: vec![RiskTier {
                     lower_bound: 0.0,
                     upper_bound: None,

@@ -70,7 +70,7 @@ Current V1 notes:
 
 - spot sources reject `--leverage` and `--margin-mode`
 - perp sources default to isolated `1.0x` when those flags are omitted
-- Binance USD-M requires `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET` to fetch live leverage brackets
+- Binance USD-M uses live signed leverage brackets when `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET` are available; otherwise it falls back to an approximate single-tier public `exchangeInfo` snapshot
 - Hyperliquid perps fetch live margin tables publicly and currently use execution candles as the liquidation-mark fallback
 
 When the script declares exactly one `source`, backtest mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.

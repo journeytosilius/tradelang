@@ -327,10 +327,11 @@ Venue profile notes:
 
 Perp startup requirements:
 
-- Binance USD-M live leverage brackets require:
+- Binance USD-M prefers live signed leverage brackets when these env vars are available:
   - `PALMSCRIPT_BINANCE_USDM_API_KEY`
   - `PALMSCRIPT_BINANCE_USDM_API_SECRET`
-- the fetched live risk snapshot is embedded in `BacktestResult.perp`
+- without those credentials, Binance USD-M falls back to an approximate single-tier risk snapshot built from public `exchangeInfo` symbol margin fields
+- the fetched or approximated risk snapshot is embedded in `BacktestResult.perp`
 - walk-forward reuses one fetched perp context across all stitched segments in the same run
 
 ## Current Scope

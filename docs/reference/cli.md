@@ -77,7 +77,7 @@ Requirements:
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
 - spot execution sources reject `--leverage` and `--margin-mode`
-- Binance USD-M perp runs require `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET`
+- Binance USD-M perp runs use live signed leverage brackets when `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET` are available; otherwise they fall back to an approximate public `exchangeInfo` risk snapshot
 
 Backtest output:
 
@@ -128,7 +128,7 @@ Requirements:
 - `--from` must be strictly less than `--to`
 - `--execution-source` is required when the script declares multiple sources
 - spot execution sources reject `--leverage` and `--margin-mode`
-- Binance USD-M perp runs require `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET`
+- Binance USD-M perp runs use live signed leverage brackets when `PALMSCRIPT_BINANCE_USDM_API_KEY` and `PALMSCRIPT_BINANCE_USDM_API_SECRET` are available; otherwise they fall back to an approximate public `exchangeInfo` risk snapshot
 
 Walk-forward output:
 

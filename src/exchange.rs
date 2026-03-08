@@ -14,8 +14,8 @@ use sha2::Sha256;
 use thiserror::Error;
 
 use crate::backtest::{
-    BinanceUsdmRiskSnapshot, HyperliquidPerpsRiskSnapshot, MarkPriceBasis, PerpBacktestContext,
-    RiskTier, VenueRiskSnapshot,
+    BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, HyperliquidPerpsRiskSnapshot, MarkPriceBasis,
+    PerpBacktestContext, RiskTier, VenueRiskSnapshot,
 };
 use crate::compiler::CompiledProgram;
 use crate::interval::{DeclaredMarketSource, Interval, SourceIntervalRef, SourceTemplate};
@@ -200,6 +200,28 @@ struct BinanceLeverageBracketTier {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+struct BinanceExchangeInfoResponse {
+    symbols: Vec<BinanceExchangeInfoSymbol>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct BinanceExchangeInfoSymbol {
+    symbol: String,
+    #[serde(
+        rename = "maintMarginPercent",
+        default,
+        deserialize_with = "deserialize_option_f64_text"
+    )]
+    maint_margin_percent: Option<f64>,
+    #[serde(
+        rename = "requiredMarginPercent",
+        default,
+        deserialize_with = "deserialize_option_f64_text"
+    )]
+    required_margin_percent: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 struct HyperliquidMetaResponse {
     universe: Vec<HyperliquidPerpsMetaAsset>,
     #[serde(rename = "marginTables")]
@@ -321,8 +343,6 @@ pub enum ExchangeFetchError {
         symbol: String,
         message: String,
     },
-    #[error("Binance USD-M leverage bracket fetch requires PALMSCRIPT_BINANCE_USDM_API_KEY and PALMSCRIPT_BINANCE_USDM_API_SECRET")]
-    MissingBinanceUsdmCredentials,
     #[error("unknown Hyperliquid perp symbol `{symbol}`")]
     UnknownHyperliquidPerpSymbol { symbol: String },
     #[error("no risk tiers available for `{alias}` ({template}) `{symbol}`")]
@@ -679,10 +699,11 @@ fn fetch_binance_usdm_risk_snapshot(
     source: &DeclaredMarketSource,
     endpoints: &ExchangeEndpoints,
 ) -> Result<BinanceUsdmRiskSnapshot, ExchangeFetchError> {
-    let api_key = env::var("PALMSCRIPT_BINANCE_USDM_API_KEY")
-        .map_err(|_| ExchangeFetchError::MissingBinanceUsdmCredentials)?;
-    let api_secret = env::var("PALMSCRIPT_BINANCE_USDM_API_SECRET")
-        .map_err(|_| ExchangeFetchError::MissingBinanceUsdmCredentials)?;
+    let api_key = env::var("PALMSCRIPT_BINANCE_USDM_API_KEY");
+    let api_secret = env::var("PALMSCRIPT_BINANCE_USDM_API_SECRET");
+    let (Ok(api_key), Ok(api_secret)) = (api_key, api_secret) else {
+        return fetch_binance_usdm_public_risk_snapshot(client, source, endpoints);
+    };
     let server_time = fetch_binance_server_time(client, endpoints)?;
     let query = format!("symbol={}&timestamp={server_time}", source.symbol);
     let signature = sign_binance_query(&api_secret, &query).map_err(|err| {
@@ -757,7 +778,106 @@ fn fetch_binance_usdm_risk_snapshot(
     Ok(BinanceUsdmRiskSnapshot {
         symbol: source.symbol.clone(),
         fetched_at_ms: server_time,
+        source: BinanceUsdmRiskSource::SignedLeverageBrackets,
         brackets,
+    })
+}
+
+fn fetch_binance_usdm_public_risk_snapshot(
+    client: &Client,
+    source: &DeclaredMarketSource,
+    endpoints: &ExchangeEndpoints,
+) -> Result<BinanceUsdmRiskSnapshot, ExchangeFetchError> {
+    let response = client
+        .get(format!(
+            "{}/fapi/v1/exchangeInfo",
+            endpoints.binance_usdm_base_url.trim_end_matches('/')
+        ))
+        .send()
+        .map_err(|err| ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: err.to_string(),
+        })?;
+    if response.status() != StatusCode::OK {
+        return Err(ExchangeFetchError::RiskRequestFailed {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: format!("HTTP {}", response.status()),
+        });
+    }
+    let payload: BinanceExchangeInfoResponse =
+        response
+            .json()
+            .map_err(|err| ExchangeFetchError::MalformedRiskResponse {
+                alias: source.alias.clone(),
+                template: source.template.as_str(),
+                symbol: source.symbol.clone(),
+                message: err.to_string(),
+            })?;
+    let Some(symbol_entry) = payload
+        .symbols
+        .into_iter()
+        .find(|entry| entry.symbol == source.symbol)
+    else {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "requested symbol missing from exchangeInfo response".to_string(),
+        });
+    };
+    let Some(required_margin_percent) = symbol_entry.required_margin_percent else {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "exchangeInfo did not include requiredMarginPercent".to_string(),
+        });
+    };
+    let Some(maint_margin_percent) = symbol_entry.maint_margin_percent else {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "exchangeInfo did not include maintMarginPercent".to_string(),
+        });
+    };
+    let initial_margin_rate = normalize_margin_percent(required_margin_percent);
+    let maintenance_margin_rate = normalize_margin_percent(maint_margin_percent);
+    if !initial_margin_rate.is_finite() || initial_margin_rate <= 0.0 {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "exchangeInfo requiredMarginPercent must be greater than zero".to_string(),
+        });
+    }
+    if !maintenance_margin_rate.is_finite() || maintenance_margin_rate < 0.0 {
+        return Err(ExchangeFetchError::MalformedRiskResponse {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            message: "exchangeInfo maintMarginPercent must be zero or greater".to_string(),
+        });
+    }
+    let fetched_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0);
+    Ok(BinanceUsdmRiskSnapshot {
+        symbol: source.symbol.clone(),
+        fetched_at_ms,
+        source: BinanceUsdmRiskSource::PublicExchangeInfoApproximation,
+        brackets: vec![RiskTier {
+            lower_bound: 0.0,
+            upper_bound: None,
+            max_leverage: 1.0 / initial_margin_rate,
+            maintenance_margin_rate,
+            maintenance_amount: 0.0,
+        }],
     })
 }
 
@@ -937,6 +1057,75 @@ where
     }
 
     deserializer.deserialize_any(F64TextVisitor)
+}
+
+fn deserialize_option_f64_text<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct OptionF64TextVisitor;
+
+    impl<'de> Visitor<'de> for OptionF64TextVisitor {
+        type Value = Option<f64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an optional float or float-like string")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserialize_f64_text(deserializer).map(Some)
+        }
+
+        fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E> {
+            Ok(Some(value))
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(Some(value as f64))
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+            Ok(Some(value as f64))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            value
+                .parse::<f64>()
+                .map(Some)
+                .map_err(|err| E::custom(err.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_str(&value)
+        }
+    }
+
+    deserializer.deserialize_option(OptionF64TextVisitor)
+}
+
+fn normalize_margin_percent(raw: f64) -> f64 {
+    if raw > 1.0 {
+        raw / 100.0
+    } else {
+        raw
+    }
 }
 
 fn resolve_hyperliquid_spot_coin(
@@ -1183,13 +1372,14 @@ mod tests {
         HyperliquidCandle, SourceFetchConstraints, BINANCE_USDM_PAGE_LIMIT,
         HYPERLIQUID_RECENT_CANDLE_LIMIT,
     };
-    use crate::backtest::{MarkPriceBasis, VenueRiskSnapshot};
+    use crate::backtest::{BinanceUsdmRiskSource, MarkPriceBasis, VenueRiskSnapshot};
     use crate::compile;
     use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
     use crate::runtime::Bar;
     use mockito::{Matcher, Server};
     use serde_json::json;
     use std::env;
+    use std::sync::{Mutex, OnceLock};
 
     fn sample_source(template: SourceTemplate, symbol: &str) -> DeclaredMarketSource {
         DeclaredMarketSource {
@@ -1198,6 +1388,11 @@ mod tests {
             template,
             symbol: symbol.to_string(),
         }
+    }
+
+    fn binance_usdm_env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
     }
 
     #[test]
@@ -1417,6 +1612,7 @@ mod tests {
 
     #[test]
     fn fetch_perp_backtest_context_reads_binance_signed_risk_snapshot() {
+        let _env_guard = binance_usdm_env_lock().lock().expect("env lock");
         let mut server = Server::new();
         let _time = server
             .mock("GET", "/fapi/v1/time")
@@ -1490,8 +1686,83 @@ mod tests {
         match context.risk_snapshot {
             VenueRiskSnapshot::BinanceUsdm(snapshot) => {
                 assert_eq!(snapshot.symbol, "BTCUSDT");
+                assert_eq!(
+                    snapshot.source,
+                    BinanceUsdmRiskSource::SignedLeverageBrackets
+                );
                 assert_eq!(snapshot.brackets.len(), 1);
                 assert_eq!(snapshot.brackets[0].maintenance_margin_rate, 0.01);
+            }
+            other => panic!("unexpected snapshot: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fetch_perp_backtest_context_falls_back_to_public_binance_exchange_info() {
+        let _env_guard = binance_usdm_env_lock().lock().expect("env lock");
+        let mut server = Server::new();
+        let _marks = server
+            .mock("GET", "/fapi/v1/premiumIndexKlines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1m".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "101.0", "99.0", "100.5", "0"],
+                    [1704067260000_i64, "100.5", "102.0", "100.0", "101.5", "0"]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _exchange_info = server
+            .mock("GET", "/fapi/v1/exchangeInfo")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "symbols": [
+                        {
+                            "symbol": "BTCUSDT",
+                            "maintMarginPercent": "2.5",
+                            "requiredMarginPercent": "5.0"
+                        }
+                    ]
+                })
+                .to_string(),
+            )
+            .create();
+
+        env::remove_var("PALMSCRIPT_BINANCE_USDM_API_KEY");
+        env::remove_var("PALMSCRIPT_BINANCE_USDM_API_SECRET");
+        let source = sample_source(SourceTemplate::BinanceUsdm, "BTCUSDT");
+        let context = fetch_perp_backtest_context(
+            &source,
+            Interval::Min1,
+            1704067200000,
+            1704067320000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: String::new(),
+                binance_usdm_base_url: server.url(),
+                hyperliquid_info_url: String::new(),
+            },
+        )
+        .expect("context")
+        .expect("perp context");
+
+        assert_eq!(
+            context.mark_price_basis,
+            MarkPriceBasis::BinancePremiumIndexKlines
+        );
+        match context.risk_snapshot {
+            VenueRiskSnapshot::BinanceUsdm(snapshot) => {
+                assert_eq!(
+                    snapshot.source,
+                    BinanceUsdmRiskSource::PublicExchangeInfoApproximation
+                );
+                assert_eq!(snapshot.brackets.len(), 1);
+                assert_eq!(snapshot.brackets[0].max_leverage, 20.0);
+                assert_eq!(snapshot.brackets[0].maintenance_margin_rate, 0.025);
             }
             other => panic!("unexpected snapshot: {other:?}"),
         }

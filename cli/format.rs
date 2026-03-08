@@ -2,8 +2,9 @@ use std::fmt::Write;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
-    BacktestResult, CompiledProgram, ExportDiagnosticSummary, OrderStatus, OutputKind, OutputValue,
-    Outputs, PositionSide, SignalRole, Value, WalkForwardResult,
+    BacktestResult, BinanceUsdmRiskSource, CompiledProgram, ExportDiagnosticSummary, OrderStatus,
+    OutputKind, OutputValue, Outputs, PositionSide, SignalRole, Value, VenueRiskSnapshot,
+    WalkForwardResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -364,6 +365,15 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         let _ = writeln!(out, "leverage={:.2}", perp.leverage);
         let _ = writeln!(out, "margin_mode={:?}", perp.margin_mode);
         let _ = writeln!(out, "mark_price_basis={:?}", perp.mark_price_basis);
+        if let VenueRiskSnapshot::BinanceUsdm(snapshot) = &perp.risk_snapshot {
+            let source = match snapshot.source {
+                BinanceUsdmRiskSource::SignedLeverageBrackets => "signed_leverage_brackets",
+                BinanceUsdmRiskSource::PublicExchangeInfoApproximation => {
+                    "public_exchange_info_approximation"
+                }
+            };
+            let _ = writeln!(out, "risk_snapshot_source={source}");
+        }
     }
 
     out

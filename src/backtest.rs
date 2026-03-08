@@ -62,9 +62,16 @@ pub struct RiskTier {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum BinanceUsdmRiskSource {
+    SignedLeverageBrackets,
+    PublicExchangeInfoApproximation,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BinanceUsdmRiskSnapshot {
     pub symbol: String,
     pub fetched_at_ms: i64,
+    pub source: BinanceUsdmRiskSource,
     pub brackets: Vec<RiskTier>,
 }
 
