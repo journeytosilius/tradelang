@@ -1,0 +1,98 @@
+interval 4h
+source perp = binance.usdm("BTCUSDT")
+use perp 1d
+use perp 1w
+
+// Symmetric BTCUSDT USD-M trend-following strategy for both long and short
+// exposure. It trades only when 4h, 1d, and 1w structure align, enters on
+// breakout expansion, and uses attached mark-triggered ATR protection plus a
+// hybrid fixed-or-ATR profit target on both sides.
+input fast_len = 13
+input slow_len = 55
+input daily_fast_len = 20
+input daily_slow_len = 50
+input weekly_fast_len = 8
+input weekly_slow_len = 21
+input rsi_len = 14
+input breakout_len = 30
+input kama_len = 30
+input atr_len = 14
+input protect_atr_mult = 4.0
+input protect_cooldown_bars = 10
+input target_atr_mult = 2.5
+const target_return = 0.05
+const long_rsi_threshold = 55
+const short_rsi_threshold = 45
+const macd_fast_len = 12
+const macd_slow_len = 26
+const macd_signal_len = 9
+
+let fast = ema(perp.close, fast_len)
+let slow = ema(perp.close, slow_len)
+let daily_fast = ema(perp.1d.close, daily_fast_len)
+let daily_slow = ema(perp.1d.close, daily_slow_len)
+let weekly_fast = ema(perp.1w.close, weekly_fast_len)
+let weekly_slow = ema(perp.1w.close, weekly_slow_len)
+let rsi_4h = rsi(perp.close, rsi_len)
+let kama_4h = kama(perp.close, kama_len)
+let atr_4h = atr(perp.high, perp.low, perp.close, atr_len)
+let (macd_line, macd_signal, macd_hist) = macd(
+    perp.close,
+    macd_fast_len,
+    macd_slow_len,
+    macd_signal_len
+)
+let breakout_high = highest(perp.high, breakout_len)[1]
+let breakout_low = lowest(perp.low, breakout_len)[1]
+
+let trend_long = above(weekly_fast, weekly_slow) and above(daily_fast, daily_slow) and above(fast, slow) and above(perp.close, kama_4h)
+let trend_short = below(weekly_fast, weekly_slow) and below(daily_fast, daily_slow) and below(fast, slow) and below(perp.close, kama_4h)
+let breakout_long = above(perp.close, breakout_high)
+let breakout_short = below(perp.close, breakout_low)
+let recent_long_protect_exit = coalesce(
+    last_long_exit.kind == exit_kind.protect
+        and barssince(position_event.long_protect_fill) < protect_cooldown_bars,
+    false
+)
+let recent_short_protect_exit = coalesce(
+    last_short_exit.kind == exit_kind.protect
+        and barssince(position_event.short_protect_fill) < protect_cooldown_bars,
+    false
+)
+let chandelier_long = highest_since(position_event.long_entry_fill, perp.high) - protect_atr_mult * atr_4h
+let chandelier_short = lowest_since(position_event.short_entry_fill, perp.low) + protect_atr_mult * atr_4h
+export trend_long_state = trend_long
+export trend_short_state = trend_short
+export breakout_long_state = breakout_long
+export breakout_short_state = breakout_short
+export adaptive_bias = perp.close - kama_4h
+export recent_long_protect_exit_state = recent_long_protect_exit
+export recent_short_protect_exit_state = recent_short_protect_exit
+export long_stop_level = chandelier_long
+export short_stop_level = chandelier_short
+
+entry long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_long_protect_exit == false
+entry short = trend_short and breakout_short and below(rsi_4h, short_rsi_threshold) and below(macd_hist, 0) and recent_short_protect_exit == false
+exit long = below(perp.close, fast) and below(fast, slow)
+exit short = above(perp.close, fast) and above(fast, slow)
+
+order entry long = market()
+order entry short = market()
+protect long = stop_market(chandelier_long, trigger_ref.mark)
+protect short = stop_market(chandelier_short, trigger_ref.mark)
+target long = take_profit_market(
+    above(position.entry_price + target_atr_mult * atr_4h, position.entry_price * (1 + target_return))
+        ? position.entry_price + target_atr_mult * atr_4h
+        : position.entry_price * (1 + target_return),
+    trigger_ref.mark
+)
+target short = take_profit_market(
+    below(position.entry_price - target_atr_mult * atr_4h, position.entry_price * (1 - target_return))
+        ? position.entry_price - target_atr_mult * atr_4h
+        : position.entry_price * (1 - target_return),
+    trigger_ref.mark
+)
+
+plot(fast - slow)
+plot(macd_line - macd_signal)
+plot(rsi_4h)
