@@ -333,6 +333,7 @@ Perp startup requirements:
 - without those credentials, Binance USD-M falls back to an approximate single-tier risk snapshot built from public `exchangeInfo` symbol margin fields
 - the fetched or approximated risk snapshot is embedded in `BacktestResult.perp`
 - walk-forward reuses one fetched perp context across all stitched segments in the same run
+- in isolated-margin perp mode, PalmScript caps a closed position's residual value at zero and cancels later entry attempts with `InsufficientCollateral` once free collateral is exhausted
 
 ## Current Scope
 

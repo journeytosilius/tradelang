@@ -200,6 +200,7 @@ pub enum OrderEndReason {
     MissingExpireTime,
     MissingSizeFraction,
     InvalidSizeFraction,
+    InsufficientCollateral,
     IocUnfilled,
     FokUnfilled,
     PostOnlyWouldCross,

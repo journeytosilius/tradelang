@@ -5,12 +5,12 @@ use crate::backtest::diagnostics::{
 };
 use crate::backtest::orders::{
     add_to_position, adjusted_price, close_position, close_trade_slice, empty_request_slots,
-    evaluate_active_order, fill_action_for_role, is_attached_exit_role, liquidation_trigger_price,
-    missing_field_reason, open_position, position_side_for_entry, realize_perp_close,
-    refresh_position_risk, request_applicable, role_index, unrealized_pnl_for_position,
-    update_open_trade_excursions, AccountingMode, ActiveOrder, CapturedOrderRequest,
-    CloseExecution, FillExecutionContext, OpenTrade, PositionState, TradeEntryContext,
-    WorkingState, ROLE_COUNT, ROLE_PRIORITY,
+    entry_quantity_for_capital, evaluate_active_order, fill_action_for_role, is_attached_exit_role,
+    liquidation_trigger_price, missing_field_reason, open_position, position_side_for_entry,
+    realize_perp_close, refresh_position_risk, request_applicable, role_index,
+    unrealized_pnl_for_position, update_open_trade_excursions, AccountingMode, ActiveOrder,
+    CapturedOrderRequest, CloseExecution, FillExecutionContext, OpenTrade, PositionState,
+    TradeEntryContext, WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
@@ -260,6 +260,28 @@ pub(crate) fn simulate_backtest(
                         }
 
                         if let Some(next_side) = position_side_for_entry(role) {
+                            let entry_quantity = entry_quantity_for_capital(
+                                cash,
+                                active.request.size_fraction,
+                                &accounting,
+                                execution_price,
+                                fee_rate,
+                            );
+                            if entry_quantity <= crate::backtest::EPSILON {
+                                update_order_record(
+                                    &mut orders[active.record_index],
+                                    OrderRecordUpdate {
+                                        trigger_time: execution.trigger_time,
+                                        fill_bar_index: None,
+                                        fill_time: None,
+                                        raw_price: None,
+                                        fill_price: None,
+                                        status: OrderStatus::Cancelled,
+                                        end_reason: Some(OrderEndReason::InsufficientCollateral),
+                                    },
+                                );
+                                continue;
+                            }
                             let execution_context = FillExecutionContext {
                                 bar_index: execution_cursor,
                                 time: bar.time,
@@ -1169,7 +1191,7 @@ fn maybe_close_position_for_role(
             fee_rate,
         ),
         AccountingMode::PerpIsolated { .. } => {
-            let action = realize_perp_close(
+            let realization = realize_perp_close(
                 cash,
                 &closed_position,
                 execution_price,
@@ -1181,7 +1203,7 @@ fn maybe_close_position_for_role(
             Fill {
                 bar_index,
                 time,
-                action,
+                action: realization.action,
                 quantity: close_quantity,
                 raw_price,
                 price: execution_price,
@@ -1191,7 +1213,7 @@ fn maybe_close_position_for_role(
         }
     };
     let (
-        trade,
+        mut trade,
         side,
         entry_order_id,
         entry_role,
@@ -1226,7 +1248,31 @@ fn maybe_close_position_for_role(
         )
     };
     let entry_notional = trade.entry.notional.abs();
-    let realized_pnl = trade.realized_pnl;
+    let realized_pnl = match accounting {
+        AccountingMode::Spot => trade.realized_pnl,
+        AccountingMode::PerpIsolated { .. } => {
+            let released_margin = if closed_position.quantity.abs() < crate::backtest::EPSILON {
+                0.0
+            } else {
+                closed_position.isolated_margin * (close_quantity / closed_position.quantity.abs())
+            };
+            let exit_fee = exit_fill.notional * fee_rate;
+            let payout = (released_margin
+                + match closed_position.side {
+                    PositionSide::Long => {
+                        (execution_price - closed_position.entry_price) * close_quantity
+                    }
+                    PositionSide::Short => {
+                        (closed_position.entry_price - execution_price) * close_quantity
+                    }
+                }
+                - exit_fee)
+                .max(0.0);
+            let realized = payout - released_margin - trade.entry.fee;
+            trade.realized_pnl = realized;
+            realized
+        }
+    };
     let realized_return = if entry_notional.abs() < crate::backtest::EPSILON {
         0.0
     } else {
@@ -1462,13 +1508,14 @@ fn force_liquidation(
         .expect("liquidation requires an open position")
         .clone();
     let quantity = closed_position.quantity.abs();
-    let action = realize_perp_close(cash, &closed_position, execution_price, quantity, fee_rate);
+    let realization =
+        realize_perp_close(cash, &closed_position, execution_price, quantity, fee_rate);
     let notional = quantity * execution_price;
     let fee = notional * fee_rate;
     let exit_fill = Fill {
         bar_index,
         time,
-        action,
+        action: realization.action,
         quantity,
         raw_price: execution_price,
         price: execution_price,
@@ -1476,7 +1523,7 @@ fn force_liquidation(
         fee,
     };
     let (
-        trade,
+        mut trade,
         entry_order_id,
         entry_role,
         entry_kind,
@@ -1507,7 +1554,8 @@ fn force_liquidation(
         )
     };
     let entry_notional = trade.entry.notional.abs();
-    let realized_pnl = trade.realized_pnl;
+    let realized_pnl = realization.payout - realization.released_margin - trade.entry.fee;
+    trade.realized_pnl = realized_pnl;
     let realized_return = if entry_notional.abs() < crate::backtest::EPSILON {
         0.0
     } else {

@@ -129,6 +129,12 @@ pub(crate) struct FillExecutionContext {
     pub execution_price: f64,
 }
 
+pub(crate) struct PerpCloseRealization {
+    pub action: FillAction,
+    pub released_margin: f64,
+    pub payout: f64,
+}
+
 pub(crate) struct CloseExecution<'a> {
     pub execution: FillExecutionContext,
     pub cash: &'a mut f64,
@@ -513,6 +519,25 @@ pub(crate) fn adjusted_price(raw_price: f64, action: FillAction, slippage_rate: 
     }
 }
 
+pub(crate) fn entry_quantity_for_capital(
+    cash: f64,
+    size_fraction: Option<f64>,
+    accounting: &AccountingMode,
+    execution_price: f64,
+    fee_rate: f64,
+) -> f64 {
+    let capital = cash.max(0.0) * size_fraction.unwrap_or(1.0);
+    if capital <= EPSILON || execution_price <= EPSILON {
+        return 0.0;
+    }
+    match accounting {
+        AccountingMode::Spot => capital / (execution_price * (1.0 + fee_rate)),
+        AccountingMode::PerpIsolated { leverage, .. } => {
+            capital / (execution_price * ((1.0 / leverage) + fee_rate))
+        }
+    }
+}
+
 pub(crate) fn open_position(
     execution: FillExecutionContext,
     side: PositionSide,
@@ -526,13 +551,13 @@ pub(crate) fn open_position(
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let capital = *cash * size_fraction.unwrap_or(1.0);
-    let quantity = match accounting {
-        AccountingMode::Spot => capital / (execution.execution_price * (1.0 + fee_rate)),
-        AccountingMode::PerpIsolated { leverage, .. } => {
-            capital / (execution.execution_price * ((1.0 / leverage) + fee_rate))
-        }
-    };
+    let quantity = entry_quantity_for_capital(
+        *cash,
+        size_fraction,
+        accounting,
+        execution.execution_price,
+        fee_rate,
+    );
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     let isolated_margin = match accounting {
@@ -601,13 +626,13 @@ pub(crate) fn add_to_position(
         PositionSide::Long => FillAction::Buy,
         PositionSide::Short => FillAction::Sell,
     };
-    let capital = *cash * size_fraction.unwrap_or(1.0);
-    let quantity = match accounting {
-        AccountingMode::Spot => capital / (execution.execution_price * (1.0 + fee_rate)),
-        AccountingMode::PerpIsolated { leverage, .. } => {
-            capital / (execution.execution_price * ((1.0 / leverage) + fee_rate))
-        }
-    };
+    let quantity = entry_quantity_for_capital(
+        *cash,
+        size_fraction,
+        accounting,
+        execution.execution_price,
+        fee_rate,
+    );
     let notional = quantity * execution.execution_price;
     let fee = notional * fee_rate;
     let isolated_margin = match accounting {
@@ -767,7 +792,7 @@ pub(crate) fn realize_perp_close(
     execution_price: f64,
     quantity: f64,
     fee_rate: f64,
-) -> FillAction {
+) -> PerpCloseRealization {
     let price_pnl = match position.side {
         PositionSide::Long => (execution_price - position.entry_price) * quantity,
         PositionSide::Short => (position.entry_price - execution_price) * quantity,
@@ -778,11 +803,17 @@ pub(crate) fn realize_perp_close(
         position.isolated_margin * (quantity / position.quantity.abs())
     };
     let fee = execution_price * quantity * fee_rate;
-    *cash += released_margin + price_pnl - fee;
+    let payout = (released_margin + price_pnl - fee).max(0.0);
+    *cash += payout;
     zero_small_cash(cash);
-    match position.side {
+    let action = match position.side {
         PositionSide::Long => FillAction::Sell,
         PositionSide::Short => FillAction::Buy,
+    };
+    PerpCloseRealization {
+        action,
+        released_margin,
+        payout,
     }
 }
 

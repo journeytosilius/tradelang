@@ -949,6 +949,99 @@ export last_kind = last_long_exit.kind == exit_kind.liquidation",
         .iter()
         .any(|point| matches!(point.value, palmscript::OutputValue::Bool(true))));
     assert!(result.perp.is_some());
+    approx_eq(
+        result.summary.realized_pnl,
+        result.summary.ending_equity - result.summary.starting_equity,
+    );
+    assert!(result.summary.ending_equity >= 0.0);
+}
+
+#[test]
+fn isolated_perp_liquidation_caps_loss_to_isolated_margin() {
+    let compiled = compile(
+        "interval 1m
+source perp = binance.usdm(\"BTCUSDT\")
+entry long = perp.close > perp.close[1]
+plot(perp.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                    100.0,
+                    101.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    101.0,
+                    101.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    101.0,
+                    102.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+                    102.0,
+                    103.0,
+                ),
+            ],
+        }],
+    };
+    let mark_bars = vec![
+        bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+        bar(
+            support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+            100.0,
+            100.0,
+        ),
+        Bar {
+            open: 40.0,
+            high: 45.0,
+            low: 35.0,
+            close: 40.0,
+            volume: 0.0,
+            time: (support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS) as f64,
+        },
+        bar(
+            support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+            102.0,
+            102.0,
+        ),
+        bar(
+            support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+            103.0,
+            103.0,
+        ),
+    ];
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        binance_perp_config("perp", 5.0, mark_bars),
+    )
+    .expect("perp liquidation backtest should succeed");
+
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(result.diagnostics.summary.liquidation_exit_count, 1);
+    assert!(result.open_position.is_none());
+    assert!(result.summary.ending_equity >= 0.0);
+    approx_eq(
+        result.summary.realized_pnl,
+        result.summary.ending_equity - result.summary.starting_equity,
+    );
+    assert!(result
+        .orders
+        .iter()
+        .any(|order| order.end_reason == Some(OrderEndReason::InsufficientCollateral)));
 }
 
 #[test]
