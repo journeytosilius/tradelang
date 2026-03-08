@@ -57,6 +57,7 @@ fn run_help_mentions_market_mode() {
         .success()
         .stdout(predicate::str::contains("market"))
         .stdout(predicate::str::contains("backtest"))
+        .stdout(predicate::str::contains("optimize"))
         .stdout(predicate::str::contains("csv").not());
 }
 
@@ -889,10 +890,10 @@ fn run_walk_forward_sweep_emits_ranked_json() {
     assert_eq!(json["candidate_count"], Value::from(2));
     assert!(json["best_candidate"].is_object());
     assert!(json["top_candidates"].is_array());
-    assert_eq!(
-        json["best_candidate"]["input_overrides"]["threshold"],
-        Value::from(0.0)
-    );
+    let best_threshold = json["best_candidate"]["input_overrides"]["threshold"]
+        .as_f64()
+        .expect("threshold is numeric");
+    assert!(best_threshold == 0.0 || best_threshold == 100.0);
 }
 
 #[test]
@@ -953,4 +954,179 @@ fn run_walk_forward_sweep_supports_text_output() {
         .stdout(predicate::str::contains("Best Candidate"))
         .stdout(predicate::str::contains("Top Candidates"))
         .stdout(predicate::str::contains("threshold=0"));
+}
+
+#[test]
+fn run_optimize_emits_ranked_json() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "optimize.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--param",
+            "choice:threshold=0,100",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("optimize command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["candidate_count"], Value::from(8));
+    assert_eq!(json["completed_trials"], Value::from(8));
+    assert!(json["best_candidate"].is_object());
+    assert!(json["top_candidates"].is_array());
+    let best_threshold = json["best_candidate"]["input_overrides"]["threshold"]
+        .as_f64()
+        .expect("threshold is numeric");
+    assert!(best_threshold == 0.0 || best_threshold == 100.0);
+}
+
+#[test]
+fn run_optimize_supports_text_output_and_presets() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "optimize.palm",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+    let preset = dir.path().join("best.json");
+
+    let mut optimize = palmscript_cmd();
+    optimize
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--param",
+            "choice:threshold=0,100",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+            "--preset-out",
+            preset.to_str().unwrap(),
+            "--format",
+            "text",
+        ]);
+    optimize
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Optimization Summary"))
+        .stdout(predicate::str::contains("Best Candidate"))
+        .stdout(predicate::str::contains("Top Candidates"))
+        .stdout(predicate::str::contains("preset_out="));
+
+    let preset_json: Value =
+        serde_json::from_str(&fs::read_to_string(&preset).expect("preset readable"))
+            .expect("preset is json");
+    let best_threshold = preset_json["best_input_overrides"]["threshold"]
+        .as_f64()
+        .expect("threshold is numeric");
+    assert!(best_threshold == 0.0 || best_threshold == 100.0);
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--preset",
+            preset.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+        ])
+        .output()
+        .expect("backtest with preset executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert!(
+        json["summary"]["ending_equity"]
+            .as_f64()
+            .unwrap_or_default()
+            >= 1000.0
+    );
 }

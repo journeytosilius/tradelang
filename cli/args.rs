@@ -14,7 +14,7 @@ pub struct Cli {
 pub enum Command {
     Run {
         #[command(subcommand)]
-        mode: RunCommand,
+        mode: Box<RunCommand>,
     },
     Check(CheckArgs),
     DumpBytecode(DumpBytecodeArgs),
@@ -26,6 +26,7 @@ pub enum RunCommand {
     Backtest(BacktestRunArgs),
     WalkForward(WalkForwardRunArgs),
     WalkForwardSweep(WalkForwardSweepRunArgs),
+    Optimize(OptimizeRunArgs),
 }
 
 #[derive(Debug, clap::Args)]
@@ -46,6 +47,8 @@ pub struct MarketRunArgs {
 #[derive(Debug, clap::Args)]
 pub struct BacktestRunArgs {
     pub script: PathBuf,
+    #[arg(long)]
+    pub preset: Option<PathBuf>,
     #[arg(long)]
     pub from: i64,
     #[arg(long)]
@@ -73,6 +76,8 @@ pub struct BacktestRunArgs {
 #[derive(Debug, clap::Args)]
 pub struct WalkForwardRunArgs {
     pub script: PathBuf,
+    #[arg(long)]
+    pub preset: Option<PathBuf>,
     #[arg(long)]
     pub from: i64,
     #[arg(long)]
@@ -107,6 +112,8 @@ pub struct WalkForwardRunArgs {
 pub struct WalkForwardSweepRunArgs {
     pub script: PathBuf,
     #[arg(long)]
+    pub preset: Option<PathBuf>,
+    #[arg(long)]
     pub from: i64,
     #[arg(long)]
     pub to: i64,
@@ -134,6 +141,59 @@ pub struct WalkForwardSweepRunArgs {
     pub objective: WalkForwardSweepObjectiveArg,
     #[arg(long, default_value_t = 10)]
     pub top: usize,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+    #[arg(long, default_value_t = 10_000)]
+    pub max_instructions_per_bar: usize,
+    #[arg(long, default_value_t = 1_024)]
+    pub max_history_capacity: usize,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct OptimizeRunArgs {
+    pub script: PathBuf,
+    #[arg(long)]
+    pub preset: Option<PathBuf>,
+    #[arg(long)]
+    pub from: i64,
+    #[arg(long)]
+    pub to: i64,
+    #[arg(long)]
+    pub execution_source: Option<String>,
+    #[arg(long, default_value_t = 10_000.0)]
+    pub initial_capital: f64,
+    #[arg(long, default_value_t = 5.0)]
+    pub fee_bps: f64,
+    #[arg(long, default_value_t = 2.0)]
+    pub slippage_bps: f64,
+    #[arg(long)]
+    pub leverage: Option<f64>,
+    #[arg(long, value_enum)]
+    pub margin_mode: Option<BacktestMarginMode>,
+    #[arg(long)]
+    pub train_bars: Option<usize>,
+    #[arg(long)]
+    pub test_bars: Option<usize>,
+    #[arg(long)]
+    pub step_bars: Option<usize>,
+    #[arg(long = "param")]
+    pub params: Vec<String>,
+    #[arg(long, value_enum, default_value_t = OptimizeRunnerArg::WalkForward)]
+    pub runner: OptimizeRunnerArg,
+    #[arg(long, value_enum, default_value_t = OptimizeObjectiveArg::RobustReturn)]
+    pub objective: OptimizeObjectiveArg,
+    #[arg(long, default_value_t = 50)]
+    pub trials: usize,
+    #[arg(long)]
+    pub startup_trials: Option<usize>,
+    #[arg(long, default_value_t = 0)]
+    pub seed: u64,
+    #[arg(long)]
+    pub workers: Option<usize>,
+    #[arg(long, default_value_t = 10)]
+    pub top: usize,
+    #[arg(long)]
+    pub preset_out: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
     #[arg(long, default_value_t = 10_000)]
@@ -176,6 +236,22 @@ pub enum BacktestMarginMode {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
 pub enum WalkForwardSweepObjectiveArg {
     #[default]
+    TotalReturn,
+    EndingEquity,
+    ReturnOverDrawdown,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum OptimizeRunnerArg {
+    #[default]
+    WalkForward,
+    Backtest,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum OptimizeObjectiveArg {
+    #[default]
+    RobustReturn,
     TotalReturn,
     EndingEquity,
     ReturnOverDrawdown,

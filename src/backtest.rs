@@ -7,6 +7,7 @@
 mod bridge;
 mod diagnostics;
 mod engine;
+mod optimize;
 mod orders;
 mod venue;
 mod walk_forward;
@@ -458,6 +459,11 @@ pub struct BacktestResult {
     pub perp: Option<PerpBacktestMetadata>,
 }
 
+pub use optimize::{
+    run_optimize_with_source, OptimizeCandidateSummary, OptimizeConfig, OptimizeError,
+    OptimizeEvaluationSummary, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
+    OptimizeResult, OptimizeRunner,
+};
 pub use walk_forward::{
     run_walk_forward_with_sources, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,
     WalkForwardSegmentDiagnostics, WalkForwardSegmentResult, WalkForwardStitchedSummary,

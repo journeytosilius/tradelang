@@ -1,10 +1,12 @@
 use std::fmt::Write;
+use std::path::Path;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::{
-    BacktestResult, BinanceUsdmRiskSource, CompiledProgram, ExportDiagnosticSummary, OrderStatus,
-    OutputKind, OutputValue, Outputs, PositionSide, SignalRole, Value, VenueRiskSnapshot,
-    WalkForwardResult, WalkForwardSweepResult,
+    BacktestResult, BinanceUsdmRiskSource, CompiledProgram, ExportDiagnosticSummary,
+    OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeResult, OrderStatus, OutputKind,
+    OutputValue, Outputs, PositionSide, SignalRole, Value, VenueRiskSnapshot, WalkForwardResult,
+    WalkForwardSweepResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -531,6 +533,110 @@ pub fn render_walk_forward_sweep_text(result: &WalkForwardSweepResult) -> String
     }
 
     out
+}
+
+pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) -> String {
+    let mut out = String::new();
+    out.push_str("Optimization Summary\n");
+    let _ = writeln!(out, "runner={:?}", result.config.runner);
+    let _ = writeln!(out, "objective={:?}", result.config.objective);
+    let _ = writeln!(out, "candidate_count={}", result.candidate_count);
+    let _ = writeln!(out, "completed_trials={}", result.completed_trials);
+    let _ = writeln!(out, "trials={}", result.config.trials);
+    let _ = writeln!(out, "startup_trials={}", result.config.startup_trials);
+    let _ = writeln!(out, "workers={}", result.config.workers);
+    if let Some(path) = preset_out {
+        let _ = writeln!(out, "preset_out={}", path.display());
+    }
+
+    out.push_str("Best Candidate\n");
+    let _ = writeln!(out, "trial_id={}", result.best_candidate.trial_id);
+    let _ = writeln!(
+        out,
+        "objective_score={:.6}",
+        result.best_candidate.objective_score
+    );
+    render_optimize_candidate_summary(&mut out, &result.best_candidate);
+
+    out.push_str("Top Candidates\n");
+    for (index, candidate) in result.top_candidates.iter().enumerate() {
+        let _ = writeln!(
+            out,
+            "rank={} trial_id={} objective_score={:.6} overrides={}",
+            index + 1,
+            candidate.trial_id,
+            candidate.objective_score,
+            fmt_input_overrides(&candidate.input_overrides)
+        );
+        match &candidate.summary {
+            OptimizeEvaluationSummary::WalkForward {
+                stitched_summary, ..
+            } => {
+                let _ = writeln!(
+                    out,
+                    "ending_equity={:.2} total_return_pct={:.2} max_drawdown={:.2}",
+                    stitched_summary.ending_equity,
+                    stitched_summary.total_return * 100.0,
+                    stitched_summary.max_drawdown
+                );
+            }
+            OptimizeEvaluationSummary::Backtest { summary, .. } => {
+                let _ = writeln!(
+                    out,
+                    "ending_equity={:.2} total_return_pct={:.2} max_drawdown={:.2}",
+                    summary.ending_equity,
+                    summary.total_return * 100.0,
+                    summary.max_drawdown
+                );
+            }
+        }
+    }
+
+    out
+}
+
+fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandidateSummary) {
+    let _ = writeln!(
+        out,
+        "overrides={}",
+        fmt_input_overrides(&candidate.input_overrides)
+    );
+    match &candidate.summary {
+        OptimizeEvaluationSummary::WalkForward {
+            stitched_summary,
+            zero_trade_segment_count,
+        } => {
+            let _ = writeln!(out, "runner_summary=walk_forward");
+            let _ = writeln!(out, "ending_equity={:.2}", stitched_summary.ending_equity);
+            let _ = writeln!(
+                out,
+                "total_return_pct={:.2}",
+                stitched_summary.total_return * 100.0
+            );
+            let _ = writeln!(out, "max_drawdown={:.2}", stitched_summary.max_drawdown);
+            let _ = writeln!(out, "segment_count={}", stitched_summary.segment_count);
+            let _ = writeln!(
+                out,
+                "negative_segment_count={}",
+                stitched_summary.negative_segment_count
+            );
+            let _ = writeln!(out, "zero_trade_segment_count={zero_trade_segment_count}");
+        }
+        OptimizeEvaluationSummary::Backtest {
+            summary,
+            capture_summary,
+        } => {
+            let _ = writeln!(out, "runner_summary=backtest");
+            let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
+            let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+            let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
+            let _ = writeln!(
+                out,
+                "execution_asset_return_pct={:.2}",
+                capture_summary.execution_asset_return * 100.0
+            );
+        }
+    }
 }
 
 fn render_instructions(out: &mut String, program: &Program) {

@@ -15,6 +15,9 @@ the out-of-sample slices together.
 PalmScript also exposes a bounded walk-forward sweep layer that ranks explicit
 numeric `input` grids by stitched out-of-sample performance.
 
+PalmScript also exposes a first-class optimizer layer that performs seeded,
+bounded hyper-parameter search over selected numeric `input`s.
+
 ## CLI
 
 Run a backtest end to end:
@@ -84,6 +87,32 @@ V1 sweep notes:
 - each candidate reuses the same fetched runtime data and deterministic walk-forward engine
 - the explicit candidate grid is bounded to `10000` combinations
 - stitched OOS ranking supports `total-return`, `ending-equity`, and `return-over-drawdown`
+
+Run seeded optimization:
+
+```bash
+palmscript run optimize strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --objective robust-return \
+  --trials 50 \
+  --top 5 \
+  --preset-out /tmp/adaptive-best.json
+```
+
+V1 optimizer notes:
+
+- optimizer tuning is restricted to declared numeric `input`s
+- walk-forward is the default runner; `--runner backtest` is optional
+- the search is seeded and deterministic for the same script, seed, and search space
+- `--workers` only controls bounded parallel evaluation
+- `--preset-out` writes a reusable preset containing the best overrides and top candidates
+- `walk-forward-sweep` remains the explicit grid-search baseline tool
 
 ## Rust API
 
@@ -220,11 +249,77 @@ let result = run_walk_forward_sweep_with_source(
         ],
         objective: WalkForwardSweepObjective::TotalReturn,
         top_n: 5,
+        base_input_overrides: std::collections::BTreeMap::new(),
     },
 )
 .expect("walk-forward sweep succeeds");
 
 println!("best ending equity = {}", result.best_candidate.stitched_summary.ending_equity);
+```
+
+Use `run_optimize_with_source` for seeded bounded optimization:
+
+```rust
+use std::collections::BTreeMap;
+
+use palmscript::{
+    run_optimize_with_source, BacktestConfig, Interval, OptimizeConfig, OptimizeObjective,
+    OptimizeParamSpace, OptimizeRunner, SourceFeed, SourceRuntimeConfig, VmLimits,
+    WalkForwardConfig,
+};
+
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_optimize_with_source(
+    source,
+    runtime,
+    VmLimits::default(),
+    OptimizeConfig {
+        runner: OptimizeRunner::WalkForward,
+        backtest: BacktestConfig {
+            execution_source_alias: "spot".to_string(),
+            initial_capital: 10_000.0,
+            fee_bps: 5.0,
+            slippage_bps: 2.0,
+            perp: None,
+            perp_context: None,
+        },
+        walk_forward: Some(WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 10_000.0,
+                fee_bps: 5.0,
+                slippage_bps: 2.0,
+                perp: None,
+                perp_context: None,
+            },
+            train_bars: 252,
+            test_bars: 63,
+            step_bars: 63,
+        }),
+        params: vec![OptimizeParamSpace::IntegerRange {
+            name: "fast_len".to_string(),
+            low: 8,
+            high: 34,
+        }],
+        objective: OptimizeObjective::RobustReturn,
+        trials: 50,
+        startup_trials: 16,
+        seed: 7,
+        workers: 4,
+        top_n: 5,
+        base_input_overrides: BTreeMap::new(),
+    },
+)
+.expect("optimize succeeds");
+
+println!("best score = {}", result.best_candidate.objective_score);
 ```
 
 The result includes:

@@ -32,6 +32,7 @@ pub struct WalkForwardSweepConfig {
     pub inputs: Vec<InputSweepDefinition>,
     pub objective: WalkForwardSweepObjective,
     pub top_n: usize,
+    pub base_input_overrides: BTreeMap<String, f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -146,7 +147,11 @@ fn enumerate_candidates(
     top_candidates: &mut Vec<WalkForwardSweepCandidateSummary>,
 ) -> Result<(), WalkForwardSweepError> {
     if input_index == config.inputs.len() {
-        let compiled = compile_with_input_overrides(source, current)?;
+        let mut overrides = config.base_input_overrides.clone();
+        for (name, value) in current.iter() {
+            overrides.insert(name.clone(), *value);
+        }
+        let compiled = compile_with_input_overrides(source, &overrides)?;
         let result = run_walk_forward_with_sources(
             &compiled,
             runtime.clone(),
@@ -154,7 +159,7 @@ fn enumerate_candidates(
             config.walk_forward.clone(),
         )?;
         let candidate = WalkForwardSweepCandidateSummary {
-            input_overrides: current.clone(),
+            input_overrides: overrides,
             objective_score: score_candidate(config.objective, &result.stitched_summary),
             stitched_summary: result.stitched_summary,
         };

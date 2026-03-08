@@ -153,6 +153,7 @@ exit short = true";
             }],
             objective: WalkForwardSweepObjective::TotalReturn,
             top_n: 2,
+            base_input_overrides: std::collections::BTreeMap::new(),
         },
     )
     .expect("walk-forward sweep should succeed");

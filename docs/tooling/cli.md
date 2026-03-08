@@ -13,8 +13,9 @@ Typical development flow:
 3. backtest it with `palmscript run backtest` when the script emits trading triggers
 4. run `palmscript run walk-forward` when you want rolling out-of-sample evaluation
 5. run `palmscript run walk-forward-sweep` when you want to rank explicit `input` grids by stitched out-of-sample results
-5. inspect outputs in `json` or `text`
-6. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
+6. run `palmscript run optimize` when you want seeded bounded search over selected numeric `input`s
+7. inspect outputs in `json` or `text`
+8. inspect the compiled form with `palmscript dump-bytecode` when debugging semantics
 
 ## Validate Without Running
 
@@ -62,6 +63,12 @@ Use backtest mode when:
 
 Backtest mode compiles the script, fetches all required source feeds, runs the VM, collects trigger events, resolves venue-aware order templates, and simulates fills on the selected execution source.
 
+Backtest mode also accepts:
+
+- `--preset <path>`
+
+When supplied, PalmScript loads the optimizer preset JSON, verifies the script hash, and applies the preset's `best_input_overrides` before compiling the strategy.
+
 Perp execution sources also accept:
 
 - `--leverage <N>`
@@ -100,6 +107,10 @@ V1 semantics:
 - each segment reuses the training slice as in-sample context and reports the trailing test slice as out-of-sample
 - this mode does not auto-optimize parameters yet; it evaluates the fixed script/inputs you supplied
 
+Walk-forward mode also accepts:
+
+- `--preset <path>`
+
 When the script declares exactly one `source`, walk-forward mode uses it as the execution source automatically. When multiple sources are declared, pass `--execution-source <alias>`.
 
 ## Run Walk-Forward Parameter Sweeps
@@ -131,6 +142,45 @@ V1 semantics:
 - the explicit candidate grid is bounded to `10000` combinations
 - the output ranks candidates by stitched OOS `total-return`, `ending-equity`, or `return-over-drawdown`
 
+Walk-forward sweep also accepts:
+
+- `--preset <path>`
+
+Preset `best_input_overrides` are applied first and explicit `--set` values override only the inputs you are sweeping.
+
+## Run Hyper-Parameter Optimization
+
+```bash
+palmscript run optimize strategy.palm \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --objective robust-return \
+  --trials 50 \
+  --top 5 \
+  --preset-out /tmp/adaptive-best.json
+```
+
+Use optimize mode when:
+
+- the strategy already has a decent base design
+- the parameters you want to tune already exist as numeric `input`s
+- you want stitched walk-forward ranking without hand-running one variant at a time
+
+V1 semantics:
+
+- optimize defaults to the walk-forward runner
+- `--runner backtest` is available for single-window ranking
+- only declared numeric `input`s are tunable
+- the search is seeded and deterministic for the same seed, search space, and runner config
+- candidate suggestion uses a bounded TPE-style search rather than an unbounded evolutionary search
+- `--workers` only controls bounded evaluation concurrency; it does not change the ranked result for the same seed
+- `--preset-out` writes a reusable JSON artifact with the best overrides and top candidate summaries
+
 ## Output Formats
 
 Market mode supports:
@@ -156,6 +206,11 @@ Walk-forward sweep mode also supports `json` and `text`.
 
 - JSON output includes the sweep config, candidate count, and ranked stitched OOS candidates
 - text output includes a compact best-candidate summary plus the ranked top candidates
+
+Optimize mode also supports `json` and `text`.
+
+- JSON output includes the optimize config, trial counts, best candidate, and ranked top candidates
+- text output includes a compact optimization summary plus the best and top candidates
 
 ## Execution Limits
 

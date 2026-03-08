@@ -33,6 +33,7 @@ PalmScript currently implements:
 - isolated-margin perp backtesting for `binance.usdm` and `hyperliquid.perps`, with live venue risk snapshots, leverage, and deterministic liquidation exits
 - rolling out-of-sample walk-forward evaluation through `palmscript run walk-forward` and `run_walk_forward_with_sources`
 - bounded explicit `input` grid search through `palmscript run walk-forward-sweep` and `run_walk_forward_sweep_with_source`
+- seeded hyper-parameter optimization through `palmscript run optimize` and `run_optimize_with_source`
 
 Checked-in strategy examples live under [`examples/strategies/`](examples/strategies/).
 
@@ -65,6 +66,7 @@ target/debug/palmscript run backtest examples/strategies/multi_strategy_backtest
 target/debug/palmscript run backtest strategy.palm --from 1741348800000 --to 1772884800000 --execution-source perp --leverage 3 --margin-mode isolated
 target/debug/palmscript run walk-forward examples/strategies/multi_strategy_backtest.palm --from 1741348800000 --to 1772884800000 --train-bars 252 --test-bars 63 --step-bars 63
 target/debug/palmscript run walk-forward-sweep strategy.palm --from 1741348800000 --to 1772884800000 --train-bars 252 --test-bars 63 --step-bars 63 --set fast_len=13,21,34 --set target_atr_mult=2.0,2.5,3.0 --objective total-return --top 5
+target/debug/palmscript run optimize strategy.palm --from 1741348800000 --to 1772884800000 --train-bars 252 --test-bars 63 --step-bars 63 --param int:fast_len=8:34 --param float:target_atr_mult=1.5:4.0 --objective robust-return --trials 50 --top 5 --preset-out /tmp/adaptive-best.json
 target/debug/palmscript run backtest examples/strategies/venue_orders_backtest.palm --from 1704067200000 --to 1704931200000 --format text
 mkdocs build --strict
 docker build -f Dockerfile.docs -t palmscript-docs .

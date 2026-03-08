@@ -41,6 +41,7 @@ Requirements:
 
 ```bash
 palmscript run backtest <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--preset <path>] \
   [--execution-source <alias>] \
   [--initial-capital <amount>] \
   [--fee-bps <bps>] \
@@ -57,6 +58,7 @@ Arguments and flags:
 - `<script.palm>`: path to the strategy source file
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--preset <path>`: optimizer preset JSON whose `best_input_overrides` are applied before compile
 - `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
 - `--initial-capital <amount>`: starting equity, default `10000`
 - `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
@@ -88,6 +90,7 @@ Backtest output:
 
 ```bash
 palmscript run walk-forward <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--preset <path>] \
   [--execution-source <alias>] \
   [--initial-capital <amount>] \
   [--fee-bps <bps>] \
@@ -107,6 +110,7 @@ Arguments and flags:
 - `<script.palm>`: path to the strategy source file
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--preset <path>`: optimizer preset JSON whose `best_input_overrides` are applied before compile
 - `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
 - `--initial-capital <amount>`: starting equity for each stitched out-of-sample run, default `10000`
 - `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
@@ -140,6 +144,7 @@ Walk-forward output:
 
 ```bash
 palmscript run walk-forward-sweep <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--preset <path>] \
   [--execution-source <alias>] \
   [--initial-capital <amount>] \
   [--fee-bps <bps>] \
@@ -164,6 +169,7 @@ Arguments and flags:
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
+- `--preset <path>`: optimizer preset JSON whose `best_input_overrides` are applied before the sweep grid
 - `--initial-capital <amount>`: starting equity for each stitched out-of-sample run, default `10000`
 - `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
 - `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
@@ -192,6 +198,79 @@ Walk-forward sweep output:
 - JSON includes the sweep config, candidate count, best stitched OOS candidate, and ranked `top_candidates`
 - text output renders the best candidate plus a compact ranked top-candidate table
 - v1 only overrides numeric `input` declarations and recompiles the script per candidate; it does not mutate non-`input` bindings
+
+## `palmscript run optimize`
+
+```bash
+palmscript run optimize <script.palm> --from <unix_ms> --to <unix_ms> \
+  [--preset <path>] \
+  [--execution-source <alias>] \
+  [--initial-capital <amount>] \
+  [--fee-bps <bps>] \
+  [--slippage-bps <bps>] \
+  [--leverage <N>] \
+  [--margin-mode isolated] \
+  [--train-bars <N>] \
+  [--test-bars <N>] \
+  [--step-bars <N>] \
+  --param <int:name=low:high|float:name=low:high|choice:name=v1,v2,...> \
+  [--param <...>] \
+  [--runner walk-forward|backtest] \
+  [--objective robust-return|total-return|ending-equity|return-over-drawdown] \
+  [--trials <N>] \
+  [--startup-trials <N>] \
+  [--seed <u64>] \
+  [--workers <N>] \
+  [--top <N>] \
+  [--preset-out <path>] \
+  [--format json|text] \
+  [--max-instructions-per-bar <N>] \
+  [--max-history-capacity <N>]
+```
+
+Arguments and flags:
+
+- `<script.palm>`: path to the strategy source file
+- `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
+- `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
+- `--preset <path>`: optimizer preset JSON whose `best_input_overrides` are used as compile-time defaults
+- `--execution-source <alias>`: source alias used for fills when the script declares multiple sources
+- `--initial-capital <amount>`: starting equity for candidate evaluations, default `10000`
+- `--fee-bps <bps>`: fee charged per fill in basis points, default `5`
+- `--slippage-bps <bps>`: slippage applied to each fill in basis points, default `2`
+- `--leverage <N>`: isolated leverage for perp execution sources, default `1`
+- `--margin-mode isolated`: isolated perp margin mode; this is the only accepted v1 value
+- `--train-bars <N>`: in-sample context window size in execution bars for walk-forward optimization
+- `--test-bars <N>`: out-of-sample window size in execution bars for walk-forward optimization
+- `--step-bars <N>`: segment advance in execution bars for walk-forward optimization, default `test-bars`
+- `--param <...>`: typed search-space definition for one numeric `input`; repeat to tune multiple inputs
+- `--runner walk-forward|backtest`: evaluation runner, default `walk-forward`
+- `--objective ...`: ranking objective, default `robust-return`
+- `--trials <N>`: total optimization trials, default `50`
+- `--startup-trials <N>`: random startup phase before TPE suggestions, default `min(16, max(8, trials / 3))`
+- `--seed <u64>`: RNG seed for deterministic search, default `0`
+- `--workers <N>`: bounded parallel evaluation worker count, default `min(4, available_cores)`
+- `--top <N>`: number of ranked candidates to keep in the result, default `10`
+- `--preset-out <path>`: optional JSON file to write with the best overrides and top candidates
+- `--format json|text`: output rendering format, default `json`
+- `--max-instructions-per-bar <N>`: VM instruction budget per step, default `10000`
+- `--max-history-capacity <N>`: maximum retained history per series slot, default `1024`
+
+Requirements:
+
+- the script must declare at least one `source`
+- all tuned values must map to declared numeric `input`s
+- `--param` names must be unique within the optimize run
+- `--trials`, `--startup-trials`, `--workers`, and `--top` must be positive
+- v1 caps total trials at `1000`
+- `--train-bars` and `--test-bars` are required for the default walk-forward runner
+- spot execution sources reject `--leverage` and `--margin-mode`
+
+Optimize output:
+
+- JSON includes the optimize config, trial counts, best candidate, and ranked `top_candidates`
+- text output renders the optimizer config plus compact best/top candidate summaries
+- `robust-return` ranks by stitched return with drawdown and weak-segment penalties when using the walk-forward runner
 
 ## `palmscript dump-bytecode`
 
