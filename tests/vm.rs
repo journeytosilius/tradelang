@@ -781,6 +781,32 @@ fn extrema_and_direction_helpers_respect_window_and_na() {
 
 #[test]
 fn event_memory_helpers_track_matches() {
+    let activated = plot_values(
+        "plot(activated(close > close[1]) ? 1 : 0)",
+        &bars_with_spacing(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 12.0],
+        ),
+    );
+    assert_eq!(
+        activated,
+        vec![Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(1.0)]
+    );
+
+    let deactivated = plot_values(
+        "plot(deactivated(close > close[1]) ? 1 : 0)",
+        &bars_with_spacing(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 12.0],
+        ),
+    );
+    assert_eq!(
+        deactivated,
+        vec![Some(0.0), Some(0.0), Some(0.0), Some(1.0), Some(0.0)]
+    );
+
     let barssince = plot_values(
         "plot(barssince(close > close[1]))",
         &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 9.0, 9.0, 12.0]),

@@ -3800,6 +3800,20 @@ fn analyze_helper_builtin(
                 update_mask: series_info.update_mask,
             }
         }
+        BuiltinKind::BoolEdge => {
+            let condition_info = arg_info[0];
+            if !condition_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: condition_info.update_mask,
+            }
+        }
         BuiltinKind::BarsSince => {
             let condition_info = arg_info[0];
             if !condition_info.ty.is_series_bool() {
@@ -4108,7 +4122,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::Plot => ExprInfo::scalar(Type::Void),
         BuiltinKind::Relation2 | BuiltinKind::Relation3 => ExprInfo::scalar(Type::Bool),
         BuiltinKind::Cross => ExprInfo::series(0),
-        BuiltinKind::Rising | BuiltinKind::Falling => ExprInfo {
+        BuiltinKind::Rising | BuiltinKind::Falling | BuiltinKind::BoolEdge => ExprInfo {
             ty: InferredType::Concrete(Type::SeriesBool),
             update_mask: 0,
         },
@@ -5408,6 +5422,8 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Sum
             | BuiltinId::Rising
             | BuiltinId::Falling
+            | BuiltinId::Activated
+            | BuiltinId::Deactivated
             | BuiltinId::BarsSince
             | BuiltinId::ValueWhen
             | BuiltinId::HighestSince
@@ -6472,6 +6488,16 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::BoolEdge => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(1)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

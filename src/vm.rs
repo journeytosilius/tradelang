@@ -15,13 +15,13 @@ use crate::indicators::{
     calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
     calculate_sum, calculate_trange, calculate_var, calculate_willr, calculate_wma, AccbandsState,
     AdOscState, AdState, AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState,
-    AnchoredValueWhenState, BarsSinceState, BbandsState, CmoState, CumState, DirectionalKind,
-    DirectionalState, DmKind, DmState, EmaState, FallingState, HighestState, HtDcPeriodState,
-    HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState, HtTrendlineState, IndicatorState,
-    LowestState, MacdExtState, MacdState, MamaState, MavpState, MovingAverageState, ObvState,
-    OscillatorKind, PriceOscillatorState, RegressionOutput, RisingState, RsiState, SarConfig,
-    SarState, SmaState, StochFastState, StochRsiState, StochState, TrixState, UnaryMathTransform,
-    ValueWhenState,
+    AnchoredValueWhenState, BarsSinceState, BbandsState, BoolEdgeMode, BoolEdgeState, CmoState,
+    CumState, DirectionalKind, DirectionalState, DmKind, DmState, EmaState, FallingState,
+    HighestState, HtDcPeriodState, HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState,
+    HtTrendlineState, IndicatorState, LowestState, MacdExtState, MacdState, MamaState, MavpState,
+    MovingAverageState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
+    RisingState, RsiState, SarConfig, SarState, SmaState, StochFastState, StochRsiState,
+    StochState, TrixState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -485,6 +485,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Sum => self.call_sum(arity, args, pc),
             BuiltinId::Rising => self.call_rising(callsite, arity, args, pc),
             BuiltinId::Falling => self.call_falling(callsite, arity, args, pc),
+            BuiltinId::Activated => self.call_activated(callsite, arity, args, pc),
+            BuiltinId::Deactivated => self.call_deactivated(callsite, arity, args, pc),
             BuiltinId::BarsSince => self.call_barssince(callsite, arity, args, pc),
             BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
             BuiltinId::HighestSince => {
@@ -2230,6 +2232,66 @@ impl<'a> VmEngine<'a> {
         pc: usize,
     ) -> Result<Value, RuntimeError> {
         self.call_extrema_stateful(callsite, arity, args, pc, BuiltinId::Falling)
+    }
+
+    fn call_activated(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_bool_edge(callsite, arity, args, pc, BuiltinId::Activated)
+    }
+
+    fn call_deactivated(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_bool_edge(callsite, arity, args, pc, BuiltinId::Deactivated)
+    }
+
+    fn call_bool_edge(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+        builtin: BuiltinId,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 1 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: builtin.as_str(),
+                expected: 1,
+                found: arity,
+            });
+        }
+        let condition_slot = series_ref(args[0].clone(), pc)?;
+        self.consume_steps(2, pc)?;
+        let condition =
+            self.series_values
+                .get(condition_slot)
+                .ok_or(RuntimeError::InvalidSeriesSlot {
+                    slot: condition_slot,
+                })?;
+        let key = (builtin, callsite);
+        let mut state = self.indicator_state.remove(&key).unwrap_or_else(|| {
+            let mode = match builtin {
+                BuiltinId::Activated => BoolEdgeMode::Activated,
+                BuiltinId::Deactivated => BoolEdgeMode::Deactivated,
+                _ => unreachable!(),
+            };
+            IndicatorState::BoolEdge(BoolEdgeState::new(mode))
+        });
+        let result = match &mut state {
+            IndicatorState::BoolEdge(state) => state.update(condition, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
     }
 
     fn call_extrema_stateful(

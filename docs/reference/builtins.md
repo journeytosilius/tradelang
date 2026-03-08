@@ -23,7 +23,7 @@ PalmScript currently exposes these builtin categories:
 - crossing helpers: `cross`, `crossover`, `crossunder`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
-- event-memory helpers: `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
+- event-memory helpers: `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `hl.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
@@ -200,6 +200,17 @@ Rules:
 
 ## Event Memory Helpers
 
+### `activated(condition)` and `deactivated(condition)`
+
+Rules:
+
+- both require exactly one argument
+- the argument must be `series<bool>`
+- `activated` returns `true` when the current condition sample is `true` and the prior sample was `false` or `na`
+- `deactivated` returns `true` when the current condition sample is `false` and the prior sample was `true`
+- if the current sample is `na`, both helpers return `false`
+- the result type is `series<bool>`
+
 ### `barssince(condition)`
 
 Rules:
@@ -303,6 +314,7 @@ Examples:
 - `highest(spot.1w.close, 5)` advances on the weekly clock
 - `cum(spot.1w.close - spot.1w.close[1])` advances on the weekly clock
 - `crossover(hl.close, bn.close)` advances when either referenced source series advances
+- `activated(trend_long)` advances on the clock of `trend_long`
 - `barssince(spot.close > spot.close[1])` advances on the clock of that condition series
 - `valuewhen(trigger_series, hl.1h.close, 0)` advances on the clock of `trigger_series`
 - `highest_since(position_event.long_entry_fill, spot.high)` advances on the clock shared by the anchor and source series

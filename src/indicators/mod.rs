@@ -35,7 +35,7 @@ pub(crate) use directional::{DirectionalKind, DirectionalState, DmKind, DmState}
 pub(crate) use ema::EmaState;
 pub(crate) use event::{
     AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
-    BarsSinceState, CumState, ValueWhenState,
+    BarsSinceState, BoolEdgeMode, BoolEdgeState, CumState, ValueWhenState,
 };
 pub(crate) use extrema::{
     calculate_aroon, calculate_aroonosc, calculate_highest_bars, calculate_lowest_bars,
@@ -70,6 +70,7 @@ pub(crate) enum IndicatorState {
     Lowest(LowestState),
     Rising(RisingState),
     Falling(FallingState),
+    BoolEdge(BoolEdgeState),
     BarsSince(BarsSinceState),
     ValueWhen(ValueWhenState),
     AnchoredExtrema(AnchoredExtremaState),

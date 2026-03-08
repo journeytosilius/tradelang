@@ -61,11 +61,73 @@ pub(crate) struct AnchoredCountState {
     cached_output: Value,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BoolEdgeMode {
+    Activated,
+    Deactivated,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BoolEdgeState {
+    mode: BoolEdgeMode,
+    last_seen_version: u64,
+    cached_output: Value,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct CumState {
     total: f64,
     initialized: bool,
     cached_output: Value,
+}
+
+impl BoolEdgeState {
+    pub(crate) fn new(mode: BoolEdgeMode) -> Self {
+        Self {
+            mode,
+            last_seen_version: 0,
+            cached_output: Value::Bool(false),
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        condition: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if condition.version() == self.last_seen_version {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_seen_version = condition.version();
+        let current = match condition.get(0) {
+            Value::Bool(value) => Some(value),
+            Value::NA => None,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        };
+        let previous = match condition.get(1) {
+            Value::Bool(value) => Some(value),
+            Value::NA => None,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        };
+        let edge = match self.mode {
+            BoolEdgeMode::Activated => current == Some(true) && previous != Some(true),
+            BoolEdgeMode::Deactivated => current == Some(false) && previous == Some(true),
+        };
+        self.cached_output = Value::Bool(edge);
+        Ok(self.cached_output.clone())
+    }
 }
 
 impl BarsSinceState {
@@ -516,7 +578,7 @@ impl CumState {
 mod tests {
     use super::{
         AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
-        BarsSinceState, CumState, ValueWhenState,
+        BarsSinceState, BoolEdgeMode, BoolEdgeState, CumState, ValueWhenState,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -532,6 +594,45 @@ mod tests {
         assert_eq!(state.update(&cond, 0).unwrap(), Value::F64(0.0));
         cond.push(Value::Bool(false));
         assert_eq!(state.update(&cond, 0).unwrap(), Value::F64(1.0));
+    }
+
+    #[test]
+    fn activated_marks_false_to_true_and_initial_true_edges() {
+        let mut state = BoolEdgeState::new(BoolEdgeMode::Activated);
+        let mut cond = SeriesBuffer::new(8);
+
+        cond.push(Value::NA);
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
+
+        cond.push(Value::Bool(true));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(true));
+
+        cond.push(Value::Bool(true));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
+
+        cond.push(Value::Bool(false));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
+
+        cond.push(Value::Bool(true));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(true));
+    }
+
+    #[test]
+    fn deactivated_marks_true_to_false_edges_only() {
+        let mut state = BoolEdgeState::new(BoolEdgeMode::Deactivated);
+        let mut cond = SeriesBuffer::new(8);
+
+        cond.push(Value::Bool(true));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
+
+        cond.push(Value::Bool(false));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(true));
+
+        cond.push(Value::Bool(false));
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
+
+        cond.push(Value::NA);
+        assert_eq!(state.update(&cond, 0).unwrap(), Value::Bool(false));
     }
 
     #[test]

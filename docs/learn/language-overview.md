@@ -11,7 +11,7 @@ Common building blocks:
 - `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, `entry` / `exit`, and `order`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
-- helper builtins such as `crossover`, `highest`, `barssince`, and `valuewhen`
+- helper builtins such as `crossover`, `activated`, `barssince`, and `valuewhen`
 - typed `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` enum literals
 
 ## Script Shape

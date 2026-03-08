@@ -273,7 +273,7 @@ fn rejects_position_namespace_outside_attached_exits() {
 
 #[test]
 fn compile_source_specific_and_builtin_catalog_matches_contract() {
-    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 37] = [
+    let cases: [(&str, String, Vec<ExpectedDiagnostic>); 39] = [
         (
             "type_lower_source_interval_reports_both_use_and_reference",
             "interval 1h\nsource a = binance.spot(\"BTCUSDT\")\nuse a 1m\nplot(a.1m.close)"
@@ -434,6 +434,34 @@ fn compile_source_specific_and_builtin_catalog_matches_contract() {
                 DiagnosticKind::Type,
                 "barssince requires series<bool> as the first argument",
             )],
+        ),
+        (
+            "type_activated_requires_series_bool",
+            with_interval("plot(activated(close))"),
+            vec![
+                expected(
+                    DiagnosticKind::Type,
+                    "activated requires series<bool> as the first argument",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "plot expects a numeric or series numeric value",
+                ),
+            ],
+        ),
+        (
+            "type_deactivated_requires_series_bool",
+            with_interval("plot(deactivated(close))"),
+            vec![
+                expected(
+                    DiagnosticKind::Type,
+                    "deactivated requires series<bool> as the first argument",
+                ),
+                expected(
+                    DiagnosticKind::Type,
+                    "plot expects a numeric or series numeric value",
+                ),
+            ],
         ),
         (
             "type_count_since_requires_series_bool",

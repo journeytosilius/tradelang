@@ -6,7 +6,7 @@
 
 PalmScript is a deterministic DSL and bytecode VM for financial time-series strategies.
 
-The language now includes indicator, signal-helper, null-handling, event-memory, anchored-event, and TA-Lib-style builtins such as `crossover`, `highest`, `highestbars`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`, `na(...)`, `nz`, `coalesce`, `cum`, `ma`, `apo`, `ppo`, `macd`, `mama`, `wma`, `avgdev`, `stddev`, `linearreg`, `beta`, `correl`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `willr`, `minmax`, `ht_dcperiod`, and `ht_sine` in addition to the core OHLCV series model.
+The language now includes indicator, signal-helper, null-handling, event-memory, anchored-event, and TA-Lib-style builtins such as `crossover`, `highest`, `highestbars`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`, `na(...)`, `nz`, `coalesce`, `cum`, `ma`, `apo`, `ppo`, `macd`, `mama`, `wma`, `avgdev`, `stddev`, `linearreg`, `beta`, `correl`, `aroon`, `aroonosc`, `bop`, `cci`, `cmo`, `mom`, `roc`, `willr`, `minmax`, `ht_dcperiod`, and `ht_sine` in addition to the core OHLCV series model.
 
 The repository currently ships:
 
