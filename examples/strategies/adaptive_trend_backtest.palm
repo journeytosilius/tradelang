@@ -5,7 +5,7 @@ use spot 1w
 
 // Multi-timeframe long-only trend strategy with adaptive 4h bias,
 // breakout market entries, a slower 4h trend-rollover discretionary exit,
-// a fixed profit target, and ATR-based chandelier protection anchored to the
+// a hybrid profit target, and ATR-based chandelier protection anchored to the
 // actual fill bar.
 input fast_len = 13
 input slow_len = 89
@@ -19,6 +19,7 @@ input kama_len = 30
 input atr_len = 14
 input protect_atr_mult = 4.0
 input protect_cooldown_bars = 10
+input target_atr_mult = 2.5
 const target_return = 0.05
 const long_rsi_threshold = 58
 const macd_fast_len = 12
@@ -59,9 +60,10 @@ export short_stop_level = na
 // regimes instead of forcing shorts into BTC's structurally bullish periods.
 // ATR protection is handled by an attached `protect long` order so the normal
 // `exit long` signal can still act as a discretionary regime exit, while
-// `target long` realizes strong breakouts before they round-trip back to the
-// trailing stop. A short cooldown after `protect long` exits avoids immediately
-// re-entering the same failed breakout regime.
+// `target long` uses the wider of a fixed 5% objective and an ATR-scaled
+// extension so strong breakouts can run further before they round-trip back to
+// the trailing stop. A short cooldown after `protect long` exits avoids
+// immediately re-entering the same failed breakout regime.
 entry long = trend_long and breakout_long and above(rsi_4h, long_rsi_threshold) and above(macd_hist, 0) and recent_protect_exit == false
 entry short = false
 exit long = below(spot.close, fast) and below(fast, slow)
@@ -71,7 +73,12 @@ order entry long = market()
 order entry short = market()
 order exit short = stop_market(fast, trigger_ref.last)
 protect long = stop_market(chandelier_long, trigger_ref.last)
-target long = take_profit_market(position.entry_price * (1 + target_return), trigger_ref.last)
+target long = take_profit_market(
+    above(add(position.entry_price, target_atr_mult * atr_4h), position.entry_price * (1 + target_return))
+        ? add(position.entry_price, target_atr_mult * atr_4h)
+        : position.entry_price * (1 + target_return),
+    trigger_ref.last
+)
 
 plot(fast - slow)
 plot(macd_line - macd_signal)
