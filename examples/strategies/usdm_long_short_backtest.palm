@@ -19,7 +19,7 @@ input adx_len = 14
 input breakout_len = 40
 input short_breakout_len = 20
 input atr_len = 14
-input protect_atr_mult = 1.5
+input protect_atr_mult = 1.25
 input target_atr_mult = 2.0
 input protect_cooldown_bars = 12
 input rearm_bars = 6
@@ -114,7 +114,7 @@ target short = take_profit_market(
         : position.entry_price * (1 - target_return),
     trigger_ref.mark
 )
-size target long = 0.5
+size target long = 0.75
 size target short = 0.5
 
 plot(fast - slow)
