@@ -98,7 +98,7 @@ exit short = above(perp.close, fast) and above(fast, slow)
 
 order entry long = market()
 order entry short = market()
-size entry long = 0.50
+size entry long = 1.00
 size entry short = 0.0025
 protect long = stop_market(chandelier_long, trigger_ref.mark)
 protect short = stop_market(chandelier_short, trigger_ref.mark)
