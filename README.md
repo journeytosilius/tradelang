@@ -49,3 +49,6 @@ docker run --rm -p 8080:8080 palmscript-ide
 
 The browser IDE shell uses the same blue-grey and accent-blue visual language
 as the published docs at <https://palmscript.dev/docs/>.
+
+The public demo keeps the chrome intentionally minimal: one editor buffer, a
+curated dataset selector, diagnostics, and backtest output panels.

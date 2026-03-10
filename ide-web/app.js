@@ -21,7 +21,6 @@ export trend_long_state = above(fast, slow)
 
 const state = {
   datasets: [],
-  examples: [],
   datasetId: null,
   editor: null,
   model: null,
@@ -498,12 +497,8 @@ function renderBacktest(response) {
 }
 
 async function loadCatalogs() {
-  const [datasets, examples] = await Promise.all([
-    fetchJson("/api/datasets"),
-    fetchJson("/api/examples"),
-  ]);
+  const datasets = await fetchJson("/api/datasets");
   state.datasets = datasets.datasets;
-  state.examples = examples;
   const select = document.getElementById("dataset-select");
   select.innerHTML = "";
   for (const dataset of state.datasets) {
@@ -516,42 +511,6 @@ async function loadCatalogs() {
   select.addEventListener("change", () => {
     state.datasetId = select.value;
   });
-
-  const examplesList = document.getElementById("examples-list");
-  for (const example of state.examples) {
-    const card = document.createElement("div");
-    card.className = "example-card";
-    card.innerHTML = `<h3>${example.name}</h3><div class="muted">${example.description}</div>`;
-    card.addEventListener("click", () => state.editor.setValue(example.source));
-    examplesList.appendChild(card);
-  }
-}
-
-async function runCheck() {
-  setStatus("Checking…");
-  try {
-    const response = await fetchJson("/api/check", {
-      method: "POST",
-      body: JSON.stringify({ script: state.editor.getValue() }),
-    });
-    const diagnostics = response.diagnostics.map((diagnostic) => ({
-      message: diagnostic.message,
-      range: {
-        start: {
-          line: diagnostic.span.start.line - 1,
-          character: diagnostic.span.start.column - 1,
-        },
-        end: {
-          line: diagnostic.span.end.line - 1,
-          character: diagnostic.span.end.column - 1,
-        },
-      },
-    }));
-    setMarkers(diagnostics);
-    setStatus(diagnostics.length === 0 ? "Check passed" : "Check found diagnostics");
-  } catch (error) {
-    setStatus(error.message);
-  }
 }
 
 async function runBacktest() {
@@ -610,43 +569,13 @@ async function setupEditor() {
   state.model.onDidChangeContent(sendChange);
 }
 
-function bindButtons() {
-  document.getElementById("new-button").addEventListener("click", () => {
-    state.editor.setValue(DEFAULT_SOURCE);
-    setStatus("New buffer");
-  });
-  document.getElementById("load-example-button").addEventListener("click", () => {
-    if (state.examples[0]) {
-      state.editor.setValue(state.examples[0].source);
-      setStatus(`Loaded ${state.examples[0].name}`);
-    }
-  });
-  const fileInput = document.getElementById("file-input");
-  document.getElementById("import-button").addEventListener("click", () => fileInput.click());
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file) {
-      return;
-    }
-    state.editor.setValue(await file.text());
-    setStatus(`Imported ${file.name}`);
-  });
-  document.getElementById("export-button").addEventListener("click", () => {
-    const blob = new Blob([state.editor.getValue()], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "strategy.palm";
-    link.click();
-    URL.revokeObjectURL(url);
-  });
-  document.getElementById("check-button").addEventListener("click", runCheck);
+function bindActions() {
   document.getElementById("run-button").addEventListener("click", runBacktest);
 }
 
 async function init() {
   updateTabs();
-  bindButtons();
+  bindActions();
   await loadCatalogs();
   await setupEditor();
   setStatus("Ready");

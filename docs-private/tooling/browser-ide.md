@@ -2,7 +2,7 @@
 
 The hosted PalmScript browser IDE is backed by:
 
-- `palmscript-ide-server` for HTTP, websocket LSP transport, curated examples, and curated backtests
+- `palmscript-ide-server` for HTTP, websocket LSP transport, curated dataset metadata, and curated backtests
 - the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
 - a single-file browser workspace with Monaco-based editing, syntax highlighting, semantic tokens, diagnostics, hover, completion, formatting, and curated backtest execution
 
@@ -38,9 +38,10 @@ The image embeds the browser shell and serves the full IDE from the
 The first public IDE release is intentionally narrow:
 
 - one `.palm` buffer
+- minimal demo chrome with a dataset selector and run action only
 - anonymous ephemeral browser sessions
 - curated BTCUSDT Binance spot datasets only
-- `check` and `backtest` only
+- live LSP diagnostics plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
 ## HTTP surface

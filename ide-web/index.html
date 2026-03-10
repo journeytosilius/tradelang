@@ -12,23 +12,10 @@
       <header class="toolbar">
         <div class="brand">PalmScript IDE</div>
         <select id="dataset-select"></select>
-        <button id="new-button">New</button>
-        <button id="load-example-button">Load Example</button>
-        <button id="import-button">Import</button>
-        <button id="export-button">Export</button>
-        <button id="check-button">Check</button>
         <button id="run-button" class="primary">Run Backtest</button>
         <span id="status-text">Ready</span>
       </header>
       <main class="workspace">
-        <aside class="sidebar">
-          <h2>Examples</h2>
-          <div id="examples-list"></div>
-          <h2>Help</h2>
-          <p class="muted">
-            Public IDE runs curated BTCUSDT Binance spot datasets only.
-          </p>
-        </aside>
         <section class="editor-column">
           <div id="editor"></div>
           <section class="panel diagnostics-panel">
@@ -58,7 +45,6 @@
         </aside>
       </main>
     </div>
-    <input id="file-input" type="file" accept=".palm,text/plain" hidden />
     <script type="module" src="/ide/app.js"></script>
   </body>
 </html>
