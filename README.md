@@ -16,6 +16,7 @@ The public documentation is focused on:
 Documentation:
 
 - published site: <https://palmscript.dev/docs/>
+- hosted IDE: <https://palmscript.dev/app/>
 - local source: [docs/index.md](docs/index.md)
 
 Start here:
@@ -53,3 +54,5 @@ as the published docs at <https://palmscript.dev/docs/>.
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
 calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
 backtest output panels.
+
+The hosted reverse-proxy entrypoint is `/app/`.

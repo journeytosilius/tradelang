@@ -88,7 +88,7 @@ function syncDateInputs(changedInputId) {
 }
 
 async function fetchJson(path, options = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(new URL(path, window.location.href), {
     ...options,
     headers: {
       "content-type": "application/json",
@@ -218,8 +218,10 @@ function setMarkers(diagnostics) {
 }
 
 function buildLspUrl() {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}/api/lsp?session=${encodeURIComponent(sessionId())}`;
+  const url = new URL("api/lsp", window.location.href);
+  url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  url.searchParams.set("session", sessionId());
+  return url.toString();
 }
 
 function bindMonacoProviders() {
@@ -535,7 +537,7 @@ function renderSummaryCard(label, value, extraClass = "") {
 }
 
 async function loadCatalogs() {
-  const datasets = await fetchJson("/api/datasets");
+  const datasets = await fetchJson("api/datasets");
   state.datasets = datasets.datasets;
   state.dataset = state.datasets[0] ?? null;
   if (!state.dataset) {
@@ -584,7 +586,7 @@ async function runBacktest() {
   }
   setStatus("Running backtest…");
   try {
-    const response = await fetchJson("/api/backtest", {
+    const response = await fetchJson("api/backtest", {
       method: "POST",
       body: JSON.stringify({
         script: state.editor.getValue(),

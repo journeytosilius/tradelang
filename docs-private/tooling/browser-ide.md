@@ -16,6 +16,8 @@ target/debug/palmscript-ide-server
 Default bind address:
 
 - `127.0.0.1:8080`
+- local entrypoint: `/`
+- hosted reverse-proxy entrypoint: `/app/`
 
 Override with:
 
@@ -52,6 +54,9 @@ The first public IDE release is intentionally narrow:
 - `POST /api/check`
 - `POST /api/backtest`
 - `WS /api/lsp`
+
+The hosted deployment also exposes the same surface under `/app/...` so a
+front proxy can mount the IDE at `https://palmscript.dev/app/`.
 
 ## Session and resource limits
 

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
@@ -326,14 +326,24 @@ pub async fn build_public_dataset_cache(
 pub fn browser_ide_router(state: PublicIdeState) -> Router {
     Router::new()
         .route("/", get(index_html))
+        .route("/app", get(app_root_redirect))
+        .route("/app/", get(index_html))
         .route("/ide/app.js", get(app_js))
+        .route("/app/ide/app.js", get(app_js))
         .route("/ide/style.css", get(style_css))
+        .route("/app/ide/style.css", get(style_css))
         .route("/api/healthz", get(healthz))
+        .route("/app/api/healthz", get(healthz))
         .route("/api/examples", get(list_examples))
+        .route("/app/api/examples", get(list_examples))
         .route("/api/datasets", get(list_datasets))
+        .route("/app/api/datasets", get(list_datasets))
         .route("/api/check", post(check_script))
+        .route("/app/api/check", post(check_script))
         .route("/api/backtest", post(run_backtest))
+        .route("/app/api/backtest", post(run_backtest))
         .route("/api/lsp", get(lsp_socket))
+        .route("/app/api/lsp", get(lsp_socket))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -344,6 +354,10 @@ async fn healthz() -> impl IntoResponse {
 
 async fn index_html() -> impl IntoResponse {
     Html(include_str!("../ide-web/index.html"))
+}
+
+async fn app_root_redirect() -> impl IntoResponse {
+    Redirect::permanent("/app/")
 }
 
 async fn app_js() -> impl IntoResponse {
@@ -782,6 +796,21 @@ export x = spot.close
         let examples: Vec<PublicExample> =
             serde_json::from_slice(&body).expect("examples response should deserialize");
         assert!(!examples.is_empty());
+    }
+
+    #[tokio::test]
+    async fn app_prefixed_dataset_endpoint_returns_catalog() {
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/app/api/datasets")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
     }
 
     #[tokio::test]
