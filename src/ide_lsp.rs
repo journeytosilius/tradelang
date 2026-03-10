@@ -20,17 +20,35 @@ use lsp_types::{
     CompletionOptions, CompletionParams, Diagnostic, DiagnosticSeverity, DocumentFormattingParams,
     DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
     GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeResult, MarkupContent,
-    MarkupKind, OneOf, Position as LspPosition, Range, ServerCapabilities,
-    SymbolKind as LspSymbolKind, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
+    MarkupKind, OneOf, Position as LspPosition, Range, SemanticToken, SemanticTokenModifier,
+    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
+    SemanticTokensOptions, SemanticTokensResult, SemanticTokensServerCapabilities,
+    ServerCapabilities, SymbolKind as LspSymbolKind, TextDocumentSyncCapability,
+    TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
+use crate::builtins::BuiltinId;
 use crate::ide::{
     analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
     DocumentSymbolInfo, HoverInfo, SemanticDocument,
 };
+use crate::lexer;
+use crate::talib::metadata_by_name as talib_metadata_by_name;
+use crate::token::{Token, TokenKind};
 use crate::{CompileError, Diagnostic as PalmDiagnostic, Position, Span, SymbolKind};
+
+const SEMANTIC_TOKEN_TYPES: [SemanticTokenType; 8] = [
+    SemanticTokenType::KEYWORD,
+    SemanticTokenType::STRING,
+    SemanticTokenType::NUMBER,
+    SemanticTokenType::FUNCTION,
+    SemanticTokenType::VARIABLE,
+    SemanticTokenType::PARAMETER,
+    SemanticTokenType::NAMESPACE,
+    SemanticTokenType::TYPE,
+];
 
 #[derive(Clone, Debug)]
 pub struct OpenDocument {
@@ -260,6 +278,20 @@ impl IdeLspSession {
                     )],
                 }
             }
+            <lsp_types::request::SemanticTokensFullRequest as LspRequest>::METHOD => {
+                let Ok(params) = parse_params::<lsp_types::SemanticTokensParams>(
+                    &request.method,
+                    request.params.clone(),
+                ) else {
+                    return vec![invalid_params_response(request)];
+                };
+                let result = self
+                    .documents
+                    .document(&params.text_document.uri)
+                    .and_then(build_semantic_tokens)
+                    .map(SemanticTokensResult::Tokens);
+                vec![send_optional_response(request.id, result)]
+            }
             _ => vec![error_response(
                 request.id,
                 lsp_server::ErrorCode::MethodNotFound as i32,
@@ -342,6 +374,19 @@ pub fn server_capabilities() -> ServerCapabilities {
         document_symbol_provider: Some(OneOf::Left(true)),
         completion_provider: Some(CompletionOptions::default()),
         document_formatting_provider: Some(OneOf::Left(true)),
+        semantic_tokens_provider: Some(SemanticTokensServerCapabilities::SemanticTokensOptions(
+            SemanticTokensOptions {
+                work_done_progress_options: WorkDoneProgressOptions {
+                    work_done_progress: None,
+                },
+                legend: SemanticTokensLegend {
+                    token_types: SEMANTIC_TOKEN_TYPES.to_vec(),
+                    token_modifiers: Vec::<SemanticTokenModifier>::new(),
+                },
+                range: None,
+                full: Some(SemanticTokensFullOptions::Bool(true)),
+            },
+        )),
         ..ServerCapabilities::default()
     }
 }
@@ -532,6 +577,102 @@ fn publish_diagnostics(uri: Uri, diagnostics: Vec<Diagnostic>) -> Message {
     ))
 }
 
+fn build_semantic_tokens(document: &OpenDocument) -> Option<SemanticTokens> {
+    let semantic = document.semantic.as_ref()?;
+    let tokens = lexer::lex(&document.text).ok()?;
+    let mut encoded = Vec::new();
+    let mut previous_line = 0u32;
+    let mut previous_start = 0u32;
+    let mut first = true;
+
+    for token in tokens {
+        let Some(token_type) = semantic_token_type(&token, semantic) else {
+            continue;
+        };
+        if token.span.start.line == 0 || token.span.end.offset < token.span.start.offset {
+            continue;
+        }
+        let length = document.text[token.span.start.offset..token.span.end.offset]
+            .chars()
+            .count() as u32;
+        if length == 0 {
+            continue;
+        }
+        let line = token.span.start.line.saturating_sub(1) as u32;
+        let start = token.span.start.column.saturating_sub(1) as u32;
+        let (delta_line, delta_start) = if first {
+            first = false;
+            (line, start)
+        } else if line == previous_line {
+            (0, start.saturating_sub(previous_start))
+        } else {
+            (line.saturating_sub(previous_line), start)
+        };
+        encoded.push(SemanticToken {
+            delta_line,
+            delta_start,
+            length,
+            token_type,
+            token_modifiers_bitset: 0,
+        });
+        previous_line = line;
+        previous_start = start;
+    }
+
+    Some(SemanticTokens {
+        result_id: None,
+        data: encoded,
+    })
+}
+
+fn semantic_token_type(token: &Token, semantic: &SemanticDocument) -> Option<u32> {
+    let index = match &token.kind {
+        TokenKind::Fn
+        | TokenKind::Let
+        | TokenKind::Const
+        | TokenKind::Input
+        | TokenKind::Order
+        | TokenKind::IntervalKw
+        | TokenKind::Source
+        | TokenKind::Use
+        | TokenKind::Export
+        | TokenKind::Trigger
+        | TokenKind::Entry
+        | TokenKind::Exit
+        | TokenKind::Protect
+        | TokenKind::Target
+        | TokenKind::Size
+        | TokenKind::Long
+        | TokenKind::Short
+        | TokenKind::If
+        | TokenKind::Else
+        | TokenKind::And
+        | TokenKind::Or
+        | TokenKind::True
+        | TokenKind::False
+        | TokenKind::Na => 0,
+        TokenKind::String(_) => 1,
+        TokenKind::Number(_) => 2,
+        TokenKind::Interval(_) => 7,
+        TokenKind::Ident(text) => {
+            if BuiltinId::from_name(text).is_some() || talib_metadata_by_name(text).is_some() {
+                3
+            } else if let Some(definition) = semantic.definition_at(token.span.start.offset) {
+                match definition.kind {
+                    SymbolKind::Function => 3,
+                    SymbolKind::Parameter => 5,
+                    SymbolKind::Source | SymbolKind::UseInterval | SymbolKind::Interval => 6,
+                    SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => 4,
+                }
+            } else {
+                4
+            }
+        }
+        _ => return None,
+    };
+    Some(index)
+}
+
 #[cfg(test)]
 mod tests {
     use super::IdeLspSession;
@@ -581,5 +722,34 @@ mod tests {
             .as_array()
             .expect("diagnostics array")
             .is_empty());
+    }
+
+    #[test]
+    fn semantic_tokens_request_returns_token_data() {
+        let mut session = IdeLspSession::new();
+        session.handle_message(Message::Notification(Notification::new(
+            "textDocument/didOpen".to_string(),
+            json!({
+                "textDocument": {
+                    "uri": "inmemory:///strategy.palm",
+                    "languageId": "palmscript",
+                    "version": 1,
+                    "text": "interval 4h\nsource spot = binance.spot(\"BTCUSDT\")\nlet fast = ema(spot.close, 13)\n"
+                }
+            }),
+        )));
+        let messages = session.handle_message(Message::Request(Request {
+            id: 2.into(),
+            method: "textDocument/semanticTokens/full".to_string(),
+            params: json!({
+                "textDocument": { "uri": "inmemory:///strategy.palm" }
+            }),
+        }));
+        let Message::Response(response) = &messages[0] else {
+            panic!("expected response");
+        };
+        let result = response.result.as_ref().expect("semantic tokens result");
+        let data = result["data"].as_array().expect("semantic token data");
+        assert!(!data.is_empty());
     }
 }

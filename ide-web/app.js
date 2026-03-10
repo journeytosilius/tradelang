@@ -189,6 +189,104 @@ function buildLspUrl() {
 function bindMonacoProviders() {
   const monaco = state.monaco;
   monaco.languages.register({ id: "palmscript" });
+  monaco.languages.setLanguageConfiguration("palmscript", {
+    comments: {
+      lineComment: "//",
+    },
+    brackets: [
+      ["{", "}"],
+      ["[", "]"],
+      ["(", ")"],
+    ],
+    autoClosingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: "\"", close: "\"" },
+    ],
+    surroundingPairs: [
+      { open: "{", close: "}" },
+      { open: "[", close: "]" },
+      { open: "(", close: ")" },
+      { open: "\"", close: "\"" },
+    ],
+  });
+  monaco.languages.setMonarchTokensProvider("palmscript", {
+    keywords: [
+      "interval",
+      "source",
+      "use",
+      "fn",
+      "let",
+      "const",
+      "input",
+      "order",
+      "export",
+      "trigger",
+      "entry",
+      "exit",
+      "protect",
+      "target",
+      "size",
+      "long",
+      "short",
+      "if",
+      "else",
+      "and",
+      "or",
+      "true",
+      "false",
+      "na",
+    ],
+    tokenizer: {
+      root: [
+        [/\/\/.*$/, "comment"],
+        [/\b\d+(?:\.\d+)?\b/, "number"],
+        [/\b\d+(?:s|m|h|d|w|M)\b/, "type"],
+        [/"/, { token: "string.quote", bracket: "@open", next: "@string" }],
+        [
+          /[A-Za-z_][A-Za-z0-9_]*/,
+          {
+            cases: {
+              "@keywords": "keyword",
+              "@default": "identifier",
+            },
+          },
+        ],
+        [/[{}[\]()]/, "@brackets"],
+        [/[=><!~?:&|+\-*/^.]+/, "operator"],
+        [/[.,]/, "delimiter"],
+      ],
+      string: [
+        [/[^\\"]+/, "string"],
+        [/\\./, "string.escape"],
+        [/"/, { token: "string.quote", bracket: "@close", next: "@pop" }],
+      ],
+    },
+  });
+  monaco.editor.defineTheme("palmscript-light", {
+    base: "vs",
+    inherit: true,
+    rules: [
+      { token: "keyword", foreground: "276749", fontStyle: "bold" },
+      { token: "string", foreground: "b35c1e" },
+      { token: "number", foreground: "2b6cb0" },
+      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
+      { token: "operator", foreground: "2d3748" },
+      { token: "delimiter", foreground: "4a5568" },
+      { token: "type", foreground: "975a16" },
+      { token: "function", foreground: "0f766e" },
+      { token: "variable", foreground: "1f2937" },
+      { token: "parameter", foreground: "7c3aed" },
+      { token: "namespace", foreground: "0c4a6e" },
+    ],
+    colors: {
+      "editor.background": "#fffdf8",
+      "editor.lineHighlightBackground": "#f6f1e7",
+      "editor.selectionBackground": "#d7e9dd",
+      "editor.inactiveSelectionBackground": "#e7f0ea",
+    },
+  });
   monaco.languages.registerCompletionItemProvider("palmscript", {
     triggerCharacters: [".", "("],
     provideCompletionItems: async (model, position) => {
@@ -270,6 +368,30 @@ function bindMonacoProviders() {
         text: edit.newText,
       }));
     },
+  });
+  monaco.languages.registerDocumentSemanticTokensProvider("palmscript", {
+    getLegend: () => ({
+      tokenTypes: [
+        "keyword",
+        "string",
+        "number",
+        "function",
+        "variable",
+        "parameter",
+        "namespace",
+        "type",
+      ],
+      tokenModifiers: [],
+    }),
+    provideDocumentSemanticTokens: async () => {
+      const result = await state.lsp.request("textDocument/semanticTokens/full", {
+        textDocument: { uri: MODEL_URI },
+      });
+      return {
+        data: new Uint32Array(result?.data ?? []),
+      };
+    },
+    releaseDocumentSemanticTokens: () => {},
   });
 }
 
@@ -443,7 +565,7 @@ async function setupEditor() {
   state.model = state.monaco.editor.createModel(DEFAULT_SOURCE, "palmscript", state.monaco.Uri.parse(MODEL_URI));
   state.editor = state.monaco.editor.create(document.getElementById("editor"), {
     model: state.model,
-    theme: "vs",
+    theme: "palmscript-light",
     automaticLayout: true,
     fontSize: 14,
     minimap: { enabled: false },

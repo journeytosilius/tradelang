@@ -4,7 +4,7 @@ The hosted PalmScript browser IDE is backed by:
 
 - `palmscript-ide-server` for HTTP, websocket LSP transport, curated examples, and curated backtests
 - the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
-- a single-file browser workspace with Monaco-based editing, diagnostics, hover, completion, formatting, and curated backtest execution
+- a single-file browser workspace with Monaco-based editing, syntax highlighting, semantic tokens, diagnostics, hover, completion, formatting, and curated backtest execution
 
 ## Run locally
 
