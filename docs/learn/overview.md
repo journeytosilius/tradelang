@@ -1,9 +1,9 @@
 # Learn PalmScript
 
-PalmScript has two public learning layers:
+PalmScript public documentation is organized around:
 
 - the language for writing strategies
-- the `palmscript` CLI for checking and running them
+- examples that show how scripts are written and used
 
 ## What You Do With PalmScript
 
@@ -12,8 +12,8 @@ Typical workflow:
 1. write a `.palm` script
 2. declare a base `interval`
 3. declare one or more `source` bindings
-4. validate with `palmscript check`
-5. run with `palmscript run market ...`
+4. validate the script
+5. run it over historical data
 
 ## What To Read Next
 
@@ -26,4 +26,3 @@ Typical workflow:
 
 - `Learn` explains how to use PalmScript effectively.
 - `Reference` defines what PalmScript means.
-- `Tooling` covers the public CLI commands for working with scripts.

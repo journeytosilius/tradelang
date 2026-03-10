@@ -1,12 +1,11 @@
 # PalmScript Documentation
 
-PalmScript is a language for financial time-series strategies. This site focuses on the language itself: syntax, semantics, builtins, code examples, and the basic CLI flow for checking and running scripts.
+PalmScript is a language for financial time-series strategies. This site focuses on the language itself: syntax, semantics, builtins, and code examples.
 
 ## Documentation Map
 
 - `Learn` teaches the language through short examples and runnable workflows.
 - `Reference` defines the accepted syntax and language semantics.
-- `Tooling` covers the public `palmscript` CLI surface needed to work with PalmScript scripts.
 
 ## Start Here
 
@@ -14,7 +13,6 @@ PalmScript is a language for financial time-series strategies. This site focuses
 - Want a first runnable script: [Quickstart](learn/quickstart.md)
 - Need the formal language definition: [Reference Overview](reference/overview.md)
 - Looking for indicator contracts: [Indicators Overview](reference/indicators.md)
-- Running scripts from the CLI: [CLI](tooling/cli.md)
 
 ## Language Highlights
 

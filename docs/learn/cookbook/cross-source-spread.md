@@ -26,4 +26,3 @@ Reference:
 
 - [Evaluation Semantics](../../reference/evaluation-semantics.md)
 - [Intervals and Sources](../../reference/intervals-and-sources.md)
-- [CLI](../../tooling/cli.md)

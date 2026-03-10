@@ -31,4 +31,3 @@ palmscript run market strategy.palm \
 Reference:
 
 - [Intervals and Sources](../../reference/intervals-and-sources.md)
-- [CLI](../../tooling/cli.md)

@@ -90,7 +90,4 @@ nav:
       - Outputs: reference/outputs.md
       - Diagnostics: reference/diagnostics.md
       - Interval Table: reference/intervals.md
-      - CLI Command Reference: reference/cli.md
       - Glossary: reference/glossary.md
-  - Tooling:
-      - CLI: tooling/cli.md
