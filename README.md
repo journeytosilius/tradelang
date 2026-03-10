@@ -62,4 +62,5 @@ The public demo keeps the chrome intentionally minimal: one editor buffer, a
 calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
 backtest output panels.
 
-The hosted reverse-proxy entrypoint is `/app/`.
+The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
+redirects there.

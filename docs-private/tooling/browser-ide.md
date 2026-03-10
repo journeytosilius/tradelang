@@ -60,8 +60,10 @@ for future editor work and for parity with the shared IDE transport layer.
 - `POST /api/backtest`
 - `WS /api/lsp`
 
-The hosted deployment also exposes the same surface under `/app/...` so a
-front proxy can mount the IDE at `https://palmscript.dev/app/`.
+The hosted deployment also exposes the same surface under `/app/...`. The
+public docs nginx front door normalizes `https://palmscript.dev/app` to
+`/app/` and proxies `/app/...` to
+`https://palmscript-ide-backend-production.up.railway.app`.
 
 ## Session and resource limits
 

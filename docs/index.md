@@ -18,7 +18,7 @@ The hosted browser IDE demo keeps a minimal shell: one editor buffer, a
 Rust/`iced` WASM shell with calendar date-range pickers over the curated BTCUSDT dataset,
 live diagnostics, backtest output panels, and trades/orders results without a
 raw JSON pane.
-The hosted entrypoint is `/app/`.
+The hosted entrypoint is `/app/`. `https://palmscript.dev/app` redirects there.
 
 ## Language Highlights
 
