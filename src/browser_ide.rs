@@ -27,7 +27,7 @@ use crate::compiler::{compile, CompiledProgram};
 use crate::exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
 use crate::ide_lsp::IdeLspSession;
 use crate::interval::{Interval, SourceTemplate};
-use crate::runtime::{SourceRuntimeConfig, VmLimits};
+use crate::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
 use crate::{run_backtest_with_sources, Diagnostic as PalmDiagnostic};
 
 const DEFAULT_SCRIPT_LIMIT_BYTES: usize = 128 * 1024;
@@ -36,18 +36,17 @@ const DEFAULT_BACKTEST_TIMEOUT_SECS: u64 = 30;
 const DEFAULT_MAX_PARALLEL_BACKTESTS: usize = 4;
 const DEFAULT_MAX_LSP_SESSIONS: usize = 32;
 const SESSION_HEADER: &str = "x-palmscript-session";
+const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
 pub enum PublicDatasetId {
-    BtcusdtBinanceSpot4h1y,
     BtcusdtBinanceSpot4h4y,
 }
 
 impl PublicDatasetId {
     pub const fn as_str(&self) -> &'static str {
         match self {
-            Self::BtcusdtBinanceSpot4h1y => "btcusdt_binance_spot_4h_1y",
             Self::BtcusdtBinanceSpot4h4y => "btcusdt_binance_spot_4h_4y",
         }
     }
@@ -98,6 +97,8 @@ pub struct CheckResponse {
 pub struct BacktestRequest {
     pub script: String,
     pub dataset_id: PublicDatasetId,
+    pub from_ms: i64,
+    pub to_ms: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -243,34 +244,19 @@ impl PublicIdeState {
 
 pub fn public_dataset_catalog() -> PublicDatasetCatalog {
     PublicDatasetCatalog {
-        datasets: vec![
-            PublicDataset {
-                dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h1y,
-                display_name: "BTCUSDT Binance Spot 4h (1 year)".to_string(),
-                source_template: SourceTemplate::BinanceSpot,
-                symbol: "BTCUSDT".to_string(),
-                base_interval: Interval::Hour4,
-                supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
-                from: 1_741_305_600_000,
-                to: 1_772_841_600_000,
-                initial_capital: 10_000.0,
-                fee_bps: 7.5,
-                slippage_bps: 2.0,
-            },
-            PublicDataset {
-                dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
-                display_name: "BTCUSDT Binance Spot 4h (4 years)".to_string(),
-                source_template: SourceTemplate::BinanceSpot,
-                symbol: "BTCUSDT".to_string(),
-                base_interval: Interval::Hour4,
-                supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
-                from: 1_646_611_200_000,
-                to: 1_772_841_600_000,
-                initial_capital: 10_000.0,
-                fee_bps: 7.5,
-                slippage_bps: 2.0,
-            },
-        ],
+        datasets: vec![PublicDataset {
+            dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
+            display_name: "BTCUSDT Binance Spot 4h".to_string(),
+            source_template: SourceTemplate::BinanceSpot,
+            symbol: "BTCUSDT".to_string(),
+            base_interval: Interval::Hour4,
+            supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
+            from: 1_646_611_200_000,
+            to: 1_772_841_600_000,
+            initial_capital: 10_000.0,
+            fee_bps: 7.5,
+            slippage_bps: 2.0,
+        }],
     }
 }
 
@@ -433,6 +419,7 @@ async fn run_backtest(
         .dataset(&request.dataset_id)
         .cloned()
         .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "unknown public dataset"))?;
+    validate_requested_window(&cached.dataset, request.from_ms, request.to_ms)?;
     let script = request.script.clone();
     let timeout_secs = state.config.backtest_timeout_secs;
     let state_clone = state.clone();
@@ -442,24 +429,25 @@ async fn run_backtest(
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
             let compiled = compile_public_script(&script, &cached)?;
+            let runtime = slice_runtime_window(&cached.runtime, request.from_ms, request.to_ms);
+            let mut dataset = cached.dataset.clone();
+            dataset.from = request.from_ms;
+            dataset.to = request.to_ms;
             let result = run_backtest_with_sources(
                 &compiled,
-                cached.runtime.clone(),
+                runtime,
                 VmLimits::default(),
                 BacktestConfig {
                     execution_source_alias: compiled.program.declared_sources[0].alias.clone(),
-                    initial_capital: cached.dataset.initial_capital,
-                    fee_bps: cached.dataset.fee_bps,
-                    slippage_bps: cached.dataset.slippage_bps,
+                    initial_capital: dataset.initial_capital,
+                    fee_bps: dataset.fee_bps,
+                    slippage_bps: dataset.slippage_bps,
                     perp: None,
                     perp_context: None,
                 },
             )
             .map_err(|err| ApiError::new(StatusCode::BAD_REQUEST, err.to_string()))?;
-            Ok::<_, ApiError>(BacktestResponse {
-                dataset: cached.dataset,
-                result,
-            })
+            Ok::<_, ApiError>(BacktestResponse { dataset, result })
         }),
     )
     .await;
@@ -595,6 +583,35 @@ fn compile_public_script(
     Ok(compiled)
 }
 
+fn validate_requested_window(
+    dataset: &PublicDataset,
+    from_ms: i64,
+    to_ms: i64,
+) -> Result<(), ApiError> {
+    if from_ms >= to_ms {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!("requested IDE range must satisfy from < to, got {from_ms} >= {to_ms}"),
+        ));
+    }
+    if to_ms - from_ms < DAY_MS {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "requested IDE range must cover at least one calendar day",
+        ));
+    }
+    if from_ms < dataset.from || to_ms > dataset.to {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!(
+                "requested IDE range must stay within curated dataset bounds [{}, {})",
+                dataset.from, dataset.to
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_dataset_compatibility(
     compiled: &CompiledProgram,
     dataset: &PublicDataset,
@@ -676,7 +693,7 @@ mod tests {
 
     fn fixture_state() -> PublicIdeState {
         let dataset = PublicDataset {
-            dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h1y,
+            dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
             display_name: "Fixture".to_string(),
             source_template: SourceTemplate::BinanceSpot,
             symbol: "BTCUSDT".to_string(),
@@ -721,7 +738,7 @@ export x = spot.close
         )
         .expect("script should compile");
         let dataset = fixture_state()
-            .dataset(&PublicDatasetId::BtcusdtBinanceSpot4h1y)
+            .dataset(&PublicDatasetId::BtcusdtBinanceSpot4h4y)
             .expect("fixture dataset")
             .dataset
             .clone();
@@ -739,7 +756,7 @@ export x = spot.close
         )
         .expect("script should compile");
         let dataset = fixture_state()
-            .dataset(&PublicDatasetId::BtcusdtBinanceSpot4h1y)
+            .dataset(&PublicDatasetId::BtcusdtBinanceSpot4h4y)
             .expect("fixture dataset")
             .dataset
             .clone();
@@ -811,7 +828,9 @@ source spot = binance.spot("ETHUSDT")
 export x = spot.close
 "#
                             .to_string(),
-                            dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h1y,
+                            dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
+                            from_ms: 0,
+                            to_ms: 1_000,
                         })
                         .expect("request body"),
                     ))
@@ -820,5 +839,16 @@ export x = spot.close
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn rejects_requested_window_outside_curated_bounds() {
+        let dataset = fixture_state()
+            .dataset(&PublicDatasetId::BtcusdtBinanceSpot4h4y)
+            .expect("fixture dataset")
+            .dataset
+            .clone();
+        let err = validate_requested_window(&dataset, -1, 1_000).expect_err("window rejected");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 }

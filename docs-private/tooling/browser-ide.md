@@ -38,9 +38,9 @@ The image embeds the browser shell and serves the full IDE from the
 The first public IDE release is intentionally narrow:
 
 - one `.palm` buffer
-- minimal demo chrome with a dataset selector and run action only
+- minimal demo chrome with calendar date-range inputs and a run action only
 - anonymous ephemeral browser sessions
-- curated BTCUSDT Binance spot datasets only
+- one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live LSP diagnostics plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 

@@ -1,5 +1,6 @@
 const SESSION_KEY = "palmscript-ide-session";
 const MODEL_URI = "inmemory:///strategy.palm";
+const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_SOURCE = `interval 4h
 source spot = binance.spot("BTCUSDT")
 use spot 1d
@@ -21,7 +22,7 @@ export trend_long_state = above(fast, slow)
 
 const state = {
   datasets: [],
-  datasetId: null,
+  dataset: null,
   editor: null,
   model: null,
   monaco: null,
@@ -48,6 +49,42 @@ function sessionId() {
 
 function setStatus(text) {
   document.getElementById("status-text").textContent = text;
+}
+
+function formatDateInput(ms) {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function parseDateInput(value) {
+  return Date.parse(`${value}T00:00:00Z`);
+}
+
+function selectedWindow() {
+  const fromValue = document.getElementById("from-date").value;
+  const toValue = document.getElementById("to-date").value;
+  if (!fromValue || !toValue) {
+    throw new Error("select a valid backtest date range");
+  }
+  return {
+    fromMs: parseDateInput(fromValue),
+    toMs: parseDateInput(toValue) + DAY_MS,
+  };
+}
+
+function syncDateInputs(changedInputId) {
+  const fromInput = document.getElementById("from-date");
+  const toInput = document.getElementById("to-date");
+  if (!fromInput.value || !toInput.value) {
+    return;
+  }
+  if (fromInput.value <= toInput.value) {
+    return;
+  }
+  if (changedInputId === "from-date") {
+    toInput.value = fromInput.value;
+  } else {
+    fromInput.value = toInput.value;
+  }
 }
 
 async function fetchJson(path, options = {}) {
@@ -471,12 +508,78 @@ function renderList(containerId, items, formatter) {
   }
 }
 
+async function loadCatalogs() {
+  const datasets = await fetchJson("/api/datasets");
+  state.datasets = datasets.datasets;
+  state.dataset = state.datasets[0] ?? null;
+  if (!state.dataset) {
+    throw new Error("no public IDE dataset is available");
+  }
+
+  const fromInput = document.getElementById("from-date");
+  const toInput = document.getElementById("to-date");
+  const firstAvailableDay = formatDateInput(state.dataset.from);
+  const lastAvailableDay = formatDateInput(state.dataset.to - DAY_MS);
+  const defaultFromMs = Math.max(state.dataset.from, state.dataset.to - 365 * DAY_MS);
+
+  fromInput.min = firstAvailableDay;
+  fromInput.max = lastAvailableDay;
+  fromInput.value = formatDateInput(defaultFromMs);
+
+  toInput.min = firstAvailableDay;
+  toInput.max = lastAvailableDay;
+  toInput.value = lastAvailableDay;
+
+  fromInput.addEventListener("change", () => syncDateInputs("from-date"));
+  toInput.addEventListener("change", () => syncDateInputs("to-date"));
+
+  setStatus(
+    `${state.dataset.display_name} available from ${firstAvailableDay} to ${lastAvailableDay}`,
+  );
+}
+
+function renderSelectedRange(response) {
+  const from = formatDateInput(response.dataset.from);
+  const to = formatDateInput(response.dataset.to - DAY_MS);
+  return `${from} -> ${to}`;
+}
+
+function renderSummaryDatasetLabel(response) {
+  if (!response.dataset?.display_name) {
+    return "unknown";
+  }
+  return `${response.dataset.display_name} (${renderSelectedRange(response)})`;
+}
+
+async function runBacktest() {
+  const window = selectedWindow();
+  if (!state.dataset) {
+    throw new Error("no public IDE dataset is available");
+  }
+  setStatus("Running backtest…");
+  try {
+    const response = await fetchJson("/api/backtest", {
+      method: "POST",
+      body: JSON.stringify({
+        script: state.editor.getValue(),
+        dataset_id: state.dataset.dataset_id,
+        from_ms: window.fromMs,
+        to_ms: window.toMs,
+      }),
+    });
+    renderBacktest(response);
+    setStatus(`Backtest complete for ${renderSelectedRange(response)}`);
+  } catch (error) {
+    setStatus(error.message);
+  }
+}
+
 function renderBacktest(response) {
   state.lastBacktest = response;
   const summary = response.result.summary;
   document.getElementById("summary-output").textContent = JSON.stringify(
     {
-      dataset: response.dataset.display_name,
+      dataset: renderSummaryDatasetLabel(response),
       ending_equity: summary.ending_equity,
       total_return_pct: summary.total_return * 100,
       trade_count: summary.trade_count,
@@ -494,40 +597,6 @@ function renderBacktest(response) {
     return `<strong>${order.role}</strong> ${order.kind} / ${order.status}<div class="muted">placed ${order.placed_time ?? "na"} fill ${order.fill_price ?? "na"}</div>`;
   });
   document.getElementById("tab-json").textContent = JSON.stringify(response, null, 2);
-}
-
-async function loadCatalogs() {
-  const datasets = await fetchJson("/api/datasets");
-  state.datasets = datasets.datasets;
-  const select = document.getElementById("dataset-select");
-  select.innerHTML = "";
-  for (const dataset of state.datasets) {
-    const option = document.createElement("option");
-    option.value = dataset.dataset_id;
-    option.textContent = dataset.display_name;
-    select.appendChild(option);
-  }
-  state.datasetId = state.datasets[0]?.dataset_id ?? null;
-  select.addEventListener("change", () => {
-    state.datasetId = select.value;
-  });
-}
-
-async function runBacktest() {
-  setStatus("Running backtest…");
-  try {
-    const response = await fetchJson("/api/backtest", {
-      method: "POST",
-      body: JSON.stringify({
-        script: state.editor.getValue(),
-        dataset_id: state.datasetId,
-      }),
-    });
-    renderBacktest(response);
-    setStatus("Backtest complete");
-  } catch (error) {
-    setStatus(error.message);
-  }
 }
 
 async function setupEditor() {

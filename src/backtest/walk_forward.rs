@@ -10,7 +10,7 @@ use crate::backtest::{
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
-use crate::runtime::{SourceRuntimeConfig, VmLimits};
+use crate::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WalkForwardConfig {
@@ -249,33 +249,6 @@ fn exclusive_end_time(execution_bars: &[crate::runtime::Bar], end_index: usize) 
                 .map(|bar| bar.time as i64 + 1)
                 .unwrap_or_default()
         })
-}
-
-fn slice_runtime_window(
-    runtime: &SourceRuntimeConfig,
-    from_ms: i64,
-    to_ms: i64,
-) -> SourceRuntimeConfig {
-    SourceRuntimeConfig {
-        base_interval: runtime.base_interval,
-        feeds: runtime
-            .feeds
-            .iter()
-            .map(|feed| crate::runtime::SourceFeed {
-                source_id: feed.source_id,
-                interval: feed.interval,
-                bars: feed
-                    .bars
-                    .iter()
-                    .copied()
-                    .filter(|bar| {
-                        let time = bar.time as i64;
-                        time >= from_ms && time < to_ms
-                    })
-                    .collect(),
-            })
-            .collect(),
-    }
 }
 
 fn summarize_window(

@@ -67,6 +67,33 @@ pub struct SourceRuntimeConfig {
     pub feeds: Vec<SourceFeed>,
 }
 
+pub fn slice_runtime_window(
+    runtime: &SourceRuntimeConfig,
+    from_ms: i64,
+    to_ms: i64,
+) -> SourceRuntimeConfig {
+    SourceRuntimeConfig {
+        base_interval: runtime.base_interval,
+        feeds: runtime
+            .feeds
+            .iter()
+            .map(|feed| SourceFeed {
+                source_id: feed.source_id,
+                interval: feed.interval,
+                bars: feed
+                    .bars
+                    .iter()
+                    .copied()
+                    .filter(|bar| {
+                        let time = bar.time as i64;
+                        time >= from_ms && time < to_ms
+                    })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VmLimits {
     pub max_instructions_per_bar: usize,
@@ -855,5 +882,52 @@ fn output_value_for_order_field(value: &Value, name: &str) -> Result<OutputValue
             expected: "series<float>",
             found: other.type_name(),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slice_runtime_window_filters_bars_to_half_open_range() {
+        let runtime = SourceRuntimeConfig {
+            base_interval: Interval::Hour4,
+            feeds: vec![SourceFeed {
+                source_id: 0,
+                interval: Interval::Hour4,
+                bars: vec![
+                    Bar {
+                        open: 1.0,
+                        high: 1.0,
+                        low: 1.0,
+                        close: 1.0,
+                        volume: 1.0,
+                        time: 0.0,
+                    },
+                    Bar {
+                        open: 2.0,
+                        high: 2.0,
+                        low: 2.0,
+                        close: 2.0,
+                        volume: 2.0,
+                        time: 100.0,
+                    },
+                    Bar {
+                        open: 3.0,
+                        high: 3.0,
+                        low: 3.0,
+                        close: 3.0,
+                        volume: 3.0,
+                        time: 200.0,
+                    },
+                ],
+            }],
+        };
+
+        let sliced = slice_runtime_window(&runtime, 100, 200);
+        assert_eq!(sliced.feeds.len(), 1);
+        assert_eq!(sliced.feeds[0].bars.len(), 1);
+        assert_eq!(sliced.feeds[0].bars[0].time as i64, 100);
     }
 }

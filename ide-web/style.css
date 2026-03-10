@@ -64,8 +64,17 @@ body {
   margin-right: 0.5rem;
 }
 
+.toolbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ps-link-dark);
+}
+
 .toolbar button,
-.toolbar select {
+.toolbar input {
   border: 1px solid var(--ps-panel-border);
   border-radius: 0.65rem;
   background: rgba(255, 255, 255, 0.84);
@@ -80,12 +89,12 @@ body {
 }
 
 .toolbar button:hover,
-.toolbar select:hover {
+.toolbar input:hover {
   border-color: var(--ps-accent-strong);
 }
 
 .toolbar button:focus-visible,
-.toolbar select:focus-visible,
+.toolbar input:focus-visible,
 .tab-button:focus-visible {
   outline: 2px solid var(--ps-accent);
   outline-offset: 2px;
