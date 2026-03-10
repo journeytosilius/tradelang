@@ -8,7 +8,7 @@ COPY docs ./docs
 COPY docs-private ./docs-private
 COPY examples ./examples
 COPY ide-server ./ide-server
-COPY ide-web ./ide-web
+COPY ide-wasm ./ide-wasm
 COPY lsp ./lsp
 COPY src ./src
 COPY tests ./tests

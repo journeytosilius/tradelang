@@ -328,10 +328,10 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/", get(index_html))
         .route("/app", get(app_root_redirect))
         .route("/app/", get(index_html))
-        .route("/ide/app.js", get(app_js))
-        .route("/app/ide/app.js", get(app_js))
-        .route("/ide/style.css", get(style_css))
-        .route("/app/ide/style.css", get(style_css))
+        .route("/ide/palmscript_ide.js", get(ide_wasm_js))
+        .route("/app/ide/palmscript_ide.js", get(ide_wasm_js))
+        .route("/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
+        .route("/app/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
         .route("/api/healthz", get(healthz))
         .route("/app/api/healthz", get(healthz))
         .route("/api/examples", get(list_examples))
@@ -353,30 +353,30 @@ async fn healthz() -> impl IntoResponse {
 }
 
 async fn index_html() -> impl IntoResponse {
-    Html(include_str!("../ide-web/index.html"))
+    Html(include_str!("../ide-wasm/index.html"))
 }
 
 async fn app_root_redirect() -> impl IntoResponse {
     Redirect::permanent("/app/")
 }
 
-async fn app_js() -> impl IntoResponse {
+async fn ide_wasm_js() -> impl IntoResponse {
     (
         [(
             axum::http::header::CONTENT_TYPE,
             HeaderValue::from_static("application/javascript"),
         )],
-        include_str!("../ide-web/app.js"),
+        include_str!("../ide-wasm/dist/palmscript_ide.js"),
     )
 }
 
-async fn style_css() -> impl IntoResponse {
+async fn ide_wasm_binary() -> impl IntoResponse {
     (
         [(
             axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("text/css"),
+            HeaderValue::from_static("application/wasm"),
         )],
-        include_str!("../ide-web/style.css"),
+        include_bytes!("../ide-wasm/dist/palmscript_ide_bg.wasm").as_slice(),
     )
 }
 
@@ -811,6 +811,28 @@ export x = spot.close
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn wasm_asset_route_is_served() {
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/app/ide/palmscript_ide.js")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("application/javascript")
+        );
     }
 
     #[tokio::test]

@@ -4,11 +4,12 @@ The hosted PalmScript browser IDE is backed by:
 
 - `palmscript-ide-server` for HTTP, websocket LSP transport, curated dataset metadata, and curated backtests
 - the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
-- a single-file browser workspace with Monaco-based editing, syntax highlighting, semantic tokens, diagnostics, hover, completion, formatting, and curated backtest execution
+- an `iced` Rust frontend compiled to WASM and embedded by the server for editing, diagnostics, summary rendering, and curated backtest execution
 
 ## Run locally
 
 ```bash
+bash scripts/build_ide_wasm.sh
 cargo build --bin palmscript-ide-server
 target/debug/palmscript-ide-server
 ```
@@ -40,11 +41,15 @@ The image embeds the browser shell and serves the full IDE from the
 The first public IDE release is intentionally narrow:
 
 - one `.palm` buffer
-- minimal demo chrome with calendar date-range inputs and a run action only
+- minimal demo chrome with ISO date-range inputs and a run action only
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
-- live LSP diagnostics shown above a formatted backtest summary plus curated backtest execution
+- live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
+
+The current WASM shell does not yet recreate Monaco or the websocket LSP client
+inside the browser UI. The websocket endpoint remains available on the backend
+for future editor work and for parity with the shared IDE transport layer.
 
 ## HTTP surface
 

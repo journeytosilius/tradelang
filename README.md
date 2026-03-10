@@ -34,6 +34,7 @@ Repo-local tooling docs:
 ```bash
 cargo build --bin palmscript
 cargo build --bin palmscript-ide-server
+cargo test --manifest-path ide-wasm/Cargo.toml
 target/debug/palmscript check examples/strategies/sma_cross.palm
 target/debug/palmscript run market examples/strategies/sma_cross.palm --from 1704067200000 --to 1704153600000
 target/debug/palmscript run market examples/strategies/cross_source_spread.palm --from 1704067200000 --to 1704153600000
@@ -44,15 +45,21 @@ mkdocs build --strict
 ## Browser IDE Container
 
 ```bash
+bash scripts/build_ide_wasm.sh
 docker build -f Dockerfile.ide -t palmscript-ide .
 docker run --rm -p 8080:8080 palmscript-ide
 ```
 
-The browser IDE shell uses the same blue-grey and accent-blue visual language
-as the published docs at <https://palmscript.dev/docs/>.
+The browser IDE shell now ships as an `iced` Rust frontend compiled to WASM,
+embedded directly by the `palmscript-ide-server` binary. Refresh the checked-in
+browser bundle with `bash scripts/build_ide_wasm.sh` when you change the
+frontend crate under `ide-wasm/`.
+
+The WASM shell keeps the same blue-grey and accent-blue visual language as the
+published docs at <https://palmscript.dev/docs/>.
 
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
-calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
+date-range input pair over the curated BTCUSDT dataset, diagnostics, and
 backtest output panels.
 
 The hosted reverse-proxy entrypoint is `/app/`.

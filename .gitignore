@@ -1,4 +1,5 @@
 /target/
+/ide-wasm/target/
 /tradelang
 /palmscript
 /site/
