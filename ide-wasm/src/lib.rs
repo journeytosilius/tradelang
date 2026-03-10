@@ -1,6 +1,7 @@
 use iced::widget::canvas::{self, Canvas, Path, Stroke};
-use iced::widget::{button, column, container, row, scrollable, text, text_editor, text_input};
+use iced::widget::{button, column, container, row, scrollable, text, text_editor};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Task, Theme};
+use iced_aw::{date_picker::Date, helpers::date_picker, ICED_AW_FONT_BYTES};
 use serde::Deserialize;
 
 const DEFAULT_SOURCE: &str = r#"interval 4h
@@ -33,8 +34,12 @@ enum Message {
     },
     RunBacktest,
     BacktestFinished(Result<BacktestResponse, String>),
-    FromDateChanged(String),
-    ToDateChanged(String),
+    ChooseFromDate,
+    CancelFromDate,
+    SubmitFromDate(Date),
+    ChooseToDate,
+    CancelToDate,
+    SubmitToDate(Date),
 }
 
 #[derive(Debug)]
@@ -43,8 +48,10 @@ struct IdeApp {
     diagnostics: Vec<Diagnostic>,
     backtest: Option<BacktestResponse>,
     dataset: Option<PublicDataset>,
-    from_input: String,
-    to_input: String,
+    from_date: Date,
+    to_date: Date,
+    show_from_picker: bool,
+    show_to_picker: bool,
     status: String,
     next_check_request_id: u64,
     latest_check_request_id: u64,
@@ -59,8 +66,10 @@ impl Default for IdeApp {
             diagnostics: Vec::new(),
             backtest: None,
             dataset: None,
-            from_input: String::new(),
-            to_input: String::new(),
+            from_date: Date::default(),
+            to_date: Date::default(),
+            show_from_picker: false,
+            show_to_picker: false,
             status: "Loading curated dataset…".to_string(),
             next_check_request_id: 0,
             latest_check_request_id: 0,
@@ -85,6 +94,7 @@ pub fn run() -> iced::Result {
     )
     .title(app_title)
     .theme(app_theme)
+    .font(ICED_AW_FONT_BYTES)
     .window_size((1400.0, 920.0))
     .antialiasing(true)
     .run()
@@ -102,15 +112,15 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             match result {
                 Ok(catalog) => {
                     if let Some(dataset) = catalog.datasets.into_iter().next() {
-                        let (from_input, to_input) = default_window_for_dataset(&dataset);
+                        let (from_date, to_date) = default_window_for_dataset(&dataset);
                         state.status = format!(
                             "{} available from {} to {}",
                             dataset.display_name,
                             format_date_ms(dataset.from),
                             format_date_ms(dataset.to - DAY_MS)
                         );
-                        state.from_input = from_input;
-                        state.to_input = to_input;
+                        state.from_date = from_date;
+                        state.to_date = to_date;
                         state.dataset = Some(dataset);
                     } else {
                         state.status = "No curated dataset is available.".to_string();
@@ -155,14 +165,32 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-        Message::FromDateChanged(value) => {
-            state.from_input = value;
-            normalize_date_inputs(state);
+        Message::ChooseFromDate => {
+            state.show_from_picker = true;
             Task::none()
         }
-        Message::ToDateChanged(value) => {
-            state.to_input = value;
-            normalize_date_inputs(state);
+        Message::CancelFromDate => {
+            state.show_from_picker = false;
+            Task::none()
+        }
+        Message::SubmitFromDate(date) => {
+            state.from_date = date;
+            state.show_from_picker = false;
+            normalize_dates(state, PickedDate::From);
+            Task::none()
+        }
+        Message::ChooseToDate => {
+            state.show_to_picker = true;
+            Task::none()
+        }
+        Message::CancelToDate => {
+            state.show_to_picker = false;
+            Task::none()
+        }
+        Message::SubmitToDate(date) => {
+            state.to_date = date;
+            state.show_to_picker = false;
+            normalize_dates(state, PickedDate::To);
             Task::none()
         }
         Message::RunBacktest => {
@@ -170,7 +198,7 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
                 state.status = "No curated dataset is available.".to_string();
                 return Task::none();
             };
-            match selected_window(&dataset, &state.from_input, &state.to_input) {
+            match selected_window(&dataset, state.from_date, state.to_date) {
                 Ok(window) => {
                     state.running_backtest = true;
                     state.status = "Running backtest…".to_string();
@@ -219,8 +247,22 @@ fn view(state: &IdeApp) -> Element<'_, Message> {
         row![
             text("PalmScript IDE").size(26),
             row![
-                date_field("From", &state.from_input, Message::FromDateChanged),
-                date_field("To", &state.to_input, Message::ToDateChanged),
+                date_field(
+                    "From",
+                    state.from_date,
+                    state.show_from_picker,
+                    Message::ChooseFromDate,
+                    Message::CancelFromDate,
+                    Message::SubmitFromDate
+                ),
+                date_field(
+                    "To",
+                    state.to_date,
+                    state.show_to_picker,
+                    Message::ChooseToDate,
+                    Message::CancelToDate,
+                    Message::SubmitToDate
+                ),
                 button(text(if state.running_backtest {
                     "Running…"
                 } else {
@@ -476,16 +518,26 @@ fn summary_card(
 
 fn date_field<'a>(
     label: &'static str,
-    value: &'a str,
-    on_input: fn(String) -> Message,
+    value: Date,
+    show_picker: bool,
+    on_open: Message,
+    on_cancel: Message,
+    on_submit: fn(Date) -> Message,
 ) -> Element<'a, Message> {
     container(
         column![
             muted(label),
-            text_input("YYYY-MM-DD", value)
-                .on_input(on_input)
-                .padding(10)
-                .width(Length::Fixed(140.0)),
+            date_picker(
+                show_picker,
+                value,
+                button(text(value.to_string()))
+                    .padding([10, 14])
+                    .width(Length::Fixed(140.0))
+                    .style(date_button_style)
+                    .on_press(on_open),
+                on_cancel,
+                on_submit
+            ),
         ]
         .spacing(6),
     )
@@ -514,32 +566,31 @@ fn status_color(state: &IdeApp) -> Color {
     }
 }
 
-fn default_window_for_dataset(dataset: &PublicDataset) -> (String, String) {
+fn default_window_for_dataset(dataset: &PublicDataset) -> (Date, Date) {
     let default_from = (dataset.to - (365 * DAY_MS)).max(dataset.from);
     (
-        format_date_ms(default_from),
-        format_date_ms(dataset.to - DAY_MS),
+        date_from_ms(default_from),
+        date_from_ms(dataset.to - DAY_MS),
     )
 }
 
-fn normalize_date_inputs(state: &mut IdeApp) {
-    if state.from_input.is_empty() || state.to_input.is_empty() {
+fn normalize_dates(state: &mut IdeApp, picked: PickedDate) {
+    if date_to_ms(state.from_date) <= date_to_ms(state.to_date) {
         return;
     }
-    if state.from_input > state.to_input {
-        state.to_input = state.from_input.clone();
+    match picked {
+        PickedDate::From => state.to_date = state.from_date,
+        PickedDate::To => state.from_date = state.to_date,
     }
 }
 
 fn selected_window(
     dataset: &PublicDataset,
-    from_input: &str,
-    to_input: &str,
+    from_date: Date,
+    to_date: Date,
 ) -> Result<SelectedWindow, String> {
-    let from_ms = parse_date(from_input).ok_or_else(|| "Enter a valid From date.".to_string())?;
-    let to_ms = parse_date(to_input)
-        .map(|value| value + DAY_MS)
-        .ok_or_else(|| "Enter a valid To date.".to_string())?;
+    let from_ms = date_to_ms(from_date);
+    let to_ms = date_to_ms(to_date) + DAY_MS;
 
     if from_ms >= to_ms {
         return Err("The selected range must span at least one day.".to_string());
@@ -555,25 +606,18 @@ fn selected_window(
     Ok(SelectedWindow { from_ms, to_ms })
 }
 
-fn parse_date(value: &str) -> Option<i64> {
-    let mut parts = value.split('-');
-    let year = parts.next()?.parse::<i32>().ok()?;
-    let month = parts.next()?.parse::<u32>().ok()?;
-    let day = parts.next()?.parse::<u32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return None;
-    }
-    let days = days_from_civil(year, month, day)?;
-    Some(days * DAY_MS)
+fn date_to_ms(date: Date) -> i64 {
+    days_from_civil(date.year, date.month, date.day).expect("picker dates should be valid") * DAY_MS
+}
+
+fn date_from_ms(ms: i64) -> Date {
+    let days = ms.div_euclid(DAY_MS);
+    let (year, month, day) = civil_from_days(days);
+    Date::from_ymd(year, month, day)
 }
 
 fn format_date_ms(ms: i64) -> String {
-    let days = ms.div_euclid(DAY_MS);
-    let (year, month, day) = civil_from_days(days);
-    format!("{year:04}-{month:02}-{day:02}")
+    date_from_ms(ms).to_string()
 }
 
 fn format_time_ms(ms: f64) -> String {
@@ -688,6 +732,24 @@ fn primary_button_style(_theme: &Theme, status: button::Status) -> button::Style
             offset: iced::Vector::new(0.0, 6.0),
             blur_radius: 16.0,
         },
+        snap: false,
+    }
+}
+
+fn date_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let border_color = match status {
+        button::Status::Hovered => Color::from_rgb8(0x9d, 0xc5, 0xea),
+        _ => Color::from_rgb8(0xc9, 0xda, 0xeb),
+    };
+    button::Style {
+        background: Some(Background::Color(Color::from_rgb8(0xff, 0xff, 0xff))),
+        text_color: Color::from_rgb8(0x18, 0x32, 0x47),
+        border: Border {
+            color: border_color,
+            width: 1.0,
+            radius: 12.0.into(),
+        },
+        shadow: iced::Shadow::default(),
         snap: false,
     }
 }
@@ -1024,12 +1086,19 @@ struct SelectedWindow {
     to_ms: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PickedDate {
+    From,
+    To,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        format_date_ms, format_number, format_percent, selected_window, PublicDataset,
-        PublicDatasetId,
+        date_from_ms, format_date_ms, format_number, format_percent, selected_window,
+        PublicDataset, PublicDatasetId,
     };
+    use iced_aw::date_picker::Date;
 
     fn dataset() -> PublicDataset {
         PublicDataset {
@@ -1042,13 +1111,23 @@ mod tests {
 
     #[test]
     fn selected_window_accepts_curated_range() {
-        let window = selected_window(&dataset(), "2023-11-20", "2024-01-05").expect("window");
+        let window = selected_window(
+            &dataset(),
+            Date::from_ymd(2023, 11, 20),
+            Date::from_ymd(2024, 1, 5),
+        )
+        .expect("window");
         assert!(window.from_ms < window.to_ms);
     }
 
     #[test]
     fn selected_window_rejects_out_of_bounds_range() {
-        let err = selected_window(&dataset(), "2021-01-01", "2021-01-10").expect_err("range");
+        let err = selected_window(
+            &dataset(),
+            Date::from_ymd(2021, 1, 1),
+            Date::from_ymd(2021, 1, 10),
+        )
+        .expect_err("range");
         assert!(err.contains("curated dataset"));
     }
 
@@ -1057,5 +1136,9 @@ mod tests {
         assert_eq!(format_number(12.3456, 2), "12.35");
         assert_eq!(format_percent(18.234), "18.23%");
         assert_eq!(format_date_ms(1_700_000_000_000), "2023-11-14");
+        let date = date_from_ms(1_700_000_000_000);
+        assert_eq!(date.year, 2023);
+        assert_eq!(date.month, 11);
+        assert_eq!(date.day, 14);
     }
 }

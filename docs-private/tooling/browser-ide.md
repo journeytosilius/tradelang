@@ -41,7 +41,7 @@ The image embeds the browser shell and serves the full IDE from the
 The first public IDE release is intentionally narrow:
 
 - one `.palm` buffer
-- minimal demo chrome with ISO date-range inputs and a run action only
+- minimal demo chrome with calendar date-range pickers and a run action only
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
