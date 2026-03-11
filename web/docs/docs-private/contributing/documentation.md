@@ -1,6 +1,7 @@
 # Documentation Maintenance
 
 The MkDocs site under `web/docs/docs/` is the canonical documentation source for PalmScript.
+English is the canonical default locale, published at `/docs/`.
 
 ## Documentation Structure
 
@@ -11,6 +12,13 @@ The site is organized into these top-level areas:
 - `Tooling`: CLI modes, editor integrations, and operational behavior
 - `Internals`: implementation architecture for contributors
 - `Contributing`: repository workflow and maintenance guidance
+
+Localized content lives beside the English source with locale suffixes such as
+`index.es.md`. The hosted URL scheme is:
+
+- English: `/docs/`
+- Spanish: `/es/docs/`
+- future locales: `/{lang}/docs/`
 
 ## When To Update Docs
 
@@ -65,7 +73,13 @@ source .venv-docs/bin/activate
 pip install -r web/docs/requirements-docs.txt
 mkdocs serve -f web/docs/mkdocs.yml
 mkdocs build --strict -f web/docs/mkdocs.yml
+bash infra/scripts/build_docs_site.sh
 ```
+
+Use `mkdocs build --strict -f web/docs/mkdocs.yml` for config validation and
+local preview of the multilingual source tree. Use
+`bash infra/scripts/build_docs_site.sh` for the production output layout that
+publishes English at `/docs/` and translated locales at `/{lang}/docs/`.
 
 For containerized serving or self-hosting:
 
@@ -75,6 +89,7 @@ docker run --rm -p 8080:8080 palmscript-docs
 ```
 
 The container publishes the static docs site under `http://127.0.0.1:8080/docs/`.
+It also serves translated locales under `http://127.0.0.1:8080/{lang}/docs/`.
 It does not serve the site homepage at `/`; that host-level routing belongs to
 the external front proxy.
 

@@ -16,6 +16,7 @@ The public documentation is focused on:
 Documentation:
 
 - published site: <https://palmscript.dev/docs/>
+- Spanish docs: <https://palmscript.dev/es/docs/>
 - hosted IDE: <https://palmscript.dev/app/>
 - local source: [web/docs/docs/index.md](web/docs/docs/index.md)
 
@@ -40,6 +41,7 @@ target/debug/palmscript run market crates/palmscript/examples/strategies/sma_cro
 target/debug/palmscript run market crates/palmscript/examples/strategies/cross_source_spread.ps --from 1704067200000 --to 1704153600000
 target/debug/palmscript dump-bytecode crates/palmscript/examples/strategies/sma_cross.ps
 mkdocs build --strict -f web/docs/mkdocs.yml
+bash infra/scripts/build_docs_site.sh
 ```
 
 ## Browser IDE Container
@@ -69,3 +71,7 @@ and the browser tab favicon now matches the current PalmScript logo.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.
+
+The documentation build is locale-aware. English is the canonical default at
+`/docs/`, Spanish is served at `/es/docs/`, and future locales follow the same
+`/{lang}/docs/` pattern.

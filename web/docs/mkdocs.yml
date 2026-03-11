@@ -34,6 +34,13 @@ theme:
 
 extra:
   homepage: https://palmscript.dev/
+  alternate:
+    - name: English
+      link: /docs/
+      lang: en
+    - name: Espanol
+      link: /es/docs/
+      lang: es
 
 extra_css:
   - stylesheets/extra.css
@@ -59,6 +66,56 @@ markdown_extensions:
 
 plugins:
   - search
+  - i18n:
+      build_only_locale: !ENV [BUILD_ONLY_LOCALE, null]
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+          link: /docs/
+          fixed_link: https://palmscript.dev/docs/
+        - locale: es
+          name: Espanol
+          build: true
+          link: /es/docs/
+          fixed_link: https://palmscript.dev/es/docs/
+          site_url: https://palmscript.dev/es/docs/
+          site_description: Documentacion del lenguaje PalmScript, referencia y ejemplos
+          nav_translations:
+            Home: Inicio
+            Learn: Aprende
+            Overview: Resumen
+            Installation: Instalacion
+            Quickstart: Inicio Rapido
+            First Strategy: Primera Estrategia
+            Language Overview: Resumen Del Lenguaje
+            Cookbook: Recetario
+            Multi-Interval Strategy: Estrategia Multi-Intervalo
+            Exchange-Backed Sources: Fuentes Respaldadas Por Exchanges
+            Cross-Source Spread: Spread Entre Fuentes
+            Reference: Referencia
+            Lexical Structure: Estructura Lexica
+            Grammar: Gramatica
+            Declarations and Scope: Declaraciones y Alcance
+            Types and Values: Tipos y Valores
+            Series and Indexing: Series E Indexacion
+            Evaluation Semantics: Semantica De Evaluacion
+            Intervals and Sources: Intervalos y Fuentes
+            Builtins: Builtins
+            Indicators: Indicadores
+            Trend and Overlap: Tendencia y Superposicion
+            Momentum, Volume, and Volatility: Momentum, Volumen y Volatilidad
+            Math, Price, and Statistics: Matematicas, Precio y Estadistica
+            TA-Lib Surface: Superficie TA-Lib
+            Outputs: Salidas
+            Diagnostics: Diagnosticos
+            Interval Table: Tabla De Intervalos
+            Glossary: Glosario
 
 nav:
   - Home: index.md
