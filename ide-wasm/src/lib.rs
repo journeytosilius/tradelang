@@ -1861,5 +1861,7 @@ mod tests {
         assert!(shell.contains("primeClipboardAccess"));
         assert!(shell.contains("navigator.clipboard?.readText"));
         assert!(shell.contains("palmscript-ide-clipboard-preflight"));
+        assert!(shell.contains("ide-brand-slot"));
+        assert!(shell.contains("object-fit: contain"));
     }
 }
