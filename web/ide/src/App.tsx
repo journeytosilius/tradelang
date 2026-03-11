@@ -13,7 +13,10 @@ import {
   formatPercent,
   formatTimeLabel,
 } from "./formatters";
-import { configurePalmScriptLanguage } from "./palmscript-language";
+import {
+  configurePalmScriptLanguage,
+  registerPalmScriptLanguageProviders,
+} from "./palmscript-language";
 import type {
   BacktestResponse,
   Diagnostic,
@@ -152,6 +155,7 @@ export function App() {
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
+    registerPalmScriptLanguageProviders(monaco);
   };
 
   async function handleRunBacktest() {

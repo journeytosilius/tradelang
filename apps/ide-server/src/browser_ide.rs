@@ -25,7 +25,7 @@ use tower_http::cors::CorsLayer;
 use palmscript::backtest::{BacktestConfig, BacktestResult};
 use palmscript::compiler::{compile, CompiledProgram};
 use palmscript::exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
-use palmscript::ide::HighlightToken;
+use palmscript::ide::{analyze_document, CompletionEntry, HighlightToken, HoverInfo};
 use palmscript::ide_lsp::IdeLspSession;
 use palmscript::interval::{Interval, SourceTemplate};
 use palmscript::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
@@ -93,6 +93,28 @@ pub struct CheckRequest {
 pub struct CheckResponse {
     pub diagnostics: Vec<PalmDiagnostic>,
     pub highlights: Vec<HighlightToken>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HoverRequest {
+    pub script: String,
+    pub offset: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HoverResponse {
+    pub hover: Option<HoverInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CompletionsRequest {
+    pub script: String,
+    pub offset: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CompletionsResponse {
+    pub items: Vec<CompletionEntry>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -347,6 +369,10 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/app/api/datasets", get(list_datasets))
         .route("/api/check", post(check_script))
         .route("/app/api/check", post(check_script))
+        .route("/api/hover", post(hover_info))
+        .route("/app/api/hover", post(hover_info))
+        .route("/api/completions", post(completions))
+        .route("/app/api/completions", post(completions))
         .route("/api/backtest", post(run_backtest))
         .route("/app/api/backtest", post(run_backtest))
         .route("/api/lsp", get(lsp_socket))
@@ -528,6 +554,37 @@ async fn run_backtest(
             "backtest timed out",
         )),
     }
+}
+
+async fn hover_info(
+    State(state): State<PublicIdeState>,
+    headers: HeaderMap,
+    Json(request): Json<HoverRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_script_size(&state, &request.script)?;
+    if let Some(session) = session_id_from_headers(&headers) {
+        state.mark_session_active(&session);
+    }
+    let hover = analyze_document(&request.script)
+        .ok()
+        .and_then(|semantic| semantic.hover_at(request.offset));
+    Ok(Json(HoverResponse { hover }))
+}
+
+async fn completions(
+    State(state): State<PublicIdeState>,
+    headers: HeaderMap,
+    Json(request): Json<CompletionsRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_script_size(&state, &request.script)?;
+    if let Some(session) = session_id_from_headers(&headers) {
+        state.mark_session_active(&session);
+    }
+    let items = analyze_document(&request.script)
+        .ok()
+        .map(|semantic| semantic.completions_at(request.offset))
+        .unwrap_or_default();
+    Ok(Json(CompletionsResponse { items }))
 }
 
 async fn lsp_socket(
@@ -984,6 +1041,86 @@ export x = spot.close
             serde_json::from_slice(&body).expect("check response should deserialize");
         assert!(!payload.diagnostics.is_empty());
         assert!(!payload.highlights.is_empty());
+    }
+
+    #[tokio::test]
+    async fn hover_endpoint_returns_builtin_metadata() {
+        let app = browser_ide_router(fixture_state());
+        let script = r#"interval 4h
+source spot = binance.spot("BTCUSDT")
+export signal = crossover(spot.close, 10)
+"#;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/hover")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&HoverRequest {
+                            script: script.to_string(),
+                            offset: script.find("crossover").expect("builtin offset"),
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: HoverResponse =
+            serde_json::from_slice(&body).expect("hover response should deserialize");
+        assert!(payload
+            .hover
+            .expect("hover payload")
+            .contents
+            .contains("crosses above"));
+    }
+
+    #[tokio::test]
+    async fn completions_endpoint_returns_builtin_documentation() {
+        let app = browser_ide_router(fixture_state());
+        let script = r#"interval 4h
+source spot = binance.spot("BTCUSDT")
+plot(spot.close)
+"#;
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CompletionsRequest {
+                            script: script.to_string(),
+                            offset: 0,
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: CompletionsResponse =
+            serde_json::from_slice(&body).expect("completions response should deserialize");
+        let crossover = payload
+            .items
+            .iter()
+            .find(|entry| entry.label == "crossover")
+            .expect("builtin completion");
+        assert_eq!(crossover.detail.as_deref(), Some("crossover(a, b)"));
+        assert!(crossover
+            .documentation
+            .as_deref()
+            .expect("completion docs")
+            .contains("crosses above"));
     }
 
     #[tokio::test]

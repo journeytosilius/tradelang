@@ -18,13 +18,13 @@ use lsp_types::{
         Request as LspRequest,
     },
     CompletionOptions, CompletionParams, Diagnostic, DiagnosticSeverity, DocumentFormattingParams,
-    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, GotoDefinitionParams,
-    GotoDefinitionResponse, Hover, HoverContents, HoverParams, InitializeResult, MarkupContent,
-    MarkupKind, OneOf, Position as LspPosition, Range, SemanticToken, SemanticTokenModifier,
-    SemanticTokenType, SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend,
-    SemanticTokensOptions, SemanticTokensResult, SemanticTokensServerCapabilities,
-    ServerCapabilities, SymbolKind as LspSymbolKind, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions,
+    DocumentSymbol, DocumentSymbolParams, DocumentSymbolResponse, Documentation,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverContents, HoverParams,
+    InitializeResult, MarkupContent, MarkupKind, OneOf, Position as LspPosition, Range,
+    SemanticToken, SemanticTokenModifier, SemanticTokenType, SemanticTokens,
+    SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions, SemanticTokensResult,
+    SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind as LspSymbolKind,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri, WorkDoneProgressOptions,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -478,6 +478,12 @@ fn completion_item(entry: CompletionEntry) -> lsp_types::CompletionItem {
             }
         }),
         detail: entry.detail,
+        documentation: entry.documentation.map(|value| {
+            Documentation::MarkupContent(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            })
+        }),
         ..lsp_types::CompletionItem::default()
     }
 }

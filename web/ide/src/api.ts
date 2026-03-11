@@ -3,6 +3,10 @@ import type {
   BacktestResponse,
   CheckRequest,
   CheckResponse,
+  CompletionsRequest,
+  CompletionsResponse,
+  HoverRequest,
+  HoverResponse,
   PublicDatasetCatalog,
 } from "./types";
 
@@ -56,6 +60,22 @@ export function fetchDatasets(): Promise<PublicDatasetCatalog> {
 
 export function checkScript(request: CheckRequest): Promise<CheckResponse> {
   return requestJson<CheckResponse>("./api/check", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function fetchHover(request: HoverRequest): Promise<HoverResponse> {
+  return requestJson<HoverResponse>("./api/hover", {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+}
+
+export function fetchCompletions(
+  request: CompletionsRequest,
+): Promise<CompletionsResponse> {
+  return requestJson<CompletionsResponse>("./api/completions", {
     method: "POST",
     body: JSON.stringify(request),
   });

@@ -63,6 +63,57 @@ export interface CheckRequest {
   script: string;
 }
 
+export type CompletionKind =
+  | "keyword"
+  | "builtin"
+  | "series"
+  | "source"
+  | "interval"
+  | "field"
+  | "function"
+  | "variable";
+
+export interface CompletionEntry {
+  label: string;
+  kind: CompletionKind;
+  detail: string | null;
+  documentation: string | null;
+}
+
+export interface CompletionsRequest {
+  script: string;
+  offset: number;
+}
+
+export interface CompletionsResponse {
+  items: CompletionEntry[];
+}
+
+export interface HoverPosition {
+  offset: number;
+  line: number;
+  column: number;
+}
+
+export interface HoverSpan {
+  start: HoverPosition;
+  end: HoverPosition;
+}
+
+export interface HoverInfo {
+  span: HoverSpan;
+  contents: string;
+}
+
+export interface HoverRequest {
+  script: string;
+  offset: number;
+}
+
+export interface HoverResponse {
+  hover: HoverInfo | null;
+}
+
 export interface BacktestRequest {
   script: string;
   dataset_id: PublicDatasetId;

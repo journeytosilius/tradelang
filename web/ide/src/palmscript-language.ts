@@ -1,6 +1,11 @@
 import type { Monaco } from "@monaco-editor/react";
+import type * as MonacoEditor from "monaco-editor";
+
+import { fetchCompletions, fetchHover } from "./api";
+import type { CompletionEntry } from "./types";
 
 let configured = false;
+let providersRegistered = false;
 
 const KEYWORDS = [
   "and",
@@ -135,6 +140,88 @@ export function configurePalmScriptLanguage(monaco: Monaco): void {
       "editorCursor.foreground": "#ff79c6",
       "editor.selectionBackground": "#44475a",
       "editor.inactiveSelectionBackground": "#3a3c4d",
+    },
+  });
+}
+
+function completionItemKind(
+  monaco: Monaco,
+  entry: CompletionEntry,
+): MonacoEditor.languages.CompletionItemKind {
+  switch (entry.kind) {
+    case "keyword":
+    case "interval":
+    case "field":
+      return monaco.languages.CompletionItemKind.Keyword;
+    case "builtin":
+    case "function":
+      return monaco.languages.CompletionItemKind.Function;
+    case "source":
+      return monaco.languages.CompletionItemKind.Module;
+    default:
+      return monaco.languages.CompletionItemKind.Variable;
+  }
+}
+
+export function registerPalmScriptLanguageProviders(monaco: Monaco): void {
+  if (providersRegistered) {
+    return;
+  }
+  providersRegistered = true;
+
+  monaco.languages.registerHoverProvider("palmscript", {
+    async provideHover(model, position) {
+      const offset = model.getOffsetAt(position);
+      const response = await fetchHover({
+        script: model.getValue(),
+        offset,
+      });
+      if (!response.hover) {
+        return null;
+      }
+
+      const { hover } = response;
+      return {
+        contents: [{ value: hover.contents }],
+        range: new monaco.Range(
+          hover.span.start.line + 1,
+          hover.span.start.column + 1,
+          hover.span.end.line + 1,
+          hover.span.end.column + 1,
+        ),
+      };
+    },
+  });
+
+  monaco.languages.registerCompletionItemProvider("palmscript", {
+    triggerCharacters: [".", "("],
+    async provideCompletionItems(model, position) {
+      const offset = model.getOffsetAt(position);
+      const response = await fetchCompletions({
+        script: model.getValue(),
+        offset,
+      });
+      const word = model.getWordUntilPosition(position);
+      const range = new monaco.Range(
+        position.lineNumber,
+        word.startColumn,
+        position.lineNumber,
+        word.endColumn,
+      );
+      return {
+        suggestions: response.items.map((entry) => ({
+          label: entry.label,
+          kind: completionItemKind(monaco, entry),
+          detail: entry.detail ?? undefined,
+          documentation: entry.documentation
+            ? {
+                value: entry.documentation,
+              }
+            : undefined,
+          insertText: entry.label,
+          range,
+        })),
+      };
     },
   });
 }

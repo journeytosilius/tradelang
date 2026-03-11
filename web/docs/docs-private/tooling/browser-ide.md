@@ -46,6 +46,7 @@ The first public IDE release is intentionally narrow:
 - Inter as the shell UI font
 - native browser clipboard behavior through Monaco
 - compiler diagnostics rendered into Monaco markers
+- Monaco hover cards and completion lists backed by the shared PalmScript IDE metadata
 - PalmScript logo mark in the header instead of a text heading
 - browser tab favicon generated from the current PalmScript logo
 - anonymous ephemeral browser sessions
@@ -54,6 +55,8 @@ The first public IDE release is intentionally narrow:
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
 Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.
+VS Code and the hosted Monaco editor now share builtin signatures and summaries
+through the same `ide.rs` metadata and LSP completion items.
 
 The websocket endpoint remains available on the backend, but the current React
 shell does not yet wire the browser UI into the websocket LSP transport.

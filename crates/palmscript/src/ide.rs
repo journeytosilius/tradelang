@@ -113,6 +113,7 @@ pub struct CompletionEntry {
     pub label: String,
     pub kind: CompletionKind,
     pub detail: Option<String>,
+    pub documentation: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -217,6 +218,7 @@ impl SemanticDocument {
                             label: label.to_string(),
                             kind: CompletionKind::Field,
                             detail: Some(detail.to_string()),
+                            documentation: Some(detail.to_string()),
                         },
                     );
                 }
@@ -229,6 +231,10 @@ impl SemanticDocument {
                             label: spec.text.to_string(),
                             kind: CompletionKind::Interval,
                             detail: Some("Binance-supported interval literal".to_string()),
+                            documentation: Some(format!(
+                                "`{}`\n\nBinance-supported interval literal.",
+                                spec.text
+                            )),
                         },
                     );
                 }
@@ -241,6 +247,7 @@ impl SemanticDocument {
                             label: label.to_string(),
                             kind: CompletionKind::Keyword,
                             detail: Some(detail.to_string()),
+                            documentation: Some(detail.to_string()),
                         },
                     );
                 }
@@ -251,6 +258,7 @@ impl SemanticDocument {
                             label: label.to_string(),
                             kind: CompletionKind::Keyword,
                             detail: Some(detail.to_string()),
+                            documentation: Some(detail.to_string()),
                         },
                     );
                 }
@@ -264,6 +272,10 @@ impl SemanticDocument {
                             label: spec.text.to_string(),
                             kind: CompletionKind::Interval,
                             detail: Some("Binance-supported interval literal".to_string()),
+                            documentation: Some(format!(
+                                "`{}`\n\nBinance-supported interval literal.",
+                                spec.text
+                            )),
                         });
                 }
                 for definition in &self.definitions {
@@ -278,6 +290,7 @@ impl SemanticDocument {
                             label: definition.name.clone(),
                             kind,
                             detail: definition.detail.clone(),
+                            documentation: Some(definition_hover(definition)),
                         });
                 }
             }
@@ -904,6 +917,7 @@ fn builtin_completions() -> Vec<CompletionEntry> {
             label: builtin.as_str().to_string(),
             kind: CompletionKind::Builtin,
             detail: Some(builtin.signature().to_string()),
+            documentation: Some(builtin_hover(builtin)),
         })
         .map(|entry| (entry.label.clone(), entry))
         .collect();
@@ -914,6 +928,7 @@ fn builtin_completions() -> Vec<CompletionEntry> {
                 label: metadata.name.to_string(),
                 kind: CompletionKind::Builtin,
                 detail: Some(metadata.signature.to_string()),
+                documentation: Some(talib_hover(metadata)),
             });
     }
     entries.into_values().collect()
@@ -1620,6 +1635,16 @@ mod tests {
             .any(|entry| entry.label == "cdlhammer" && entry.kind == CompletionKind::Builtin));
         let fields = document.completions_at(source.find("close").expect("field"));
         assert!(fields.iter().any(|entry| entry.label == "close"));
+        let crossover = general
+            .iter()
+            .find(|entry| entry.label == "crossover")
+            .expect("builtin completion");
+        assert_eq!(crossover.detail.as_deref(), Some("crossover(a, b)"));
+        assert!(crossover
+            .documentation
+            .as_deref()
+            .expect("builtin docs")
+            .contains("crosses above"));
     }
 
     #[test]
