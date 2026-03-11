@@ -41,6 +41,9 @@ extra:
     - name: Espanol
       link: /es/docs/
       lang: es
+    - name: Portugues (Brasil)
+      link: /pt-BR/docs/
+      lang: pt-BR
 
 extra_css:
   - stylesheets/extra.css
@@ -116,6 +119,43 @@ plugins:
             Diagnostics: Diagnosticos
             Interval Table: Tabla De Intervalos
             Glossary: Glosario
+        - locale: pt-BR
+          name: Portugues (Brasil)
+          build: true
+          link: /pt-BR/docs/
+          fixed_link: https://palmscript.dev/pt-BR/docs/
+          site_url: https://palmscript.dev/pt-BR/docs/
+          site_description: Documentacao da linguagem PalmScript, referencia e exemplos
+          nav_translations:
+            Home: Inicio
+            Learn: Aprenda
+            Overview: Visao Geral
+            Installation: Instalacao
+            Quickstart: Inicio Rapido
+            First Strategy: Primeira Estrategia
+            Language Overview: Visao Geral Da Linguagem
+            Cookbook: Receitas
+            Multi-Interval Strategy: Estrategia Multi-Intervalo
+            Exchange-Backed Sources: Fontes Com Dados De Exchange
+            Cross-Source Spread: Spread Entre Fontes
+            Reference: Referencia
+            Lexical Structure: Estrutura Lexica
+            Grammar: Gramatica
+            Declarations and Scope: Declaracoes e Escopo
+            Types and Values: Tipos e Valores
+            Series and Indexing: Series e Indexacao
+            Evaluation Semantics: Semantica De Avaliacao
+            Intervals and Sources: Intervalos e Fontes
+            Builtins: Builtins
+            Indicators: Indicadores
+            Trend and Overlap: Tendencia e Sobreposicao
+            Momentum, Volume, and Volatility: Momentum, Volume e Volatilidade
+            Math, Price, and Statistics: Matematica, Preco e Estatistica
+            TA-Lib Surface: Superficie TA-Lib
+            Outputs: Saidas
+            Diagnostics: Diagnosticos
+            Interval Table: Tabela De Intervalos
+            Glossary: Glossario
 
 nav:
   - Home: index.md

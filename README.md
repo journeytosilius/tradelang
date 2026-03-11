@@ -17,6 +17,7 @@ Documentation:
 
 - published site: <https://palmscript.dev/docs/>
 - Spanish docs: <https://palmscript.dev/es/docs/>
+- Portuguese (Brazil) docs: <https://palmscript.dev/pt-BR/docs/>
 - hosted IDE: <https://palmscript.dev/app/>
 - local source: [web/docs/docs/index.md](web/docs/docs/index.md)
 
@@ -73,5 +74,5 @@ The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.
 
 The documentation build is locale-aware. English is the canonical default at
-`/docs/`, Spanish is served at `/es/docs/`, and future locales follow the same
-`/{lang}/docs/` pattern.
+`/docs/`, Spanish is served at `/es/docs/`, Portuguese (Brazil) is served at
+`/pt-BR/docs/`, and future locales follow the same `/{lang}/docs/` pattern.

@@ -20,3 +20,4 @@ mkdir -p "$SITE_DIR"
 
 build_locale "en" "https://palmscript.dev/docs/" "$SITE_DIR/docs"
 build_locale "es" "https://palmscript.dev/es/docs/" "$SITE_DIR/es/docs"
+build_locale "pt-BR" "https://palmscript.dev/pt-BR/docs/" "$SITE_DIR/pt-BR/docs"
