@@ -18,7 +18,7 @@ if spot.close > weekly_basis {
 
 ## Try It In The Browser IDE
 
-Open `https://palmscript.dev/app/`, paste the example into the editor, and run it over a date range that covers multiple weekly closes.
+Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the example into the editor, and run it over a date range that covers multiple weekly closes.
 
 ## What To Watch For
 

@@ -30,7 +30,7 @@ if trend {
 
 ## Try It In The Browser IDE
 
-Open `https://palmscript.dev/app/`, paste the script into the editor, and run it over the curated dataset window with the date controls in the header.
+Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the script into the editor, and run it over the curated dataset window with the date controls in the header.
 
 ## Extend It With Higher-Timeframe Context
 

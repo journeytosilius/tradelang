@@ -2,7 +2,7 @@
 
 ## 1. Open The Browser IDE
 
-Use the hosted IDE at `https://palmscript.dev/app/`.
+Use the hosted IDE at [https://palmscript.dev/app/](https://palmscript.dev/app/).
 
 ## 2. Paste A Script
 

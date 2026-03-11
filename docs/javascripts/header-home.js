@@ -8,13 +8,33 @@ function wirePalmScriptHeaderHomeLink() {
   link.href = "https://palmscript.dev/";
   link.className = "ps-home-link";
   link.setAttribute("aria-label", "PalmScript home");
+  link.setAttribute("target", "_blank");
+  link.setAttribute("rel", "noopener noreferrer");
   link.textContent = "PalmScript";
 
   topic.replaceChildren(link);
 }
 
+function wirePalmScriptDocsLinks() {
+  const links = document.querySelectorAll("a[href]");
+  for (const link of links) {
+    const href = link.getAttribute("href");
+    if (!href || href.startsWith("#")) {
+      continue;
+    }
+
+    link.setAttribute("target", "_blank");
+    link.setAttribute("rel", "noopener noreferrer");
+  }
+}
+
+function wirePalmScriptDocsUi() {
+  wirePalmScriptHeaderHomeLink();
+  wirePalmScriptDocsLinks();
+}
+
 if (typeof document$ !== "undefined") {
-  document$.subscribe(wirePalmScriptHeaderHomeLink);
+  document$.subscribe(wirePalmScriptDocsUi);
 } else {
-  document.addEventListener("DOMContentLoaded", wirePalmScriptHeaderHomeLink);
+  document.addEventListener("DOMContentLoaded", wirePalmScriptDocsUi);
 }
