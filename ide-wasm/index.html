@@ -38,9 +38,10 @@
   <body>
     <img class="ide-brandmark" src="./ide/palmscript-logo.png" alt="PalmScript" />
     <script type="module">
-      import init from "./ide/palmscript_ide.js";
+      const assetVersion = "20260311-clipboard-import-fix";
+      const { default: init } = await import(`./ide/palmscript_ide.js?v=${assetVersion}`);
 
-      init("./ide/palmscript_ide_bg.wasm");
+      init(`./ide/palmscript_ide_bg.wasm?v=${assetVersion}`);
     </script>
   </body>
   </html>

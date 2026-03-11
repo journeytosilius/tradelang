@@ -357,7 +357,13 @@ async fn healthz() -> impl IntoResponse {
 }
 
 async fn index_html() -> impl IntoResponse {
-    Html(include_str!("../ide-wasm/index.html"))
+    (
+        [(
+            axum::http::header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store"),
+        )],
+        Html(include_str!("../ide-wasm/index.html")),
+    )
 }
 
 async fn app_root_redirect() -> impl IntoResponse {
@@ -366,20 +372,32 @@ async fn app_root_redirect() -> impl IntoResponse {
 
 async fn ide_wasm_js() -> impl IntoResponse {
     (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/javascript"),
-        )],
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/javascript"),
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            ),
+        ],
         include_str!("../ide-wasm/dist/palmscript_ide.js"),
     )
 }
 
 async fn ide_wasm_binary() -> impl IntoResponse {
     (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/wasm"),
-        )],
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                HeaderValue::from_static("application/wasm"),
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                HeaderValue::from_static("no-store"),
+            ),
+        ],
         include_bytes!("../ide-wasm/dist/palmscript_ide_bg.wasm").as_slice(),
     )
 }
@@ -850,6 +868,13 @@ export x = spot.close
                 .get(axum::http::header::CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok()),
             Some("application/javascript")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store")
         );
     }
 
