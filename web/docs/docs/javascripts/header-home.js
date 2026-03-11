@@ -8,19 +8,49 @@ function getPalmScriptLocaleHomeHref() {
   return `${origin}/`;
 }
 
+function buildPalmScriptHomeLink(label) {
+  const link = document.createElement("a");
+  link.href = getPalmScriptLocaleHomeHref();
+  link.className = "ps-home-link";
+  link.setAttribute("aria-label", "PalmScript home");
+  link.textContent = label;
+  return link;
+}
+
 function wirePalmScriptHeaderHomeLink() {
   const topic = document.querySelector(".md-header__title .md-header__topic");
   if (!topic || topic.querySelector(".ps-home-link")) {
     return;
   }
 
-  const link = document.createElement("a");
-  link.href = getPalmScriptLocaleHomeHref();
-  link.className = "ps-home-link";
-  link.setAttribute("aria-label", "PalmScript home");
-  link.textContent = "PalmScript";
+  topic.replaceChildren(buildPalmScriptHomeLink("PalmScript"));
+}
 
-  topic.replaceChildren(link);
+function wirePalmScriptHeaderTopicHomeLink() {
+  const topic = document.querySelector(
+    '.md-header__title [data-md-component="header-topic"] .md-ellipsis',
+  );
+  if (!topic || topic.querySelector(".ps-home-link")) {
+    return;
+  }
+
+  const label = topic.textContent?.trim();
+  if (!label) {
+    return;
+  }
+
+  topic.replaceChildren(buildPalmScriptHomeLink(label));
+}
+
+function wirePalmScriptHeaderLogoLink() {
+  const logo = document.querySelector("a.md-header__button.md-logo");
+  if (!logo) {
+    return;
+  }
+
+  logo.href = getPalmScriptLocaleHomeHref();
+  logo.removeAttribute("target");
+  logo.removeAttribute("rel");
 }
 
 function isExternalHref(href) {
@@ -60,7 +90,9 @@ function wirePalmScriptDocsLinks() {
 }
 
 function wirePalmScriptDocsUi() {
+  wirePalmScriptHeaderLogoLink();
   wirePalmScriptHeaderHomeLink();
+  wirePalmScriptHeaderTopicHomeLink();
   wirePalmScriptDocsLinks();
 }
 

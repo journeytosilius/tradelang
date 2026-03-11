@@ -103,8 +103,9 @@ the external front proxy.
 
 The docs UI keeps internal documentation navigation in the current tab. Only
 external links are rewritten to open in a new tab. The branded `PalmScript`
-header link also stays in the current tab and routes to the locale-matching
-site homepage, for example `/es/` from `/es/docs/` and `/` from `/docs/`.
+header link, the adjacent header topic label, and the header logo all stay in
+the current tab and route to the locale-matching site homepage, for example
+`/es/` from `/es/docs/` and `/` from `/docs/`.
 
 ## Repository-Local Docs
 
