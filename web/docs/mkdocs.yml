@@ -47,6 +47,9 @@ extra:
     - name: Deutsch
       link: /de/docs/
       lang: de
+    - name: 日本語
+      link: /ja/docs/
+      lang: ja
 
 extra_css:
   - stylesheets/extra.css
@@ -196,6 +199,43 @@ plugins:
             Diagnostics: Diagnosen
             Interval Table: Intervalltabelle
             Glossary: Glossar
+        - locale: ja
+          name: 日本語
+          build: true
+          link: /ja/docs/
+          fixed_link: https://palmscript.dev/ja/docs/
+          site_url: https://palmscript.dev/ja/docs/
+          site_description: PalmScript 言語ドキュメント、リファレンス、サンプル
+          nav_translations:
+            Home: ホーム
+            Learn: 学ぶ
+            Overview: 概要
+            Installation: インストール
+            Quickstart: クイックスタート
+            First Strategy: 最初の戦略
+            Language Overview: 言語概要
+            Cookbook: クックブック
+            Multi-Interval Strategy: マルチインターバル戦略
+            Exchange-Backed Sources: 取引所連携ソース
+            Cross-Source Spread: ソース間スプレッド
+            Reference: リファレンス
+            Lexical Structure: 字句構造
+            Grammar: 文法
+            Declarations and Scope: 宣言とスコープ
+            Types and Values: 型と値
+            Series and Indexing: シリーズとインデックス
+            Evaluation Semantics: 評価セマンティクス
+            Intervals and Sources: インターバルとソース
+            Builtins: Builtins
+            Indicators: インジケーター
+            Trend and Overlap: トレンドとオーバーラップ
+            Momentum, Volume, and Volatility: モメンタム、出来高、ボラティリティ
+            Math, Price, and Statistics: 数学、価格、統計
+            TA-Lib Surface: TA-Lib サーフェス
+            Outputs: 出力
+            Diagnostics: 診断
+            Interval Table: インターバル一覧
+            Glossary: 用語集
 
 nav:
   - Home: index.md

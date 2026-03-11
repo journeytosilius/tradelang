@@ -19,6 +19,7 @@ Documentation:
 - Spanish docs: <https://palmscript.dev/es/docs/>
 - Portuguese (Brazil) docs: <https://palmscript.dev/pt-BR/docs/>
 - German docs: <https://palmscript.dev/de/docs/>
+- Japanese docs: <https://palmscript.dev/ja/docs/>
 - hosted IDE: <https://palmscript.dev/app/>
 - local source: [web/docs/docs/index.md](web/docs/docs/index.md)
 
@@ -76,5 +77,5 @@ redirects there.
 
 The documentation build is locale-aware. English is the canonical default at
 `/docs/`, Spanish is served at `/es/docs/`, Portuguese (Brazil) is served at
-`/pt-BR/docs/`, German is served at `/de/docs/`, and future locales follow the
-same `/{lang}/docs/` pattern.
+`/pt-BR/docs/`, German is served at `/de/docs/`, Japanese is served at
+`/ja/docs/`, and future locales follow the same `/{lang}/docs/` pattern.
