@@ -61,7 +61,9 @@ published docs at <https://palmscript.dev/docs/>.
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
 calendar date-range picker over the curated BTCUSDT dataset, diagnostics, and
 backtest output panels. Day clicks apply immediately and the calendar panels
-float over the toolbar instead of resizing it.
+float over the toolbar instead of resizing it. The editor supports browser
+copy/cut/paste shortcuts and semantic token coloring backed by the shared IDE
+analysis pipeline.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.

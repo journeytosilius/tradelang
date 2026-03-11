@@ -19,6 +19,7 @@ use crate::lexer;
 use crate::parser;
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SNAPSHOT};
+use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
 const KEYWORD_COMPLETIONS: [(&str, &str); 12] = [
@@ -112,6 +113,24 @@ pub struct CompletionEntry {
     pub label: String,
     pub kind: CompletionKind,
     pub detail: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HighlightKind {
+    Keyword,
+    String,
+    Number,
+    Function,
+    Variable,
+    Parameter,
+    Namespace,
+    Type,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HighlightToken {
+    pub span: Span,
+    pub kind: HighlightKind,
 }
 
 #[derive(Clone, Debug)]
@@ -286,6 +305,24 @@ pub fn analyze_document(source: &str) -> Result<SemanticDocument, CompileError> 
         definitions: context.definitions,
         references: context.references,
     })
+}
+
+pub fn highlight_document(source: &str) -> Vec<HighlightToken> {
+    let tokens = match lexer::lex(source) {
+        Ok(tokens) => tokens,
+        Err(_) => return Vec::new(),
+    };
+    let semantic = analyze_document(source).ok();
+
+    tokens
+        .into_iter()
+        .filter_map(|token| {
+            classify_highlight(&token, semantic.as_ref()).map(|kind| HighlightToken {
+                span: token.span,
+                kind,
+            })
+        })
+        .collect()
 }
 
 pub fn format_document(source: &str) -> Result<String, CompileError> {
@@ -886,6 +923,61 @@ fn talib_hover(metadata: &crate::talib::TalibFunctionMetadata) -> String {
     format!("`{}`\n\n{}", metadata.signature, metadata.summary)
 }
 
+pub(crate) fn classify_highlight(
+    token: &Token,
+    semantic: Option<&SemanticDocument>,
+) -> Option<HighlightKind> {
+    match &token.kind {
+        TokenKind::Fn
+        | TokenKind::Let
+        | TokenKind::Const
+        | TokenKind::Input
+        | TokenKind::Order
+        | TokenKind::IntervalKw
+        | TokenKind::Source
+        | TokenKind::Use
+        | TokenKind::Export
+        | TokenKind::Trigger
+        | TokenKind::Entry
+        | TokenKind::Exit
+        | TokenKind::Protect
+        | TokenKind::Target
+        | TokenKind::Size
+        | TokenKind::Long
+        | TokenKind::Short
+        | TokenKind::If
+        | TokenKind::Else
+        | TokenKind::And
+        | TokenKind::Or
+        | TokenKind::True
+        | TokenKind::False
+        | TokenKind::Na => Some(HighlightKind::Keyword),
+        TokenKind::String(_) => Some(HighlightKind::String),
+        TokenKind::Number(_) => Some(HighlightKind::Number),
+        TokenKind::Interval(_) => Some(HighlightKind::Type),
+        TokenKind::Ident(text) => {
+            if BuiltinId::from_name(text).is_some() || talib_metadata_by_name(text).is_some() {
+                return Some(HighlightKind::Function);
+            }
+
+            semantic
+                .and_then(|semantic| semantic.definition_at(token.span.start.offset))
+                .map(|definition| match definition.kind {
+                    SymbolKind::Function => HighlightKind::Function,
+                    SymbolKind::Parameter => HighlightKind::Parameter,
+                    SymbolKind::Source | SymbolKind::UseInterval | SymbolKind::Interval => {
+                        HighlightKind::Namespace
+                    }
+                    SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => {
+                        HighlightKind::Variable
+                    }
+                })
+                .or(Some(HighlightKind::Variable))
+        }
+        _ => None,
+    }
+}
+
 fn render_expr_info(info: &ExprInfo) -> String {
     match info.ty {
         InferredType::Concrete(ty) => render_type(ty).to_string(),
@@ -1478,7 +1570,10 @@ fn render_market_field(field: MarketField) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{analyze_document, format_document, talib_hover, CompletionKind};
+    use super::{
+        analyze_document, format_document, highlight_document, talib_hover, CompletionKind,
+        HighlightKind,
+    };
     use crate::talib::metadata_by_name as talib_metadata_by_name;
 
     fn with_interval(source: &str) -> String {
@@ -1551,5 +1646,34 @@ mod tests {
         let formatted = format_document(source).expect("formatted");
         let reformatted = format_document(&formatted).expect("reformatted");
         assert_eq!(formatted, reformatted);
+    }
+
+    #[test]
+    fn highlight_document_classifies_keywords_builtins_and_variables() {
+        let source = with_interval("let basis = ema(src.close, 5)\nexport trend = basis");
+        let highlights = highlight_document(&source);
+
+        assert!(highlights
+            .iter()
+            .any(|token| token.kind == HighlightKind::Keyword));
+        assert!(highlights
+            .iter()
+            .any(|token| token.kind == HighlightKind::Function));
+        assert!(highlights
+            .iter()
+            .any(|token| token.kind == HighlightKind::Namespace));
+        assert!(highlights
+            .iter()
+            .any(|token| token.kind == HighlightKind::Variable));
+    }
+
+    #[test]
+    fn highlight_document_retains_lexical_color_on_compile_errors() {
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\nplot(src.foo)";
+        let highlights = highlight_document(source);
+
+        assert!(highlights
+            .iter()
+            .any(|token| token.kind == HighlightKind::Keyword));
     }
 }

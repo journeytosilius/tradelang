@@ -60,8 +60,9 @@ pub use exchange::{
     fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError,
 };
 pub use ide::{
-    analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
-    DocumentSymbolInfo, HoverInfo, SemanticDocument, Symbol, SymbolKind,
+    analyze_document, format_document, highlight_document, CompletionEntry, CompletionKind,
+    DefinitionTarget, DocumentSymbolInfo, HighlightKind, HighlightToken, HoverInfo,
+    SemanticDocument, Symbol, SymbolKind,
 };
 pub use ide_lsp::{server_capabilities as lsp_server_capabilities, IdeLspSession, OpenDocument};
 pub use interval::{

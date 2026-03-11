@@ -44,6 +44,8 @@ The first public IDE release is intentionally narrow:
 - minimal demo chrome with calendar date-range pickers and a run action only
 - day clicks apply and close immediately
 - calendar panels float above the toolbar instead of changing its height
+- browser copy/cut/paste shortcuts wired through the web clipboard API
+- semantic token coloring from the shared IDE analysis pipeline
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution

@@ -29,14 +29,12 @@ use lsp_types::{
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
 
-use crate::builtins::BuiltinId;
 use crate::ide::{
-    analyze_document, format_document, CompletionEntry, CompletionKind, DefinitionTarget,
-    DocumentSymbolInfo, HoverInfo, SemanticDocument,
+    analyze_document, classify_highlight, format_document, CompletionEntry, CompletionKind,
+    DefinitionTarget, DocumentSymbolInfo, HighlightKind, HoverInfo, SemanticDocument,
 };
 use crate::lexer;
-use crate::talib::metadata_by_name as talib_metadata_by_name;
-use crate::token::{Token, TokenKind};
+use crate::token::Token;
 use crate::{CompileError, Diagnostic as PalmDiagnostic, Position, Span, SymbolKind};
 
 const SEMANTIC_TOKEN_TYPES: [SemanticTokenType; 8] = [
@@ -626,51 +624,16 @@ fn build_semantic_tokens(document: &OpenDocument) -> Option<SemanticTokens> {
 }
 
 fn semantic_token_type(token: &Token, semantic: &SemanticDocument) -> Option<u32> {
-    let index = match &token.kind {
-        TokenKind::Fn
-        | TokenKind::Let
-        | TokenKind::Const
-        | TokenKind::Input
-        | TokenKind::Order
-        | TokenKind::IntervalKw
-        | TokenKind::Source
-        | TokenKind::Use
-        | TokenKind::Export
-        | TokenKind::Trigger
-        | TokenKind::Entry
-        | TokenKind::Exit
-        | TokenKind::Protect
-        | TokenKind::Target
-        | TokenKind::Size
-        | TokenKind::Long
-        | TokenKind::Short
-        | TokenKind::If
-        | TokenKind::Else
-        | TokenKind::And
-        | TokenKind::Or
-        | TokenKind::True
-        | TokenKind::False
-        | TokenKind::Na => 0,
-        TokenKind::String(_) => 1,
-        TokenKind::Number(_) => 2,
-        TokenKind::Interval(_) => 7,
-        TokenKind::Ident(text) => {
-            if BuiltinId::from_name(text).is_some() || talib_metadata_by_name(text).is_some() {
-                3
-            } else if let Some(definition) = semantic.definition_at(token.span.start.offset) {
-                match definition.kind {
-                    SymbolKind::Function => 3,
-                    SymbolKind::Parameter => 5,
-                    SymbolKind::Source | SymbolKind::UseInterval | SymbolKind::Interval => 6,
-                    SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => 4,
-                }
-            } else {
-                4
-            }
-        }
-        _ => return None,
-    };
-    Some(index)
+    classify_highlight(token, Some(semantic)).map(|kind| match kind {
+        HighlightKind::Keyword => 0,
+        HighlightKind::String => 1,
+        HighlightKind::Number => 2,
+        HighlightKind::Function => 3,
+        HighlightKind::Variable => 4,
+        HighlightKind::Parameter => 5,
+        HighlightKind::Namespace => 6,
+        HighlightKind::Type => 7,
+    })
 }
 
 #[cfg(test)]

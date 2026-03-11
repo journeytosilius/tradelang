@@ -25,6 +25,7 @@ use tower_http::cors::CorsLayer;
 use crate::backtest::{BacktestConfig, BacktestResult};
 use crate::compiler::{compile, CompiledProgram};
 use crate::exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
+use crate::ide::HighlightToken;
 use crate::ide_lsp::IdeLspSession;
 use crate::interval::{Interval, SourceTemplate};
 use crate::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
@@ -91,6 +92,7 @@ pub struct CheckRequest {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CheckResponse {
     pub diagnostics: Vec<PalmDiagnostic>,
+    pub highlights: Vec<HighlightToken>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -406,7 +408,11 @@ async fn check_script(
         Ok(_) => Vec::new(),
         Err(err) => err.diagnostics,
     };
-    Ok(Json(CheckResponse { diagnostics }))
+    let highlights = crate::highlight_document(&request.script);
+    Ok(Json(CheckResponse {
+        diagnostics,
+        highlights,
+    }))
 }
 
 async fn run_backtest(
@@ -861,6 +867,7 @@ export x = spot.close
         let payload: CheckResponse =
             serde_json::from_slice(&body).expect("check response should deserialize");
         assert!(!payload.diagnostics.is_empty());
+        assert!(!payload.highlights.is_empty());
     }
 
     #[tokio::test]

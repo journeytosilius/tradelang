@@ -1876,10 +1876,12 @@ dependencies = [
  "gloo-net",
  "iced",
  "iced_aw",
+ "iced_core",
  "js-sys",
  "serde",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

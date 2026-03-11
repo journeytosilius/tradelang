@@ -1,9 +1,13 @@
 use iced::widget::canvas::{self, Canvas, Path, Stroke};
+use iced::widget::text_editor::{
+    Action as EditorAction, Binding as EditorBinding, KeyPress as EditorKeyPress,
+};
 use iced::widget::{button, column, container, row, scrollable, text, text_editor};
 use iced::{Alignment, Background, Border, Color, Element, Fill, Length, Task, Theme};
 use iced_aw::drop_down::{Alignment as DropDownAlignment, Offset as DropDownOffset};
 use iced_aw::{date_picker::Date, DropDown, ICED_AW_FONT_BYTES};
 use serde::Deserialize;
+use std::ops::Range;
 
 const DEFAULT_SOURCE: &str = r#"interval 4h
 source spot = binance.spot("BTCUSDT")
@@ -38,6 +42,16 @@ enum Message {
         request_id: u64,
         result: Result<CheckResponse, String>,
     },
+    #[cfg(target_arch = "wasm32")]
+    ClipboardWriteFinished(Result<(), String>),
+    #[cfg(target_arch = "wasm32")]
+    ClipboardReadFinished(Result<String, String>),
+    #[cfg(target_arch = "wasm32")]
+    CopySelection,
+    #[cfg(target_arch = "wasm32")]
+    CutSelection,
+    #[cfg(target_arch = "wasm32")]
+    PasteFromClipboard,
     RunBacktest,
     BacktestFinished(Result<BacktestResponse, String>),
     ChooseFromDate,
@@ -54,6 +68,7 @@ enum Message {
 struct IdeApp {
     script: text_editor::Content,
     diagnostics: Vec<Diagnostic>,
+    highlight_settings: EditorHighlightSettings,
     backtest: Option<BacktestResponse>,
     dataset: Option<PublicDataset>,
     from_date: Date,
@@ -74,6 +89,7 @@ impl Default for IdeApp {
         Self {
             script: text_editor::Content::with_text(DEFAULT_SOURCE),
             diagnostics: Vec::new(),
+            highlight_settings: EditorHighlightSettings::default(),
             backtest: None,
             dataset: None,
             from_date: Date::default(),
@@ -118,6 +134,15 @@ pub fn start() -> Result<(), wasm_bindgen::JsValue> {
     run().map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))
 }
 
+fn apply_editor_action(state: &mut IdeApp, action: EditorAction) -> Task<Message> {
+    state.script.perform(action);
+    state.checking = true;
+    state.next_check_request_id += 1;
+    let request_id = state.next_check_request_id;
+    state.latest_check_request_id = request_id;
+    initial_check_task(state.script.text(), request_id)
+}
+
 fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
     match message {
         Message::CatalogLoaded(result) => {
@@ -146,14 +171,7 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             }
             Task::none()
         }
-        Message::ScriptEdited(action) => {
-            state.script.perform(action);
-            state.checking = true;
-            state.next_check_request_id += 1;
-            let request_id = state.next_check_request_id;
-            state.latest_check_request_id = request_id;
-            initial_check_task(state.script.text(), request_id)
-        }
+        Message::ScriptEdited(action) => apply_editor_action(state, action),
         Message::CheckFinished { request_id, result } => {
             if request_id != state.latest_check_request_id {
                 return Task::none();
@@ -162,6 +180,8 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
             match result {
                 Ok(response) => {
                     state.diagnostics = response.diagnostics;
+                    state.highlight_settings =
+                        EditorHighlightSettings::from_source(&state.script.text(), &response.highlights);
                     if state.diagnostics.is_empty() {
                         state.status = if state.running_backtest {
                             "Running backtest…".to_string()
@@ -178,6 +198,47 @@ fn update(state: &mut IdeApp, message: Message) -> Task<Message> {
                 }
             }
             Task::none()
+        }
+        #[cfg(target_arch = "wasm32")]
+        Message::ClipboardWriteFinished(result) => {
+            if let Err(error) = result {
+                state.status = error;
+            }
+            Task::none()
+        }
+        #[cfg(target_arch = "wasm32")]
+        Message::ClipboardReadFinished(result) => match result {
+            Ok(text) => apply_editor_action(
+                state,
+                EditorAction::Edit(text_editor::Edit::Paste(std::sync::Arc::new(text))),
+            ),
+            Err(error) => {
+                state.status = error;
+                Task::none()
+            }
+        },
+        #[cfg(target_arch = "wasm32")]
+        Message::CopySelection => {
+            let Some(selection) = state.script.selection() else {
+                return Task::none();
+            };
+            Task::perform(write_browser_clipboard(selection), Message::ClipboardWriteFinished)
+        }
+        #[cfg(target_arch = "wasm32")]
+        Message::CutSelection => {
+            let Some(selection) = state.script.selection() else {
+                return Task::none();
+            };
+            let delete_task =
+                apply_editor_action(state, EditorAction::Edit(text_editor::Edit::Delete));
+            Task::batch([
+                delete_task,
+                Task::perform(write_browser_clipboard(selection), Message::ClipboardWriteFinished),
+            ])
+        }
+        #[cfg(target_arch = "wasm32")]
+        Message::PasteFromClipboard => {
+            Task::perform(read_browser_clipboard(), Message::ClipboardReadFinished)
         }
         Message::ChooseFromDate => {
             let opening = !state.show_from_picker;
@@ -331,6 +392,11 @@ fn view(state: &IdeApp) -> Element<'_, Message> {
             .placeholder("Write a PalmScript strategy")
             .font(iced::Font::MONOSPACE)
             .size(16)
+            .highlight_with::<PalmHighlighter>(
+                state.highlight_settings.clone(),
+                editor_highlight_format,
+            )
+            .key_binding(editor_key_binding)
             .on_action(Message::ScriptEdited)
             .height(Fill),
     )
@@ -686,6 +752,47 @@ fn calendar_picker<'a>(
         .into()
 }
 
+fn editor_key_binding(key_press: EditorKeyPress) -> Option<EditorBinding<Message>> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        if matches!(key_press.status, iced::widget::text_editor::Status::Focused { .. }) {
+            match key_press.key.to_latin(key_press.physical_key) {
+                Some('c') if key_press.modifiers.command() => {
+                    return Some(EditorBinding::Custom(Message::CopySelection));
+                }
+                Some('x') if key_press.modifiers.command() => {
+                    return Some(EditorBinding::Custom(Message::CutSelection));
+                }
+                Some('v') if key_press.modifiers.command() && !key_press.modifiers.alt() => {
+                    return Some(EditorBinding::Custom(Message::PasteFromClipboard));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    EditorBinding::from_key_press(key_press)
+}
+
+fn editor_highlight_format(
+    kind: &HighlightKind,
+    _theme: &Theme,
+) -> iced_core::text::highlighter::Format<iced::Font> {
+    iced_core::text::highlighter::Format {
+        color: Some(match kind {
+            HighlightKind::Keyword => Color::from_rgb8(0x15, 0x6f, 0xbe),
+            HighlightKind::String => Color::from_rgb8(0x9b, 0x53, 0x18),
+            HighlightKind::Number => Color::from_rgb8(0x0f, 0x78, 0x6e),
+            HighlightKind::Function => Color::from_rgb8(0x1c, 0x55, 0x94),
+            HighlightKind::Variable => Color::from_rgb8(0x18, 0x32, 0x47),
+            HighlightKind::Parameter => Color::from_rgb8(0x7f, 0x46, 0xb2),
+            HighlightKind::Namespace => Color::from_rgb8(0x6b, 0x57, 0x1c),
+            HighlightKind::Type => Color::from_rgb8(0xb8, 0x54, 0x29),
+        }),
+        font: None,
+    }
+}
+
 fn muted(content: impl Into<String>) -> iced::widget::Text<'static> {
     text(content.into())
         .size(13)
@@ -778,6 +885,16 @@ fn format_percent(value: f64) -> String {
         return "NA".to_string();
     }
     format!("{value:.2}%")
+}
+
+fn line_start_offsets(source: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    for (index, ch) in source.char_indices() {
+        if ch == '\n' {
+            starts.push(index + ch.len_utf8());
+        }
+    }
+    starts
 }
 
 fn number_color(value: f64) -> Color {
@@ -1035,6 +1152,44 @@ async fn check_script_request(
     )
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn write_browser_clipboard(contents: String) -> Result<(), String> {
+    let Some(window) = web_sys::window() else {
+        return Err("Clipboard is unavailable in this browser context.".to_string());
+    };
+    let clipboard = window.navigator().clipboard();
+    wasm_bindgen_futures::JsFuture::from(clipboard.write_text(&contents))
+        .await
+        .map(|_| ())
+        .map_err(|error| format!("Failed to write to the browser clipboard: {error:?}"))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
+async fn write_browser_clipboard(_contents: String) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn read_browser_clipboard() -> Result<String, String> {
+    let Some(window) = web_sys::window() else {
+        return Err("Clipboard is unavailable in this browser context.".to_string());
+    };
+    let clipboard = window.navigator().clipboard();
+    let value = wasm_bindgen_futures::JsFuture::from(clipboard.read_text())
+        .await
+        .map_err(|error| format!("Failed to read from the browser clipboard: {error:?}"))?;
+    value
+        .as_string()
+        .ok_or_else(|| "The browser clipboard did not return text.".to_string())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
+async fn read_browser_clipboard() -> Result<String, String> {
+    Err("Clipboard paste is only available in the web IDE.".to_string())
+}
+
 async fn fetch_dataset_catalog() -> Result<PublicDatasetCatalog, String> {
     get_json("api/datasets").await
 }
@@ -1222,6 +1377,7 @@ struct CheckRequest {
 #[derive(Debug, Clone, Deserialize)]
 struct CheckResponse {
     diagnostics: Vec<Diagnostic>,
+    highlights: Vec<HighlightToken>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -1300,6 +1456,128 @@ struct DiagnosticPosition {
     character: usize,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct HighlightToken {
+    span: HighlightSpan,
+    kind: HighlightKind,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct HighlightSpan {
+    start: HighlightPosition,
+    end: HighlightPosition,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+struct HighlightPosition {
+    offset: usize,
+    line: usize,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum HighlightKind {
+    Keyword,
+    String,
+    Number,
+    Function,
+    Variable,
+    Parameter,
+    Namespace,
+    Type,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct EditorHighlightSettings {
+    lines: Vec<Vec<LineHighlight>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct LineHighlight {
+    range: Range<usize>,
+    kind: HighlightKind,
+}
+
+#[derive(Debug, Clone)]
+struct PalmHighlighter {
+    current_line: usize,
+    settings: EditorHighlightSettings,
+}
+
+impl EditorHighlightSettings {
+    fn from_source(source: &str, tokens: &[HighlightToken]) -> Self {
+        let line_count = source.lines().count().max(1);
+        let mut lines = vec![Vec::new(); line_count];
+        let line_offsets = line_start_offsets(source);
+
+        for token in tokens {
+            let line_index = token.span.start.line.saturating_sub(1);
+            let Some(line_start) = line_offsets.get(line_index).copied() else {
+                continue;
+            };
+            if token.span.end.offset < token.span.start.offset {
+                continue;
+            }
+
+            let start = token.span.start.offset.saturating_sub(line_start);
+            let end = token.span.end.offset.saturating_sub(line_start);
+            if start >= end {
+                continue;
+            }
+
+            if let Some(line) = lines.get_mut(line_index) {
+                line.push(LineHighlight {
+                    range: start..end,
+                    kind: token.kind,
+                });
+            }
+        }
+
+        Self { lines }
+    }
+}
+
+impl iced_core::text::Highlighter for PalmHighlighter {
+    type Settings = EditorHighlightSettings;
+    type Highlight = HighlightKind;
+    type Iterator<'a> = std::vec::IntoIter<(Range<usize>, HighlightKind)>;
+
+    fn new(settings: &Self::Settings) -> Self {
+        Self {
+            current_line: 0,
+            settings: settings.clone(),
+        }
+    }
+
+    fn update(&mut self, new_settings: &Self::Settings) {
+        self.settings = new_settings.clone();
+        self.current_line = 0;
+    }
+
+    fn change_line(&mut self, line: usize) {
+        self.current_line = line;
+    }
+
+    fn highlight_line(&mut self, _line: &str) -> Self::Iterator<'_> {
+        let highlights = self
+            .settings
+            .lines
+            .get(self.current_line)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|highlight| (highlight.range, highlight.kind))
+            .collect::<Vec<_>>()
+            .into_iter();
+        self.current_line += 1;
+        highlights
+    }
+
+    fn current_line(&self) -> usize {
+        self.current_line
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SelectedWindow {
     from_ms: i64,
@@ -1370,7 +1648,8 @@ fn same_date(left: Date, right: Date) -> bool {
 mod tests {
     use super::{
         date_from_ms, format_date_ms, format_number, format_percent, selected_window, update,
-        CalendarMonth, IdeApp, Message, PublicDataset, PublicDatasetId,
+        CalendarMonth, EditorHighlightSettings, HighlightKind, HighlightPosition, HighlightSpan,
+        HighlightToken, IdeApp, Message, PublicDataset, PublicDatasetId,
     };
     use iced_aw::date_picker::Date;
 
@@ -1475,5 +1754,41 @@ mod tests {
                 month: 2,
             }
         );
+    }
+
+    #[test]
+    fn highlight_settings_group_ranges_by_line() {
+        let source = "let fast = ema(src.close, 5)\nplot(fast)";
+        let settings = EditorHighlightSettings::from_source(
+            source,
+            &[
+                HighlightToken {
+                    span: HighlightSpan {
+                        start: HighlightPosition { offset: 0, line: 1 },
+                        end: HighlightPosition { offset: 3, line: 1 },
+                    },
+                    kind: HighlightKind::Keyword,
+                },
+                HighlightToken {
+                    span: HighlightSpan {
+                        start: HighlightPosition { offset: 4, line: 1 },
+                        end: HighlightPosition { offset: 8, line: 1 },
+                    },
+                    kind: HighlightKind::Variable,
+                },
+                HighlightToken {
+                    span: HighlightSpan {
+                        start: HighlightPosition { offset: 29, line: 2 },
+                        end: HighlightPosition { offset: 33, line: 2 },
+                    },
+                    kind: HighlightKind::Function,
+                },
+            ],
+        );
+
+        assert_eq!(settings.lines.len(), 2);
+        assert_eq!(settings.lines[0][0].range, 0..3);
+        assert_eq!(settings.lines[0][1].range, 4..8);
+        assert_eq!(settings.lines[1][0].range, 0..4);
     }
 }
