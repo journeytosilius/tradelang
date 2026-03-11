@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
 use axum::extract::{Query, State};
@@ -40,6 +40,7 @@ const DEFAULT_MAX_PARALLEL_BACKTESTS: usize = 4;
 const DEFAULT_MAX_LSP_SESSIONS: usize = 32;
 const SESSION_HEADER: &str = "x-palmscript-session";
 const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+const BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS: i64 = 1_502_928_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
@@ -275,13 +276,21 @@ pub fn public_dataset_catalog() -> PublicDatasetCatalog {
             symbol: "BTCUSDT".to_string(),
             base_interval: Interval::Hour4,
             supported_intervals: vec![Interval::Hour4, Interval::Day1, Interval::Week1],
-            from: 1_646_611_200_000,
-            to: 1_772_841_600_000,
+            from: BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS,
+            to: next_utc_day_start_ms(),
             initial_capital: 10_000.0,
             fee_bps: 7.5,
             slippage_bps: 2.0,
         }],
     }
+}
+
+fn next_utc_day_start_ms() -> i64 {
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_millis() as i64;
+    ((now_ms / DAY_MS) + 1) * DAY_MS
 }
 
 pub fn public_examples() -> Vec<PublicExample> {
@@ -880,6 +889,18 @@ export x = spot.close
             .dataset
             .clone();
         assert!(validate_dataset_compatibility(&compiled, &dataset).is_err());
+    }
+
+    #[test]
+    fn public_dataset_catalog_uses_history_window() {
+        let dataset = public_dataset_catalog()
+            .datasets
+            .into_iter()
+            .find(|dataset| dataset.dataset_id == PublicDatasetId::BtcusdtBinanceSpot4h4y)
+            .expect("public dataset");
+        assert_eq!(dataset.from, BTCUSDT_BINANCE_SPOT_LISTING_FROM_MS);
+        assert!(dataset.to > dataset.from);
+        assert_eq!(dataset.to % DAY_MS, 0);
     }
 
     #[tokio::test]

@@ -10,4 +10,4 @@ Before following the Learn examples, make sure:
 - your browser allows JavaScript and WebAssembly
 - you can edit and run scripts in the IDE
 
-The public Learn examples assume you are writing PalmScript inside the browser IDE, reviewing diagnostics there, and running the curated backtest flow from the app.
+The public Learn examples assume you are writing PalmScript inside the browser IDE, reviewing diagnostics there, and running the BTCUSDT history backtest flow from the app.

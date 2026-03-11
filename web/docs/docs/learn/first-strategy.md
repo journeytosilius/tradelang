@@ -29,7 +29,7 @@ order entry long = market()
 
 ## Try It In The Browser IDE
 
-Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the script into the editor, and run it over the curated dataset window with the date controls in the header. You should see the diagnostics panel stay clean, then the backtest summary, trades, and orders populate from the crossover signals.
+Open [https://palmscript.dev/app/](https://palmscript.dev/app/), paste the script into the editor, and run it over the available BTCUSDT history with the date controls in the header. You should see the diagnostics panel stay clean, then the backtest summary, trades, and orders populate from the crossover signals.
 
 ## Extend It With Higher-Timeframe Context
 

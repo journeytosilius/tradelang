@@ -23,6 +23,6 @@ The editor checks the script as you type and shows any compile diagnostics in th
 
 ## 4. Run A Backtest
 
-Pick a date range and press `Run Backtest` to execute the script against the curated dataset in the app.
+Pick a date range and press `Run Backtest` to execute the script against the available BTCUSDT history in the app.
 
 Next: [First Strategy](first-strategy.md)

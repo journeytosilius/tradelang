@@ -2,9 +2,9 @@
 
 The hosted PalmScript browser IDE is backed by:
 
-- `palmscript-ide-server` for HTTP, websocket LSP transport, curated dataset metadata, and curated backtests
+- `palmscript-ide-server` for HTTP, websocket LSP transport, public dataset metadata, and hosted backtests
 - the shared `IdeLspSession` library core for both stdio LSP and browser websocket sessions
-- a Vite-built React and TypeScript frontend with Monaco Editor, embedded by the server for editing, diagnostics, summary rendering, and curated backtest execution
+- a Vite-built React and TypeScript frontend with Monaco Editor, embedded by the server for editing, diagnostics, summary rendering, and hosted backtest execution
 
 ## Run locally
 
@@ -50,8 +50,8 @@ The first public IDE release is intentionally narrow:
 - PalmScript logo mark in the header instead of a text heading
 - browser tab favicon generated from the current PalmScript logo
 - anonymous ephemeral browser sessions
-- one curated BTCUSDT Binance spot dataset windowed by the selected date range
-- live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
+- one hosted BTCUSDT Binance spot dataset with the available history windowed by the selected date range
+- live compile diagnostics shown above a formatted backtest summary plus hosted backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 
 Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.

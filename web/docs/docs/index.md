@@ -16,7 +16,7 @@ PalmScript is a language for financial time-series strategies. This site focuses
 
 The hosted browser IDE demo keeps a minimal shell: one editor buffer, a
 React and TypeScript shell with Monaco Editor, calendar date-range pickers over
-the curated BTCUSDT dataset, live diagnostics, callable completion snippets,
+the available BTCUSDT dataset history, live diagnostics, callable completion snippets,
 backtest output panels, and trades/orders results without a raw JSON pane. The
 toolbar keeps the PalmScript logo inside the header instead of a text title,
 plus a light/dark mode switch. Dark mode uses a VS Code-like shell with a

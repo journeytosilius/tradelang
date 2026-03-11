@@ -59,7 +59,7 @@ The web shell keeps the same blue-grey and accent-blue visual language as the
 published docs at <https://palmscript.dev/docs/>.
 
 The public demo keeps the chrome intentionally minimal: one editor buffer, a
-calendar date-range picker over the curated BTCUSDT dataset, Monaco editing,
+calendar date-range picker over the available BTCUSDT dataset history, Monaco editing,
 compile diagnostics, Monaco hover and completion docs for builtins and language
 constructs, callable completion snippets in Monaco and VS Code, and backtest
 output panels. The toolbar keeps the PalmScript logo inside the header instead
