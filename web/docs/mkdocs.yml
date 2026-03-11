@@ -50,6 +50,9 @@ extra:
     - name: 日本語
       link: /ja/docs/
       lang: ja
+    - name: Francais
+      link: /fr/docs/
+      lang: fr
 
 extra_css:
   - stylesheets/extra.css
@@ -236,6 +239,43 @@ plugins:
             Diagnostics: 診断
             Interval Table: インターバル一覧
             Glossary: 用語集
+        - locale: fr
+          name: Francais
+          build: true
+          link: /fr/docs/
+          fixed_link: https://palmscript.dev/fr/docs/
+          site_url: https://palmscript.dev/fr/docs/
+          site_description: Documentation du langage PalmScript, reference et exemples
+          nav_translations:
+            Home: Accueil
+            Learn: Apprendre
+            Overview: Vue Densemble
+            Installation: Installation
+            Quickstart: Demarrage Rapide
+            First Strategy: Premiere Strategie
+            Language Overview: Vue Densemble Du Langage
+            Cookbook: Recettes
+            Multi-Interval Strategy: Strategie Multi-Intervalle
+            Exchange-Backed Sources: Sources Adossees Aux Exchanges
+            Cross-Source Spread: Spread Entre Sources
+            Reference: Reference
+            Lexical Structure: Structure Lexicale
+            Grammar: Grammaire
+            Declarations and Scope: Declarations Et Portee
+            Types and Values: Types Et Valeurs
+            Series and Indexing: Series Et Indexation
+            Evaluation Semantics: Semantique Devaluation
+            Intervals and Sources: Intervalles Et Sources
+            Builtins: Builtins
+            Indicators: Indicateurs
+            Trend and Overlap: Tendance Et Recouvrement
+            Momentum, Volume, and Volatility: Momentum, Volume Et Volatilite
+            Math, Price, and Statistics: Mathematiques, Prix Et Statistiques
+            TA-Lib Surface: Surface TA-Lib
+            Outputs: Sorties
+            Diagnostics: Diagnostics
+            Interval Table: Tableau Des Intervalles
+            Glossary: Glossaire
 
 nav:
   - Home: index.md

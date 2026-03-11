@@ -21,6 +21,7 @@ Localized content lives beside the English source with locale suffixes such as
 - Portuguese (Brazil): `/pt-BR/docs/`
 - German: `/de/docs/`
 - Japanese: `/ja/docs/`
+- French: `/fr/docs/`
 - future locales: `/{lang}/docs/`
 
 ## When To Update Docs
