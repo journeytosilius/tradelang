@@ -65,8 +65,8 @@ float over the toolbar instead of resizing it. The editor supports browser
 copy/cut/paste shortcuts and semantic token coloring backed by the shared IDE
 analysis pipeline. On a fresh hosted session, the shell also attempts a
 clipboard-read preflight so paste permission is warmed before the first editor
-paste in browsers that allow it. The toolbar uses a larger centered PalmScript
-logo mark instead of a text title.
+paste in browsers that allow it. The toolbar uses a centered PalmScript logo
+mark instead of a text title.
 
 The hosted reverse-proxy entrypoint is `/app/`. `https://palmscript.dev/app`
 redirects there.

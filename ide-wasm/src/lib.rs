@@ -37,8 +37,8 @@ const DATE_BUTTON_HEIGHT: f32 = 40.0;
 const DATE_FIELD_SPACING: f32 = 6.0;
 const DATE_PICKER_WIDTH: f32 = 272.0;
 const DAY_CELL_SIZE: f32 = 32.0;
-const HEADER_BRAND_WIDTH: f32 = 360.0;
-const HEADER_BRAND_HEIGHT: f32 = 112.0;
+const HEADER_BRAND_WIDTH: f32 = 240.0;
+const HEADER_BRAND_HEIGHT: f32 = 80.0;
 
 #[derive(Debug, Clone)]
 enum Message {
