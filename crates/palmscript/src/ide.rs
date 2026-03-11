@@ -224,7 +224,7 @@ impl SemanticDocument {
 pub fn complete_document(source: &str, offset: usize) -> Vec<CompletionEntry> {
     match analyze_document(source) {
         Ok(semantic) => semantic.completions_at(offset),
-        Err(_) => completions_for_source(source, offset, None),
+        Err(_) => completions_for_source(source, offset, fallback_definitions(source).as_deref()),
     }
 }
 
@@ -953,6 +953,104 @@ fn completions_for_source(
     items.into_values().collect()
 }
 
+fn fallback_definitions(source: &str) -> Option<Vec<DefinitionTarget>> {
+    let tokens = lexer::lex(source).ok()?;
+    let ast = parser::parse(&tokens).ok()?;
+    Some(collect_definition_fallbacks(&ast))
+}
+
+fn collect_definition_fallbacks(ast: &Ast) -> Vec<DefinitionTarget> {
+    let mut definitions = Vec::new();
+
+    for source in &ast.strategy_intervals.sources {
+        definitions.push(DefinitionTarget {
+            name: source.alias.clone(),
+            kind: SymbolKind::Source,
+            span: source.span,
+            selection_span: source.alias_span,
+            detail: Some(format!(
+                "{}(\"{}\")",
+                source.template.as_str(),
+                source.symbol
+            )),
+            navigable: true,
+        });
+    }
+
+    for function in &ast.functions {
+        let params = function
+            .params
+            .iter()
+            .map(|param| param.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        definitions.push(DefinitionTarget {
+            name: function.name.clone(),
+            kind: SymbolKind::Function,
+            span: function.span,
+            selection_span: function.name_span,
+            detail: Some(format!("fn {}({})", function.name, params)),
+            navigable: true,
+        });
+    }
+
+    for stmt in &ast.statements {
+        match &stmt.kind {
+            StmtKind::Let {
+                name, name_span, ..
+            }
+            | StmtKind::Const {
+                name, name_span, ..
+            }
+            | StmtKind::Input {
+                name, name_span, ..
+            } => definitions.push(DefinitionTarget {
+                name: name.clone(),
+                kind: SymbolKind::Let,
+                span: stmt.span,
+                selection_span: *name_span,
+                detail: None,
+                navigable: true,
+            }),
+            StmtKind::LetTuple { names, .. } => {
+                for binding in names {
+                    definitions.push(DefinitionTarget {
+                        name: binding.name.clone(),
+                        kind: SymbolKind::Let,
+                        span: stmt.span,
+                        selection_span: binding.span,
+                        detail: None,
+                        navigable: true,
+                    });
+                }
+            }
+            StmtKind::Export {
+                name, name_span, ..
+            } => definitions.push(DefinitionTarget {
+                name: name.clone(),
+                kind: SymbolKind::Export,
+                span: stmt.span,
+                selection_span: *name_span,
+                detail: Some(format!("export {}", name)),
+                navigable: true,
+            }),
+            StmtKind::Trigger {
+                name, name_span, ..
+            } => definitions.push(DefinitionTarget {
+                name: name.clone(),
+                kind: SymbolKind::Trigger,
+                span: stmt.span,
+                selection_span: *name_span,
+                detail: Some("trigger series<bool>".to_string()),
+                navigable: true,
+            }),
+            _ => {}
+        }
+    }
+
+    definitions
+}
+
 fn plain_completion(label: &str, kind: CompletionKind, detail: &str) -> CompletionEntry {
     CompletionEntry {
         label: label.to_string(),
@@ -1175,7 +1273,13 @@ fn completion_context(source: &str, offset: usize) -> CompletionContext {
             .rfind(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
             .map(|index| index + 1)
             .unwrap_or(0);
-        if Interval::parse(&before[interval_start..token_start - 1]).is_some() {
+        let segment = &before[interval_start..token_start - 1];
+        if Interval::parse(segment).is_some()
+            || segment
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+        {
             return CompletionContext::Field;
         }
     }
@@ -1798,6 +1902,35 @@ let sar_fast = sar
             "sar(${1:high}, ${2:low}, ${3:0.02}, ${4:0.2})"
         );
         assert_eq!(sar.insert_text_format, CompletionInsertTextFormat::Snippet);
+    }
+
+    #[test]
+    fn completions_fall_back_to_source_aliases_for_semantic_errors() {
+        let source = r#"interval 1m
+source spot = binance.spot("BTCUSDT")
+
+let basis = spo
+"#;
+        let items = complete_document(source, source.len());
+        let spot = items
+            .iter()
+            .find(|entry| entry.label == "spot")
+            .expect("spot source completion");
+        assert_eq!(spot.kind, CompletionKind::Source);
+    }
+
+    #[test]
+    fn completions_offer_market_fields_after_source_dot() {
+        let source = r#"interval 1m
+source spot = binance.spot("BTCUSDT")
+
+let basis = spot.
+"#;
+        let offset = source.find("spot.").expect("spot field access") + "spot.".len();
+        let items = complete_document(source, offset);
+        assert!(items.iter().any(|entry| entry.label == "close"));
+        assert!(items.iter().any(|entry| entry.label == "high"));
+        assert!(items.iter().any(|entry| entry.label == "low"));
     }
 
     #[test]

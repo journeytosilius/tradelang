@@ -1166,6 +1166,68 @@ plot(spot.close)
     }
 
     #[tokio::test]
+    async fn completions_endpoint_returns_source_aliases_for_semantic_errors() {
+        let app = browser_ide_router(fixture_state());
+        let script = "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nlet basis = spo";
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CompletionsRequest {
+                            script: script.to_string(),
+                            offset: script.len(),
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: CompletionsResponse =
+            serde_json::from_slice(&body).expect("completions response should deserialize");
+        assert!(payload.items.iter().any(|entry| entry.label == "spot"));
+    }
+
+    #[tokio::test]
+    async fn completions_endpoint_returns_market_fields_after_source_dot() {
+        let app = browser_ide_router(fixture_state());
+        let script = "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nlet basis = spot.";
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CompletionsRequest {
+                            script: script.to_string(),
+                            offset: script.len(),
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: CompletionsResponse =
+            serde_json::from_slice(&body).expect("completions response should deserialize");
+        assert!(payload.items.iter().any(|entry| entry.label == "close"));
+        assert!(payload.items.iter().any(|entry| entry.label == "high"));
+        assert!(payload.items.iter().any(|entry| entry.label == "low"));
+    }
+
+    #[tokio::test]
     async fn backtest_endpoint_rejects_incompatible_source() {
         let app = browser_ide_router(fixture_state());
         let response = app
