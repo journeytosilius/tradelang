@@ -1,3 +1,13 @@
+function getPalmScriptLocaleHomeHref() {
+  const { origin, pathname } = window.location;
+  const localeMatch = pathname.match(/^\/([^/]+)\/docs(?:\/|$)/);
+  if (localeMatch) {
+    return `${origin}/${localeMatch[1]}/`;
+  }
+
+  return `${origin}/`;
+}
+
 function wirePalmScriptHeaderHomeLink() {
   const topic = document.querySelector(".md-header__title .md-header__topic");
   if (!topic || topic.querySelector(".ps-home-link")) {
@@ -5,11 +15,9 @@ function wirePalmScriptHeaderHomeLink() {
   }
 
   const link = document.createElement("a");
-  link.href = "https://palmscript.dev/";
+  link.href = getPalmScriptLocaleHomeHref();
   link.className = "ps-home-link";
   link.setAttribute("aria-label", "PalmScript home");
-  link.setAttribute("target", "_blank");
-  link.setAttribute("rel", "noopener noreferrer");
   link.textContent = "PalmScript";
 
   topic.replaceChildren(link);
