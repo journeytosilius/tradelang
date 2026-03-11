@@ -334,6 +334,8 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/app/ide/palmscript_ide.js", get(ide_wasm_js))
         .route("/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
         .route("/app/ide/palmscript_ide_bg.wasm", get(ide_wasm_binary))
+        .route("/ide/palmscript-logo.png", get(ide_logo_png))
+        .route("/app/ide/palmscript-logo.png", get(ide_logo_png))
         .route("/api/healthz", get(healthz))
         .route("/app/api/healthz", get(healthz))
         .route("/api/examples", get(list_examples))
@@ -379,6 +381,16 @@ async fn ide_wasm_binary() -> impl IntoResponse {
             HeaderValue::from_static("application/wasm"),
         )],
         include_bytes!("../ide-wasm/dist/palmscript_ide_bg.wasm").as_slice(),
+    )
+}
+
+async fn ide_logo_png() -> impl IntoResponse {
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            HeaderValue::from_static("image/png"),
+        )],
+        include_bytes!("../docs/assets/palmscript-logo.png").as_slice(),
     )
 }
 
@@ -838,6 +850,28 @@ export x = spot.close
                 .get(axum::http::header::CONTENT_TYPE)
                 .and_then(|value| value.to_str().ok()),
             Some("application/javascript")
+        );
+    }
+
+    #[tokio::test]
+    async fn logo_asset_route_is_served() {
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/app/ide/palmscript-logo.png")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok()),
+            Some("image/png")
         );
     }
 

@@ -10,9 +10,33 @@
         min-height: 100%;
         background: linear-gradient(180deg, #f4f8fc 0%, #edf4fb 100%);
       }
+
+      body {
+        position: relative;
+      }
+
+      .ide-brandmark {
+        position: fixed;
+        top: 36px;
+        left: 36px;
+        z-index: 10;
+        width: 184px;
+        height: auto;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      @media (max-width: 900px) {
+        .ide-brandmark {
+          top: 28px;
+          left: 28px;
+          width: 156px;
+        }
+      }
     </style>
   </head>
   <body>
+    <img class="ide-brandmark" src="./ide/palmscript-logo.png" alt="PalmScript" />
     <script type="module">
       import init from "./ide/palmscript_ide.js";
 

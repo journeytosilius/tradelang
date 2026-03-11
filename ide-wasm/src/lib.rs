@@ -33,6 +33,7 @@ const DATE_BUTTON_HEIGHT: f32 = 40.0;
 const DATE_FIELD_SPACING: f32 = 6.0;
 const DATE_PICKER_WIDTH: f32 = 272.0;
 const DAY_CELL_SIZE: f32 = 32.0;
+const HEADER_BRAND_WIDTH: f32 = 184.0;
 
 #[derive(Debug, Clone)]
 enum Message {
@@ -342,7 +343,7 @@ fn app_theme(_state: &IdeApp) -> Theme {
 fn view(state: &IdeApp) -> Element<'_, Message> {
     let toolbar = container(
         row![
-            text("PalmScript IDE").size(26),
+            container(text("")).width(Length::Fixed(HEADER_BRAND_WIDTH)),
             row![
                 date_field(DateFieldProps {
                     label: "From",
