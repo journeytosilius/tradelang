@@ -47,7 +47,7 @@ The first public IDE release is intentionally narrow:
 - browser copy/cut/paste shortcuts wired through the web clipboard API
 - fresh hosted sessions attempt a clipboard-read preflight before the first paste when the browser allows it
 - semantic token coloring from the shared IDE analysis pipeline
-- centered PalmScript logo mark inside the left header slot instead of a text heading
+- left-anchored PalmScript logo mark inside the header slot instead of a text heading
 - anonymous ephemeral browser sessions
 - one curated BTCUSDT Binance spot dataset windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus curated backtest execution
