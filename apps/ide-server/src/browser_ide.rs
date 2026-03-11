@@ -1228,6 +1228,39 @@ plot(spot.close)
     }
 
     #[tokio::test]
+    async fn completions_endpoint_does_not_treat_series_variables_as_sources() {
+        let app = browser_ide_router(fixture_state());
+        let script = "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nlet fast = ema(spot.close, 13)\nlet basis = fast.";
+        let offset = script.find("fast.").expect("series variable access") + "fast.".len();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&CompletionsRequest {
+                            script: script.to_string(),
+                            offset,
+                        })
+                        .expect("request body"),
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let payload: CompletionsResponse =
+            serde_json::from_slice(&body).expect("completions response should deserialize");
+        assert!(!payload.items.iter().any(|entry| entry.label == "close"));
+        assert!(!payload.items.iter().any(|entry| entry.label == "high"));
+        assert!(!payload.items.iter().any(|entry| entry.label == "low"));
+    }
+
+    #[tokio::test]
     async fn backtest_endpoint_rejects_incompatible_source() {
         let app = browser_ide_router(fixture_state());
         let response = app

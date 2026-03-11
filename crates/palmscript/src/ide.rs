@@ -886,7 +886,7 @@ fn completions_for_source(
     definitions: Option<&[DefinitionTarget]>,
 ) -> Vec<CompletionEntry> {
     let mut items = BTreeMap::new();
-    match completion_context(source, offset) {
+    match completion_context_for(source, offset, definitions) {
         CompletionContext::Field => {
             for (label, detail) in MARKET_FIELDS {
                 items.insert(
@@ -1257,7 +1257,11 @@ enum CompletionContext {
     Field,
 }
 
-fn completion_context(source: &str, offset: usize) -> CompletionContext {
+fn completion_context_for(
+    source: &str,
+    offset: usize,
+    definitions: Option<&[DefinitionTarget]>,
+) -> CompletionContext {
     let offset = offset.min(source.len());
     let before = &source[..offset];
     let token_start = before
@@ -1274,11 +1278,7 @@ fn completion_context(source: &str, offset: usize) -> CompletionContext {
             .map(|index| index + 1)
             .unwrap_or(0);
         let segment = &before[interval_start..token_start - 1];
-        if Interval::parse(segment).is_some()
-            || segment
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+        if Interval::parse(segment).is_some() || source_alias_segment(source, segment, definitions)
         {
             return CompletionContext::Field;
         }
@@ -1289,6 +1289,32 @@ fn completion_context(source: &str, offset: usize) -> CompletionContext {
     }
 
     CompletionContext::General
+}
+
+fn source_alias_segment(
+    source: &str,
+    segment: &str,
+    definitions: Option<&[DefinitionTarget]>,
+) -> bool {
+    definitions.is_some_and(|definitions| {
+        definitions.iter().any(|definition| {
+            definition.name == segment && matches!(definition.kind, SymbolKind::Source)
+        })
+    }) || source_declares_alias(source, segment)
+}
+
+fn source_declares_alias(source: &str, alias: &str) -> bool {
+    source.lines().any(|line| {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("source ") {
+            return false;
+        }
+        let rest = &trimmed["source ".len()..];
+        let Some((declared_alias, _)) = rest.split_once('=') else {
+            return false;
+        };
+        declared_alias.trim() == alias
+    })
 }
 
 fn format_ast(ast: &Ast) -> String {
@@ -1931,6 +1957,21 @@ let basis = spot.
         assert!(items.iter().any(|entry| entry.label == "close"));
         assert!(items.iter().any(|entry| entry.label == "high"));
         assert!(items.iter().any(|entry| entry.label == "low"));
+    }
+
+    #[test]
+    fn completions_do_not_offer_market_fields_after_series_variables() {
+        let source = r#"interval 1m
+source spot = binance.spot("BTCUSDT")
+
+let fast = ema(spot.close, 13)
+let basis = fast.
+"#;
+        let offset = source.find("fast.").expect("series variable access") + "fast.".len();
+        let items = complete_document(source, offset);
+        assert!(!items.iter().any(|entry| entry.label == "close"));
+        assert!(!items.iter().any(|entry| entry.label == "high"));
+        assert!(!items.iter().any(|entry| entry.label == "low"));
     }
 
     #[test]
