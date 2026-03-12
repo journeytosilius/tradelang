@@ -27,7 +27,7 @@ Checked-in `.ps` strategies live under `crates/palmscript/examples/strategies/`.
 
 Representative files:
 
-- `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned staged `entry1` / `entry2` market entries, staged `target1` / `target2` profit-taking, and `protect_after_target1 long` stop ratchets
+- `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned EMA, RSI, MACD, entry sizing, ATR target, and post-target stop-ratchet inputs around staged `entry1` / `entry2` and `target1` / `target2` order flow
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
 - `crates/palmscript/examples/strategies/bybit_spot.ps`: Bybit spot market-mode example with a supplemental `1h` feed

@@ -1,9 +1,10 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
 use palmscript::{
-    compile, run_backtest_with_sources, run_with_sources, BacktestConfig, Bar, SourceFeed,
-    SourceRuntimeConfig, VmLimits,
+    compile, compile_with_input_overrides, run_backtest_with_sources, run_with_sources,
+    BacktestConfig, Bar, SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 const JAN_1_2024_UTC_MS: i64 = 1_704_067_200_000;
@@ -54,6 +55,28 @@ fn referenced_docs_examples_compile() {
     for path in examples {
         compile(&read_strategy(path)).unwrap_or_else(|_| panic!("{path} should compile"));
     }
+}
+
+#[test]
+fn adaptive_trend_example_accepts_extended_optimizer_overrides() {
+    let mut overrides = BTreeMap::new();
+    overrides.insert("target2_atr_mult".to_string(), 4.5);
+    overrides.insert("ratchet_atr_mult".to_string(), 2.75);
+    overrides.insert("target_return".to_string(), 0.04);
+    overrides.insert("target2_return_mult".to_string(), 2.25);
+    overrides.insert("long_rsi_threshold".to_string(), 55.0);
+    overrides.insert("breakout_macd_hist_threshold".to_string(), 0.15);
+    overrides.insert("add_on_macd_hist_threshold".to_string(), -0.05);
+    overrides.insert("macd_fast_len".to_string(), 10.0);
+    overrides.insert("macd_slow_len".to_string(), 30.0);
+    overrides.insert("macd_signal_len".to_string(), 7.0);
+    overrides.insert("entry1_size".to_string(), 0.8);
+
+    compile_with_input_overrides(
+        &read_strategy("examples/strategies/adaptive_trend_backtest.ps"),
+        &overrides,
+    )
+    .expect("adaptive_trend_backtest should accept extended optimizer overrides");
 }
 
 #[test]
