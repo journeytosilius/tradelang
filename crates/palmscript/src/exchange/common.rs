@@ -3,7 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use reqwest::blocking::{Client, Response};
 use reqwest::StatusCode;
-use serde::de::{self, Deserializer, Visitor};
+use serde::de::{self, DeserializeOwned, Deserializer, Visitor};
 use serde::Serialize;
 
 use super::ExchangeFetchError;
@@ -53,6 +53,50 @@ where
     }
 
     deserializer.deserialize_any(F64TextVisitor)
+}
+
+pub(crate) fn deserialize_i64_text<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct I64TextVisitor;
+
+    impl<'de> Visitor<'de> for I64TextVisitor {
+        type Value = i64;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an integer or integer-like string")
+        }
+
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+            Ok(value)
+        }
+
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            i64::try_from(value).map_err(|err| E::custom(err.to_string()))
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            value
+                .parse::<i64>()
+                .map_err(|err| E::custom(err.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            self.visit_str(&value)
+        }
+    }
+
+    deserializer.deserialize_any(I64TextVisitor)
 }
 
 pub(crate) fn deserialize_option_f64_text<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
@@ -316,6 +360,33 @@ pub(crate) fn http_status_message(response: Response) -> String {
         }
         Err(err) => format!("HTTP {status} from {url} (failed to read body: {err})"),
     }
+}
+
+pub(crate) fn decode_json_response<T: DeserializeOwned>(
+    response: Response,
+    source: &DeclaredMarketSource,
+    interval: Interval,
+) -> Result<T, ExchangeFetchError> {
+    let url = response.url().to_string();
+    let body = response.text().map_err(|err| {
+        malformed_response(
+            source,
+            interval,
+            format!("failed to read response body from {url}: {err}"),
+        )
+    })?;
+    serde_json::from_str(&body).map_err(|err| {
+        let trimmed = body.trim();
+        let detail = if trimmed.is_empty() {
+            format!("error decoding response body from {url}: {err}; empty body")
+        } else {
+            format!(
+                "error decoding response body from {url}: {err}; body: {}",
+                truncate_message(trimmed, 400)
+            )
+        };
+        malformed_response(source, interval, detail)
+    })
 }
 
 fn truncate_message(message: &str, max_chars: usize) -> String {

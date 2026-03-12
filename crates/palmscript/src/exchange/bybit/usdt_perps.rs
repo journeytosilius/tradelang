@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{interval_text, spot::fetch_bybit_bars};
 use crate::exchange::common::{
-    deserialize_f64_text, deserialize_option_f64_text, http_status_message, malformed_response,
-    no_data, normalize_margin_percent, now_ms, parse_text_f64, push_bar_if_in_window,
-    request_failed,
+    decode_json_response, deserialize_f64_text, deserialize_option_f64_text, http_status_message,
+    malformed_response, no_data, normalize_margin_percent, now_ms, parse_text_f64,
+    push_bar_if_in_window, request_failed,
 };
 use crate::exchange::{ExchangeEndpoints, ExchangeFetchError, RiskTier};
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -221,9 +221,8 @@ pub(crate) fn fetch_mark_price_bars(
                 http_status_message(response),
             ));
         }
-        let payload: BybitEnvelope<BybitKlineResult<BybitMarkPriceKlineRow>> = response
-            .json()
-            .map_err(|err| malformed_response(source, interval, err.to_string()))?;
+        let payload: BybitEnvelope<BybitKlineResult<BybitMarkPriceKlineRow>> =
+            decode_json_response(response, source, interval)?;
         if payload.ret_code != 0 {
             return Err(request_failed(source, interval, payload.ret_msg));
         }

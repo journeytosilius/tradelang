@@ -72,7 +72,7 @@ Las restricciones operativas de carga tambien dependen del template:
 - la paginacion de Gate spot y futures se hace por ventanas de tiempo porque la API publica no permite `limit` junto con `from` / `to`
 - las solicitudes de Gate spot y futures se limitan a 1000 velas por llamada HTTP para evitar `400 Bad Request` provocados por rangos demasiado amplios
 - los feeds de Binance, Bybit y Gate se paginan internamente
-- cuando un venue rechaza una carga, PalmScript muestra el estado HTTP junto con la URL de la solicitud y un fragmento truncado del cuerpo de respuesta si existe
+- cuando una carga de venue falla, PalmScript muestra la URL de la solicitud y un fragmento truncado del cuerpo de respuesta cuando existe, tanto en rechazos HTTP no-200 como en cargas JSON malformadas
 - las URLs base se pueden sobreescribir con
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
   `PALMSCRIPT_BYBIT_BASE_URL` y `PALMSCRIPT_GATE_BASE_URL`; para Gate se

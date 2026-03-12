@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::futures_interval_text;
 use crate::exchange::common::{
-    deserialize_f64_text, first_open_time_in_window, gate_get_fallback,
+    decode_json_response, deserialize_f64_text, first_open_time_in_window, gate_get_fallback,
     gate_get_with_query_fallback, http_status_message, malformed_response, ms_to_api_seconds,
     no_data, normalize_margin_percent, now_ms, page_window_end_ms, parse_text_f64,
     push_bar_if_in_window, request_failed,
@@ -257,9 +257,8 @@ fn fetch_futures_bars(
                 http_status_message(response),
             ));
         }
-        let mut rows: Vec<GateFuturesCandlestick> = response
-            .json()
-            .map_err(|err| malformed_response(source, interval, err.to_string()))?;
+        let mut rows: Vec<GateFuturesCandlestick> =
+            decode_json_response(response, source, interval)?;
         rows.sort_by_key(GateFuturesCandlestick::open_time_ms);
 
         for row in &rows {

@@ -56,9 +56,9 @@ The first public IDE release is intentionally narrow:
 
 Operationally, the hosted dataset fetch path now caps Gate requests to the
 venue's 1000-candle public limit per HTTP call. When the IDE server still gets
-a venue-side fetch rejection, the logged error includes the HTTP status, the
-request URL, and a truncated response-body snippet to make production
-debugging actionable.
+a venue-side fetch failure, the logged error includes the request URL and a
+truncated response-body snippet for both non-200 HTTP responses and malformed
+JSON payloads so production debugging stays actionable.
 
 Dark mode uses a VS Code-like shell palette with a Dracula-style Monaco theme.
 VS Code and the hosted Monaco editor now share builtin signatures, summaries,

@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::spot_interval_text;
 use crate::exchange::common::{
-    first_open_time_in_window, gate_get_with_query_fallback, http_status_message,
-    malformed_response, ms_to_api_seconds, no_data, page_window_end_ms, parse_text_f64,
-    push_bar_if_in_window, request_failed,
+    decode_json_response, deserialize_i64_text, first_open_time_in_window,
+    gate_get_with_query_fallback, http_status_message, malformed_response, ms_to_api_seconds,
+    no_data, page_window_end_ms, parse_text_f64, push_bar_if_in_window, request_failed,
 };
 use crate::exchange::ExchangeFetchError;
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -34,6 +34,9 @@ pub(crate) struct GateSpotCandlestickRow {
     open: String,
     base_volume: String,
 }
+
+#[derive(Deserialize)]
+struct GateSpotTimestamp(#[serde(deserialize_with = "deserialize_i64_text")] i64);
 
 impl GateSpotCandlestickRow {
     fn open_time_ms(&self) -> i64 {
@@ -75,8 +78,9 @@ impl<'de> Deserialize<'de> for GateSpotCandlestickRow {
                 A: SeqAccess<'de>,
             {
                 let timestamp_secs = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                    .next_element::<GateSpotTimestamp>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?
+                    .0;
                 let _quote_volume: String = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(1, &self))?;
@@ -161,9 +165,8 @@ pub(crate) fn fetch_bars(
                 http_status_message(response),
             ));
         }
-        let mut rows: Vec<GateSpotCandlestickRow> = response
-            .json()
-            .map_err(|err| malformed_response(source, interval, err.to_string()))?;
+        let mut rows: Vec<GateSpotCandlestickRow> =
+            decode_json_response(response, source, interval)?;
         rows.sort_by_key(GateSpotCandlestickRow::open_time_ms);
 
         for row in &rows {
@@ -203,14 +206,14 @@ mod tests {
             symbol: "BTC_USDT".to_string(),
         };
         let row: GateSpotCandlestickRow = serde_json::from_value(json!([
-            1704067200_i64,
+            "1704067200",
             "15.0",
             "1.5",
             "2.0",
             "0.5",
             "1.0",
             "10.0",
-            true
+            "true"
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
@@ -239,24 +242,24 @@ mod tests {
             .with_body(
                 json!([
                     [
-                        1640995200_i64,
+                        "1640995200",
                         "15.0",
                         "1.5",
                         "2.0",
                         "0.5",
                         "1.0",
                         "10.0",
-                        true
+                        "true"
                     ],
                     [
-                        1655380800_i64,
+                        "1655380800",
                         "16.0",
                         "2.5",
                         "3.0",
                         "1.5",
                         "2.0",
                         "11.0",
-                        true
+                        "true"
                     ]
                 ])
                 .to_string(),

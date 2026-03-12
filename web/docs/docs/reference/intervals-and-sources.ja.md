@@ -68,7 +68,7 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 - Gate spot / futures のページングは、公開 API が `limit` と `from` / `to` を同時に許可しないため時間窓単位で行う
 - Gate spot / futures への HTTP リクエストは 1 回あたり 1000 本のローソク足に制限され、広すぎる範囲による `400 Bad Request` を避ける
 - Binance / Bybit / Gate フィードは内部でページ分割される
-- venue が取得要求を拒否した場合、PalmScript は HTTP ステータスに加えてリクエスト URL とレスポンス本文の切り詰めた断片も表示する
+- venue 取得が失敗した場合、PalmScript はリクエスト URL とレスポンス本文の切り詰めた断片を表示する。これは non-200 の HTTP 失敗と JSON ペイロード破損の両方に適用される
 - ベース URL は `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
   `PALMSCRIPT_GATE_BASE_URL` で上書きできる。Gate では

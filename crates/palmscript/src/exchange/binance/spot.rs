@@ -5,7 +5,9 @@ use reqwest::StatusCode;
 use serde::de::{self, Deserializer, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::common::{http_status_message, no_data, parse_text_f64, request_failed};
+use crate::exchange::common::{
+    decode_json_response, http_status_message, no_data, parse_text_f64, request_failed,
+};
 use crate::exchange::ExchangeFetchError;
 use crate::interval::{DeclaredMarketSource, Interval};
 use crate::runtime::Bar;
@@ -169,9 +171,7 @@ pub(crate) fn fetch_binance_bars(
                 http_status_message(response),
             ));
         }
-        let rows: Vec<BinanceKlineRow> = response.json().map_err(|err| {
-            crate::exchange::common::malformed_response(source, interval, err.to_string())
-        })?;
+        let rows: Vec<BinanceKlineRow> = decode_json_response(response, source, interval)?;
         if rows.is_empty() {
             break;
         }

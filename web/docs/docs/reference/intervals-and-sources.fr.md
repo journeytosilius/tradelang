@@ -75,7 +75,7 @@ Les contraintes operationnelles de recuperation dependent aussi du template :
 - la pagination Gate spot et futures est decoupee par fenetres temporelles, car l'API publique n'autorise pas `limit` avec `from` / `to`
 - les requetes Gate spot et futures sont limitees a 1000 chandeliers par appel HTTP afin d'eviter des `400 Bad Request` causes par des plages trop larges
 - les flux Binance, Bybit et Gate sont pagines en interne
-- lorsqu'un venue refuse une recuperation, PalmScript affiche le statut HTTP ainsi que l'URL de la requete et un extrait tronque du corps de reponse lorsqu'il existe
+- lorsqu'une recuperation de venue echoue, PalmScript affiche l'URL de la requete et un extrait tronque du corps de reponse lorsqu'il existe, autant pour les rejets HTTP non-200 que pour les payloads JSON malformes
 - les URL de base peuvent etre surchargees avec
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
   `PALMSCRIPT_BYBIT_BASE_URL` et `PALMSCRIPT_GATE_BASE_URL`; pour Gate, la
