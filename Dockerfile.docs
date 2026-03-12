@@ -6,7 +6,7 @@ COPY web/docs/requirements-docs.txt web/docs/mkdocs.yml /app/web/docs/
 RUN pip install --no-cache-dir -r /app/web/docs/requirements-docs.txt
 
 COPY web/docs /app/web/docs
-COPY infra/scripts/build_docs_site.sh /app/infra/scripts/build_docs_site.sh
+COPY infra/scripts/build_docs_site.sh infra/scripts/normalize_docs_output.py /app/infra/scripts/
 COPY README.md /app/README.md
 
 RUN sh /app/infra/scripts/build_docs_site.sh
