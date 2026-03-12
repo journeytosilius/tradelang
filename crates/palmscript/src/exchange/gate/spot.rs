@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::spot_interval_text;
 use crate::exchange::common::{
-    first_open_time_in_window, gate_get_with_query_fallback, malformed_response, ms_to_api_seconds,
-    no_data, page_window_end_ms, parse_text_f64, push_bar_if_in_window, request_failed,
+    first_open_time_in_window, gate_get_with_query_fallback, http_status_message,
+    malformed_response, ms_to_api_seconds, no_data, page_window_end_ms, parse_text_f64,
+    push_bar_if_in_window, request_failed,
 };
 use crate::exchange::ExchangeFetchError;
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -157,7 +158,7 @@ pub(crate) fn fetch_bars(
             return Err(request_failed(
                 source,
                 interval,
-                format!("HTTP {}", response.status()),
+                http_status_message(response),
             ));
         }
         let mut rows: Vec<GateSpotCandlestickRow> = response
@@ -170,7 +171,13 @@ pub(crate) fn fetch_bars(
             push_bar_if_in_window(&mut bars, bar, source, interval, from_ms, to_ms)?;
         }
 
-        window_start_ms = window_end_ms;
+        let Some(next_window_start) = interval.next_open_time(window_end_ms) else {
+            break;
+        };
+        if next_window_start >= to_ms {
+            break;
+        }
+        window_start_ms = next_window_start;
     }
 
     if bars.is_empty() {
@@ -181,8 +188,10 @@ pub(crate) fn fetch_bars(
 
 #[cfg(test)]
 mod tests {
-    use super::GateSpotCandlestickRow;
+    use super::{fetch_bars, GateSpotCandlestickRow};
     use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
+    use mockito::{Matcher, Server};
+    use reqwest::blocking::Client;
     use serde_json::json;
 
     #[test]
@@ -207,5 +216,63 @@ mod tests {
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
         assert_eq!(bar.time, 1704067200000.0);
         assert_eq!(bar.volume, 10.0);
+    }
+
+    #[test]
+    fn gate_spot_fetch_caps_first_page_to_1000_inclusive_candles() {
+        let source = DeclaredMarketSource {
+            id: 0,
+            alias: "src".to_string(),
+            template: SourceTemplate::GateSpot,
+            symbol: "BTC_USDT".to_string(),
+        };
+        let mut server = Server::new();
+        let _candles = server
+            .mock("GET", "/spot/candlesticks")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("currency_pair".into(), "BTC_USDT".into()),
+                Matcher::UrlEncoded("interval".into(), "4h".into()),
+                Matcher::UrlEncoded("from".into(), "1640995200".into()),
+                Matcher::UrlEncoded("to".into(), "1655380800".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [
+                        1640995200_i64,
+                        "15.0",
+                        "1.5",
+                        "2.0",
+                        "0.5",
+                        "1.0",
+                        "10.0",
+                        true
+                    ],
+                    [
+                        1655380800_i64,
+                        "16.0",
+                        "2.5",
+                        "3.0",
+                        "1.5",
+                        "2.0",
+                        "11.0",
+                        true
+                    ]
+                ])
+                .to_string(),
+            )
+            .create();
+
+        let bars = fetch_bars(
+            &Client::new(),
+            &source,
+            Interval::Hour4,
+            1_640_995_200_000,
+            1_655_395_200_000,
+            &server.url(),
+        )
+        .expect("bars");
+
+        assert_eq!(bars.len(), 2);
     }
 }

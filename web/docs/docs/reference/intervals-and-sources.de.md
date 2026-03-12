@@ -73,7 +73,9 @@ Auch operative Fetch-Beschraenkungen sind template-spezifisch:
 - Bybit-REST-Klines kommen absteigend sortiert zurueck und PalmScript ordnet sie vor der Laufzeitpruefung neu
 - Gate-Candlestick-APIs verwenden Unix-Sekunden und PalmScript normalisiert sie auf Unix-Millisekunden UTC
 - Gate-Spot- und Futures-Paginierung erfolgt in Zeitfenstern, weil die oeffentliche API `limit` nicht mit `from` / `to` kombiniert
+- Gate-Spot- und Futures-Anfragen sind auf 1000 Kerzen pro HTTP-Aufruf begrenzt, damit venue-seitige Bereichslimits keine vermeidbaren `400 Bad Request`-Fehler ausloesen
 - Binance-, Bybit- und Gate-Feeds werden intern paginiert
+- wenn ein Venue einen Abruf ablehnt, zeigt PalmScript den HTTP-Status zusammen mit der Request-URL und einem gekuerzten Ausschnitt des Response-Bodys an, sofern vorhanden
 - Basis-URLs lassen sich mit `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
   `PALMSCRIPT_GATE_BASE_URL` ueberschreiben; fuer Gate funktionieren sowohl die

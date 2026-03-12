@@ -66,7 +66,9 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 - Bybit REST の kline は降順で返るため、PalmScript はランタイム整列検証の前に並べ替える
 - Gate のローソク足 API は Unix 秒を使い、PalmScript はそれを UTC の Unix ミリ秒に正規化する
 - Gate spot / futures のページングは、公開 API が `limit` と `from` / `to` を同時に許可しないため時間窓単位で行う
+- Gate spot / futures への HTTP リクエストは 1 回あたり 1000 本のローソク足に制限され、広すぎる範囲による `400 Bad Request` を避ける
 - Binance / Bybit / Gate フィードは内部でページ分割される
+- venue が取得要求を拒否した場合、PalmScript は HTTP ステータスに加えてリクエスト URL とレスポンス本文の切り詰めた断片も表示する
 - ベース URL は `PALMSCRIPT_BINANCE_SPOT_BASE_URL`,
   `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`,
   `PALMSCRIPT_GATE_BASE_URL` で上書きできる。Gate では

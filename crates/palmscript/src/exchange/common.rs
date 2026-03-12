@@ -137,20 +137,20 @@ pub(crate) fn page_window_end_ms(
     max_candles: usize,
     hard_end_ms: i64,
 ) -> Option<i64> {
-    if start_open_ms >= hard_end_ms {
+    if start_open_ms >= hard_end_ms || max_candles == 0 {
         return None;
     }
-    let mut next_open = start_open_ms;
-    for _ in 0..max_candles {
-        let Some(candidate) = interval.next_open_time(next_open) else {
-            return Some(hard_end_ms);
+    let mut last_open = start_open_ms;
+    for _ in 1..max_candles {
+        let Some(candidate) = interval.next_open_time(last_open) else {
+            return Some(last_open);
         };
-        next_open = candidate;
-        if next_open >= hard_end_ms {
-            return Some(hard_end_ms);
+        if candidate >= hard_end_ms {
+            return Some(last_open);
         }
+        last_open = candidate;
     }
-    Some(next_open)
+    Some(last_open)
 }
 
 pub(crate) fn ms_to_api_seconds(timestamp_ms: i64) -> i64 {
@@ -299,6 +299,37 @@ pub(crate) fn gate_get_fallback(
     Ok(last_response)
 }
 
+pub(crate) fn http_status_message(response: Response) -> String {
+    let status = response.status();
+    let url = response.url().to_string();
+    match response.text() {
+        Ok(body) => {
+            let trimmed = body.trim();
+            if trimmed.is_empty() {
+                format!("HTTP {status} from {url}")
+            } else {
+                format!(
+                    "HTTP {status} from {url}: {}",
+                    truncate_message(trimmed, 400)
+                )
+            }
+        }
+        Err(err) => format!("HTTP {status} from {url} (failed to read body: {err})"),
+    }
+}
+
+fn truncate_message(message: &str, max_chars: usize) -> String {
+    let mut truncated = String::new();
+    for (index, ch) in message.chars().enumerate() {
+        if index >= max_chars {
+            truncated.push_str("...");
+            break;
+        }
+        truncated.push(ch);
+    }
+    truncated
+}
+
 fn gate_url_candidates(base_url: &str, path: &str) -> Vec<String> {
     let trimmed = base_url.trim_end_matches('/');
     let mut urls = vec![format!("{trimmed}{path}")];
@@ -318,7 +349,7 @@ mod tests {
     use crate::interval::Interval;
 
     #[test]
-    fn page_window_end_advances_by_page_capacity() {
+    fn page_window_end_caps_inclusive_gate_windows() {
         assert_eq!(
             page_window_end_ms(
                 Interval::Min1,
@@ -326,7 +357,7 @@ mod tests {
                 1_000,
                 1_704_067_200_000 + 2_000 * 60_000
             ),
-            Some(1_704_067_200_000 + 1_000 * 60_000)
+            Some(1_704_067_200_000 + 999 * 60_000)
         );
         assert_eq!(
             page_window_end_ms(
@@ -335,7 +366,7 @@ mod tests {
                 2_000,
                 1_704_067_200_000 + 24 * 60 * 60 * 1_000
             ),
-            Some(1_704_067_200_000 + 24 * 60 * 60 * 1_000)
+            Some(1_704_067_200_000 + 23 * 60 * 60 * 1_000)
         );
     }
 }

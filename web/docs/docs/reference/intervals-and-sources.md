@@ -66,7 +66,9 @@ Operational fetch constraints are also template-specific:
 - Bybit REST klines arrive reverse-sorted and PalmScript reorders them before runtime alignment checks
 - Gate candlestick APIs use Unix seconds and PalmScript normalizes them into Unix milliseconds UTC
 - Gate spot and futures pagination is windowed by time because the public API does not allow `limit` with `from` / `to`
+- Gate spot and futures requests are capped at 1000 candles per HTTP call so venue range limits do not produce avoidable `400 Bad Request` failures
 - Binance, Bybit, and Gate feeds are paginated internally
+- venue fetch failures surface the HTTP status together with the request URL and a truncated response-body snippet when the venue returns one
 - base URLs can be overridden with `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`, `PALMSCRIPT_BYBIT_BASE_URL`, and `PALMSCRIPT_GATE_BASE_URL`; Gate accepts either the host root such as `https://api.gateio.ws` or the full `/api/v4` base URL
 
 ## Source Field Set

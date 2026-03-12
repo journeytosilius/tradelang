@@ -5,7 +5,7 @@ use reqwest::StatusCode;
 use serde::de::{self, Deserializer, IgnoredAny, SeqAccess, Visitor};
 use serde::{Deserialize, Serialize};
 
-use crate::exchange::common::{no_data, parse_text_f64, request_failed};
+use crate::exchange::common::{http_status_message, no_data, parse_text_f64, request_failed};
 use crate::exchange::ExchangeFetchError;
 use crate::interval::{DeclaredMarketSource, Interval};
 use crate::runtime::Bar;
@@ -166,7 +166,7 @@ pub(crate) fn fetch_binance_bars(
             return Err(request_failed(
                 source,
                 interval,
-                format!("HTTP {}", response.status()),
+                http_status_message(response),
             ));
         }
         let rows: Vec<BinanceKlineRow> = response.json().map_err(|err| {

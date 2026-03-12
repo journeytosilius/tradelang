@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{interval_text, spot::fetch_bybit_bars};
 use crate::exchange::common::{
-    deserialize_f64_text, deserialize_option_f64_text, malformed_response, no_data,
-    normalize_margin_percent, now_ms, parse_text_f64, push_bar_if_in_window, request_failed,
+    deserialize_f64_text, deserialize_option_f64_text, http_status_message, malformed_response,
+    no_data, normalize_margin_percent, now_ms, parse_text_f64, push_bar_if_in_window,
+    request_failed,
 };
 use crate::exchange::{ExchangeEndpoints, ExchangeFetchError, RiskTier};
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -217,7 +218,7 @@ pub(crate) fn fetch_mark_price_bars(
             return Err(request_failed(
                 source,
                 interval,
-                format!("HTTP {}", response.status()),
+                http_status_message(response),
             ));
         }
         let payload: BybitEnvelope<BybitKlineResult<BybitMarkPriceKlineRow>> = response
@@ -299,7 +300,7 @@ pub(crate) fn fetch_risk_snapshot(
                 alias: source.alias.clone(),
                 template: source.template.as_str(),
                 symbol: source.symbol.clone(),
-                message: format!("HTTP {}", response.status()),
+                message: http_status_message(response),
             });
         }
         let payload: BybitEnvelope<BybitRiskLimitResult> =

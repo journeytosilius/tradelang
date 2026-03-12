@@ -8,7 +8,8 @@ use sha2::Sha256;
 
 use super::spot::{fetch_binance_bars, BinanceKlineEndpoint};
 use crate::exchange::common::{
-    deserialize_f64_text, deserialize_option_f64_text, normalize_margin_percent, now_ms,
+    deserialize_f64_text, deserialize_option_f64_text, http_status_message,
+    normalize_margin_percent, now_ms,
 };
 use crate::exchange::{ExchangeEndpoints, ExchangeFetchError, RiskTier};
 use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
@@ -161,7 +162,7 @@ pub(crate) fn fetch_risk_snapshot(
             alias: source.alias.clone(),
             template: source.template.as_str(),
             symbol: source.symbol.clone(),
-            message: format!("HTTP {}", response.status()),
+            message: http_status_message(response),
         });
     }
     let payload: Vec<BinanceLeverageBracketResponse> =
@@ -232,7 +233,7 @@ fn fetch_public_risk_snapshot(
             alias: source.alias.clone(),
             template: source.template.as_str(),
             symbol: source.symbol.clone(),
-            message: format!("HTTP {}", response.status()),
+            message: http_status_message(response),
         });
     }
     let payload: BinanceExchangeInfoResponse =
@@ -325,7 +326,7 @@ fn fetch_server_time(
             alias: "binance".to_string(),
             template: SourceTemplate::BinanceUsdm.as_str(),
             symbol: String::new(),
-            message: format!("HTTP {}", response.status()),
+            message: http_status_message(response),
         });
     }
     let body: BinanceServerTimeResponse =

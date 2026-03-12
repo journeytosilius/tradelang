@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 use super::futures_interval_text;
 use crate::exchange::common::{
     deserialize_f64_text, first_open_time_in_window, gate_get_fallback,
-    gate_get_with_query_fallback, malformed_response, ms_to_api_seconds, no_data,
-    normalize_margin_percent, now_ms, page_window_end_ms, parse_text_f64, push_bar_if_in_window,
-    request_failed,
+    gate_get_with_query_fallback, http_status_message, malformed_response, ms_to_api_seconds,
+    no_data, normalize_margin_percent, now_ms, page_window_end_ms, parse_text_f64,
+    push_bar_if_in_window, request_failed,
 };
 use crate::exchange::{ExchangeEndpoints, ExchangeFetchError, RiskTier};
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -254,7 +254,7 @@ fn fetch_futures_bars(
             return Err(request_failed(
                 source,
                 interval,
-                format!("HTTP {}", response.status()),
+                http_status_message(response),
             ));
         }
         let mut rows: Vec<GateFuturesCandlestick> = response
@@ -267,7 +267,13 @@ fn fetch_futures_bars(
             push_bar_if_in_window(&mut bars, bar, source, interval, from_ms, to_ms)?;
         }
 
-        window_start_ms = window_end_ms;
+        let Some(next_window_start) = interval.next_open_time(window_end_ms) else {
+            break;
+        };
+        if next_window_start >= to_ms {
+            break;
+        }
+        window_start_ms = next_window_start;
     }
 
     if bars.is_empty() {
@@ -297,7 +303,7 @@ fn fetch_contract_snapshot(
             alias: source.alias.clone(),
             template: source.template.as_str(),
             symbol: source.symbol.clone(),
-            message: format!("HTTP {}", response.status()),
+            message: http_status_message(response),
         });
     }
     let contract: GateFuturesContract =

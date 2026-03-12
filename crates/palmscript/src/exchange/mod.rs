@@ -564,6 +564,46 @@ mod tests {
     }
 
     #[test]
+    fn gate_http_errors_include_request_url_and_body() {
+        let mut server = Server::new();
+        let _gate = server
+            .mock("GET", "/api/v4/spot/candlesticks")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("currency_pair".into(), "BTC_USDT".into()),
+                Matcher::UrlEncoded("interval".into(), "4h".into()),
+            ]))
+            .with_status(400)
+            .with_body(
+                json!({
+                    "label": "INVALID_PARAM_VALUE",
+                    "message": "Candlestick range too broad. Maximum 1000 data points are allowed per request"
+                })
+                .to_string(),
+            )
+            .create();
+
+        let compiled = compile("interval 4h\nsource gt = gate.spot(\"BTC_USDT\")\nplot(gt.close)")
+            .expect("compile");
+        let err = fetch_source_runtime_config(
+            &compiled,
+            1_640_995_200_000,
+            1_655_395_200_000,
+            &ExchangeEndpoints {
+                binance_spot_base_url: String::new(),
+                binance_usdm_base_url: String::new(),
+                bybit_base_url: String::new(),
+                gate_base_url: format!("{}/api/v4", server.url()),
+            },
+        )
+        .expect_err("gate 400 should surface");
+
+        let message = err.to_string();
+        assert!(message.contains("/spot/candlesticks"));
+        assert!(message.contains("currency_pair=BTC_USDT"));
+        assert!(message.contains("Candlestick range too broad"));
+    }
+
+    #[test]
     fn fetch_perp_backtest_context_reads_binance_signed_risk_snapshot() {
         let _env_guard = binance_usdm_env_lock().lock().expect("env lock");
         let mut server = Server::new();

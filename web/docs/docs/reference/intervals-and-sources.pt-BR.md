@@ -68,7 +68,9 @@ Restricoes operacionais de busca tambem dependem do template:
 - os klines REST da Bybit chegam em ordem decrescente e o PalmScript os reordena antes das verificacoes de alinhamento
 - as APIs de candles da Gate usam Unix seconds e o PalmScript as normaliza para Unix milliseconds UTC
 - a paginacao de Gate spot e futures usa janelas de tempo porque a API publica nao permite `limit` junto com `from` / `to`
+- as requisicoes de Gate spot e futures sao limitadas a 1000 candles por chamada HTTP para evitar `400 Bad Request` causados por janelas amplas demais
 - feeds da Binance, Bybit e Gate sao paginados internamente
+- quando um venue rejeita uma busca, o PalmScript mostra o status HTTP junto com a URL da requisicao e um trecho truncado do corpo de resposta quando houver
 - as URLs base podem ser sobrescritas com
   `PALMSCRIPT_BINANCE_SPOT_BASE_URL`, `PALMSCRIPT_BINANCE_USDM_BASE_URL`,
   `PALMSCRIPT_BYBIT_BASE_URL` e `PALMSCRIPT_GATE_BASE_URL`; no Gate, tanto a

@@ -141,18 +141,34 @@ fn market_fetch_error_catalog_matches_contract() {
         ),
     ];
 
-    let expected = [
+    let expected_exact = [
         "exchange-backed runs require a base interval declaration",
         "exchange-backed runs require at least one `source` declaration",
         "invalid market time window: from 1704067260000 must be less than to 1704067260000",
         "source `a` with template `bybit.usdt_perps` does not support interval `1s`",
-        "failed to fetch `a` (binance.spot) `BTCUSDT` 1m: HTTP 500 Internal Server Error",
+        "",
         "malformed response for `a` (binance.spot) `BTCUSDT` 1m: invalid `open` value",
         "no data returned for `a` (binance.spot) `BTCUSDT` 1m",
     ];
 
-    for ((name, result), expected_message) in cases.into_iter().zip(expected) {
+    for ((name, result), expected_message) in cases.into_iter().zip(expected_exact) {
         let err = result.expect_err(name);
-        assert_eq!(err.to_string(), expected_message, "{name}");
+        let actual = err.to_string();
+        if name == "request_failed_http_status" {
+            assert!(
+                actual.starts_with(
+                    "failed to fetch `a` (binance.spot) `BTCUSDT` 1m: HTTP 500 Internal Server Error from http://127.0.0.1:"
+                ),
+                "{name}: {actual}"
+            );
+            assert!(
+                actual.contains(
+                    "/api/v3/klines?symbol=BTCUSDT&interval=1m&startTime=1704067200000&endTime=1704067259999&limit=1000"
+                ),
+                "{name}: {actual}"
+            );
+            continue;
+        }
+        assert_eq!(actual, expected_message, "{name}");
     }
 }
