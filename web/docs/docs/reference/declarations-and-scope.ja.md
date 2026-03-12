@@ -1,0 +1,200 @@
+# 宣言とスコープ
+
+このページは、PalmScript が受け入れる束縛形式と、それらに付随する可視性ルールを定義します。
+
+## トップレベル専用の形式
+
+次の形式はスクリプトのトップレベルにのみ現れなければなりません。
+
+- `interval`
+- `source`
+- `use`
+- `fn`
+- `const`
+- `input`
+- `export`
+- `trigger`
+- `entry`
+- `exit`
+- `protect`
+- `target`
+
+トップレベルの `let`、`if`、式文は許可されます。
+
+## ベースインターバル
+
+各スクリプトはちょうど一つのベースインターバルを宣言しなければなりません。
+
+```palmscript
+interval 1m
+```
+
+コンパイラは、ベース `interval` がないスクリプト、またはベース `interval` が複数あるスクリプトを拒否します。
+
+## `source` 宣言
+
+`source` 宣言の形式:
+
+```palmscript
+source hl = hyperliquid.perps("BTC")
+```
+
+ルール:
+
+- エイリアスは識別子でなければならない
+- エイリアスは宣言済み全ソースの中で一意でなければならない
+- テンプレートはサポートされるソーステンプレートの一つに解決されなければならない
+- シンボル引数は文字列リテラルでなければならない
+
+## `use` 宣言
+
+補助インターバルはソースごとに宣言されます。
+
+```palmscript
+use hl 1h
+```
+
+ルール:
+
+- エイリアスは宣言済み `source` を指していなければならない
+- インターバルはベースインターバルより低くてはならない
+- 重複した `use <alias> <interval>` 宣言は拒否される
+- ベースインターバルと等しいインターバルは受理されるが冗長である
+
+## 関数
+
+ユーザー定義関数はトップレベルの式本体宣言です。
+
+```palmscript
+fn cross_signal(a, b) = a > b and a[1] <= b[1]
+```
+
+ルール:
+
+- 関数名は一意でなければならない
+- 関数名は builtin 名と衝突してはならない
+- 一つの関数内でパラメータ名は一意でなければならない
+- 再帰および循環する関数グラフは拒否される
+- 関数本体は、そのパラメータ、宣言済みソースシリーズ、トップレベルの不変 `const` / `input` 束縛を参照できる
+- 関数本体は `plot` を呼んではならない
+- 関数本体は周囲の文スコープにある `let` 束縛をキャプチャしてはならない
+
+関数は引数型と更新クロックによって特殊化されます。
+
+## `let` 束縛
+
+`let` は現在のブロックスコープに束縛を作ります。
+
+```palmscript
+let basis = ema(spot.close, 20)
+```
+
+ルール:
+
+- 同一スコープの重複 `let` は拒否される
+- 内側のスコープは外側の束縛をシャドーイングできる
+- 束縛される値はスカラーでもシリーズでもよい
+- `na` は許可され、コンパイル中は数値風プレースホルダーとして扱われる
+
+PalmScript は、即時のタプル値 builtin 結果に対するタプル分解もサポートします。
+
+```palmscript
+let (line, signal, hist) = macd(spot.close, 12, 26, 9)
+```
+
+追加ルール:
+
+- タプル分解は第一級の `let` 形式
+- 右辺は現在、即時のタプル値 builtin 結果でなければならない
+- タプル arity は完全一致しなければならない
+- タプル値式は、さらに使う前に分解しなければならない
+
+## `const` と `input`
+
+PalmScript は、戦略設定のためのトップレベル不変束縛をサポートします。
+
+```palmscript
+input fast_len = 21
+const neutral_rsi = 50
+```
+
+ルール:
+
+- どちらの形式もトップレベル専用
+- 同一スコープでの重複名は拒否される
+- v1 ではどちらもスカラー専用: `float`、`bool`、`ma_type`、`tif`、`trigger_ref`、`position_side`、`exit_kind`、または `na`
+- v1 では `input` はコンパイル時専用
+- `input` 値はスカラーリテラルまたは enum リテラルでなければならない
+- `const` 値は、以前に宣言された `const` / `input` 束縛と純粋なスカラー builtin を参照できる
+- window 系 builtin と series indexing は、整数リテラルが必要な場所で不変数値束縛を受け付ける
+
+## 出力
+
+`export`、`trigger`、第一級戦略シグナル、order 向けバックテスト宣言はトップレベル専用です。
+
+```palmscript
+export trend = ema(spot.close, 20) > ema(spot.close, 50)
+trigger long_entry = spot.close > spot.high[1]
+entry1 long = spot.close > spot.high[1]
+entry2 long = crossover(spot.close, ema(spot.close, 20))
+order entry1 long = limit(spot.close[1], tif.gtc, false)
+protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
+protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
+target1 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
+target2 long = take_profit_market(position.entry_price + 8, trigger_ref.last)
+size entry1 long = 0.5
+size entry2 long = 0.5
+size entry3 long = risk_pct(0.01, stop_price)
+size target1 long = 0.5
+```
+
+ルール:
+
+- すべての形式はトップレベル専用
+- 同一スコープでの重複名は拒否される
+- `trigger` 名は宣言以降の束縛になる
+- `entry long` と `entry short` は `entry1 long` と `entry1 short` の互換エイリアス
+- `entry1`、`entry2`、`entry3` は段階的なバックテスト entry シグナル宣言
+- `exit long` と `exit short` は単一の裁量的フルポジション exit のまま
+- `order entry ...` と `order exit ...` は、対応するシグナルロールに実行テンプレートを付ける
+- `protect`、`protect_after_target1..3`、`target1..3` は、対応ポジションが開いている間だけ有効になる段階付き attached exit を宣言する
+- `size entry1..3 long|short` は、`capital_fraction(x)` / 旧来の裸の数値比率セマンティクス、またはリスクベース entry sizing 用の `risk_pct(pct, stop_price)` によって段階付き entry fill のサイズを任意指定できる
+- `size target1..3 long|short` は、段階付き `target` fill を open position の比率として任意指定できる
+- 各シグナルロールにつき `order` 宣言は最大一つ
+- 各段階ロールにつき宣言は最大一つ
+- あるシグナルロールに明示的な `order` 宣言がなければ、バックテスタは暗黙の `market()` order を使う
+- `size entry ...` と `size target ...` は、それぞれ同じロールに対応する段階付き `order ...` または段階付き attached `target ...` 宣言を必要とする
+- v1 では `risk_pct(...)` は段階付き entry size 宣言でのみ有効
+- 段階付き attached exit は順次的であり、一度に有効なのは次の target 段階と現在の protect 段階だけ
+- `position.*` は `protect` と `target` 宣言内でのみ利用できる
+- `position_event.*` は `series<bool>` が有効な場所ならどこでも利用でき、実際のバックテスト fill にロジックを固定するために使われる
+- 現在の `position_event` フィールドは:
+  `long_entry_fill`, `short_entry_fill`, `long_exit_fill`, `short_exit_fill`,
+  `long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
+  `short_reversal_exit_fill`, `long_liquidation_fill`, `short_liquidation_fill`
+- 段階付き entry と target の fill フィールドも利用できる:
+  `long_entry1_fill` .. `long_entry3_fill`, `short_entry1_fill` .. `short_entry3_fill`,
+  `long_target1_fill` .. `long_target3_fill`, `short_target1_fill` .. `short_target3_fill`
+- `last_exit.*`、`last_long_exit.*`、`last_short_exit.*` は通常の式が有効な場所ならどこでも使える
+- 現在の `last_*_exit` フィールドは `kind`, `stage`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, `bars_held`
+- `last_*_exit.kind` には既存の exit 種別に加えて `exit_kind.liquidation` が含まれる
+- 第一級シグナル宣言が存在しない場合に限り、`trigger long_entry = ...` 形式の旧来スクリプトは互換ブリッジとして引き続きサポートされる
+
+## 条件スコープ
+
+`if` は二つの子スコープを導入します。
+
+```palmscript
+if spot.close > spot.open {
+    let x = 1
+} else {
+    let x = 0
+}
+```
+
+ルール:
+
+- 条件は `bool`、`series<bool>`、または `na` に評価されなければならない
+- 両方の分岐は独立したスコープを持つ
+- 一方の分岐で作られた束縛は `if` の外では見えない
