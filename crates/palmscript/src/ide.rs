@@ -9,8 +9,8 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
 use crate::ast::{
-    Ast, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, SourceIntervalDecl, Stmt,
-    StmtKind, UnaryOp,
+    Ast, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, RiskControlKind,
+    SourceIntervalDecl, Stmt, StmtKind, UnaryOp,
 };
 use crate::builtins::BuiltinId;
 use crate::compiler::{analyze_semantics, ExprInfo, InferredType};
@@ -23,7 +23,7 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 14] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 16] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("use", "Declare an additional referenced interval"),
@@ -33,6 +33,14 @@ const KEYWORD_COMPLETIONS: [(&str, &str); 14] = [
     ("export", "Publish a named output series"),
     ("regime", "Declare a named persistent regime series"),
     ("trigger", "Publish a named trigger series"),
+    (
+        "cooldown",
+        "Block same-side re-entry for a fixed number of bars after exit",
+    ),
+    (
+        "max_bars_in_trade",
+        "Force a same-side exit after a fixed number of bars",
+    ),
     ("if", "Start a conditional block"),
     ("else", "Start an alternate conditional block"),
     ("and", "Logical conjunction"),
@@ -537,6 +545,9 @@ fn resolve_stmt(
         StmtKind::OrderSize { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
+        StmtKind::RiskControl { expr, .. } => {
+            resolve_expr(context, expr, scope);
+        }
         StmtKind::If {
             condition,
             then_block,
@@ -767,6 +778,7 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
         StmtKind::Signal { .. } => {}
         StmtKind::Order { .. } => {}
         StmtKind::OrderSize { .. } => {}
+        StmtKind::RiskControl { .. } => {}
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -1232,6 +1244,8 @@ pub(crate) fn classify_highlight(
         | TokenKind::And
         | TokenKind::Or
         | TokenKind::Optimize
+        | TokenKind::Cooldown
+        | TokenKind::MaxBarsInTrade
         | TokenKind::True
         | TokenKind::False
         | TokenKind::Na => Some(HighlightKind::Keyword),
@@ -1564,6 +1578,20 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 }
             };
             lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
+        }
+        StmtKind::RiskControl { kind, side, expr } => {
+            let keyword = match kind {
+                RiskControlKind::Cooldown => "cooldown",
+                RiskControlKind::MaxBarsInTrade => "max_bars_in_trade",
+            };
+            let side = match side {
+                crate::PositionSide::Long => "long",
+                crate::PositionSide::Short => "short",
+            };
+            lines.push(format!(
+                "{prefix}{keyword} {side} = {}",
+                format_expr(expr, 0)
+            ));
         }
         StmtKind::Expr(expr) => {
             lines.push(format!("{prefix}{}", format_expr(expr, 0)));

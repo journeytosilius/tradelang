@@ -7,13 +7,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, NodeId, OrderSpec,
-    OrderSpecKind, SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
+    OrderSpecKind, RiskControlKind as AstRiskControlKind, SignalRole as AstSignalRole, Stmt,
+    StmtKind, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
     Constant, InputDecl, InputOptimizationDecl, InputOptimizationDeclKind, Instruction,
     LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
-    PositionEventFieldDecl, PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
+    PositionEventFieldDecl, PositionFieldDecl, Program, RiskControlDecl,
+    RiskControlKind as CompiledRiskControlKind, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -22,7 +24,9 @@ use crate::interval::{
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::parser;
-use crate::position::{ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField};
+use crate::position::{
+    ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField, PositionSide,
+};
 use crate::span::Span;
 use crate::talib::{metadata_by_name as talib_metadata_by_name, MaType, TalibFunctionMetadata};
 use crate::types::{SlotKind, Type, Value};
@@ -231,6 +235,7 @@ struct Analysis {
     last_exit_fields: Vec<LastExitFieldDecl>,
     last_exit_field_slots: HashMap<(LastExitScope, LastExitField), u16>,
     orders: Vec<OrderDecl>,
+    risk_controls: Vec<RiskControlDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
@@ -1275,6 +1280,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::OrderSize { role, expr } => {
                 self.analyze_order_size_stmt(stmt, *role, expr);
             }
+            StmtKind::RiskControl { kind, side, expr } => {
+                self.analyze_risk_control_stmt(stmt, *kind, *side, expr);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -1737,6 +1745,96 @@ impl<'a> Analyzer<'a> {
         self.analysis
             .resolved_order_field_slots
             .insert(stmt.id, resolved);
+    }
+
+    fn analyze_risk_control_stmt(
+        &mut self,
+        stmt: &Stmt,
+        kind: AstRiskControlKind,
+        side: PositionSide,
+        expr: &Expr,
+    ) {
+        let compiled_kind = compiled_risk_control_kind(kind);
+        if self
+            .analysis
+            .risk_controls
+            .iter()
+            .any(|decl| decl.kind == compiled_kind && decl.side == side)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "duplicate {} declaration for `{}`",
+                    risk_control_name(compiled_kind),
+                    side_name(side)
+                ),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let info = self.analyze_expr(expr);
+        let Some(ty) = info.concrete() else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    risk_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        if ty != Type::F64 {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    risk_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        }
+        let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    risk_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        let Value::F64(value) = value else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    risk_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a non-negative whole number of bars",
+                    risk_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        }
+
+        self.analysis.risk_controls.push(RiskControlDecl {
+            side,
+            kind: compiled_kind,
+            bars: value as usize,
+        });
     }
 
     fn diagnose_unknown_enum_literal(&mut self, expr: &Expr) {
@@ -2647,6 +2745,7 @@ fn collect_source_series_stmt(
         | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
+        | StmtKind::RiskControl { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
@@ -2768,6 +2867,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
+        | StmtKind::RiskControl { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
@@ -4569,6 +4669,27 @@ fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
     }
 }
 
+fn compiled_risk_control_kind(kind: AstRiskControlKind) -> CompiledRiskControlKind {
+    match kind {
+        AstRiskControlKind::Cooldown => CompiledRiskControlKind::Cooldown,
+        AstRiskControlKind::MaxBarsInTrade => CompiledRiskControlKind::MaxBarsInTrade,
+    }
+}
+
+fn risk_control_name(kind: CompiledRiskControlKind) -> &'static str {
+    match kind {
+        CompiledRiskControlKind::Cooldown => "`cooldown`",
+        CompiledRiskControlKind::MaxBarsInTrade => "`max_bars_in_trade`",
+    }
+}
+
+fn side_name(side: PositionSide) -> &'static str {
+    match side {
+        PositionSide::Long => "long",
+        PositionSide::Short => "short",
+    }
+}
+
 fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<Value> {
     match &expr.kind {
         ExprKind::Number(value) => Some(Value::F64(*value)),
@@ -5081,6 +5202,7 @@ impl<'a> Compiler<'a> {
         self.program.position_event_fields = self.analysis.position_event_fields.clone();
         self.program.last_exit_fields = self.analysis.last_exit_fields.clone();
         self.program.orders = self.analysis.orders.clone();
+        self.program.risk_controls = self.analysis.risk_controls.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
         self.program.source_intervals = self.analysis.source_intervals.clone();
@@ -5294,6 +5416,7 @@ impl<'a> Compiler<'a> {
                     | OrderSizeExpr::InvalidRiskPctArity => {}
                 }
             }
+            StmtKind::RiskControl { .. } => {}
             StmtKind::If {
                 condition,
                 then_block,

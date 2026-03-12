@@ -18,6 +18,8 @@ Les tokens suivants sont des mots-cles reserves :
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`

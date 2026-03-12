@@ -18,6 +18,8 @@ Die folgenden Tokens sind reservierte Schluesselwoerter:
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`

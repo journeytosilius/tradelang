@@ -34,6 +34,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | regime_stmt
                          | trigger_stmt
+                         | risk_control_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_stmt
@@ -47,6 +48,8 @@ input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+risk_control_stmt      ::= "cooldown" signal_side "=" expr
+                         | "max_bars_in_trade" signal_side "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -162,6 +165,8 @@ exige:
   v1
 - `entry long` e `target long|short` continuam como aliases de compatibilidade
   para o estagio 1
+- `cooldown long|short` e `max_bars_in_trade long|short` exigem uma expressao
+  escalar inteira nao negativa resolvida em compilacao
 - `size entry1..3 long|short` e `size target1..3 long|short` sao declaracoes
   `size` em estagio validas na v1
 - tamanhos de entrada em estagio aceitam uma fracao numerica nua legada,

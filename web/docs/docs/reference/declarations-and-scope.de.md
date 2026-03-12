@@ -16,6 +16,8 @@ Die folgenden Formen duerfen nur auf Top-Level eines Skripts erscheinen:
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`
@@ -176,6 +178,14 @@ Regeln:
   Deklarationen
 - `exit long` und `exit short` bleiben einzelne diskretionaere Vollpositions-
   Exits
+- `cooldown long|short = <bars>` blockiert neue Same-Side-Entries fuer die
+  naechsten `<bars>` Ausfuehrungsbalken nach einem vollstaendigen Close auf
+  dieser Seite
+- `max_bars_in_trade long|short = <bars>` erzwingt einen Same-Side-Market-Exit
+  am naechsten Ausfuehrungs-Open, sobald der Trade `<bars>` Ausfuehrungsbalken
+  gehalten wurde
+- beide deklarativen Kontrollen erfordern in v1 einen nicht-negativen
+  ganzzahligen Skalarausdruck, der zur Compile-Zeit aufgeloest wird
 - `order entry ...` und `order exit ...` haengen ein Ausfuehrungstemplate an
   eine passende Signalrolle
 - `protect`, `protect_after_target1..3` und `target1..3` deklarieren gestufte

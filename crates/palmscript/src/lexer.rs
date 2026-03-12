@@ -210,6 +210,8 @@ impl<'a> LexerState<'a> {
             "optimize" => TokenKind::Optimize,
             "regime" => TokenKind::Regime,
             "trigger" => TokenKind::Trigger,
+            "cooldown" => TokenKind::Cooldown,
+            "max_bars_in_trade" => TokenKind::MaxBarsInTrade,
             "entry" => TokenKind::Entry,
             "exit" => TokenKind::Exit,
             "protect" => TokenKind::Protect,

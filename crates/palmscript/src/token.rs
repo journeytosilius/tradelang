@@ -21,6 +21,8 @@ pub enum TokenKind {
     Optimize,
     Regime,
     Trigger,
+    Cooldown,
+    MaxBarsInTrade,
     Entry,
     Exit,
     Protect,

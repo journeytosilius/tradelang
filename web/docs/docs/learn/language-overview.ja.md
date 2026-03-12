@@ -10,6 +10,7 @@ PalmScript スクリプトはトップレベルのソースファイルであり
 - 任意の補助 `use <alias> <interval>` 宣言
 - トップレベル関数
 - `let`、`const`、`input`、タプル分解、`export`、`regime`、`trigger`、`entry` / `exit`、`order`
+- `cooldown long = 12` や `max_bars_in_trade short = 48` のような宣言的バックテスト制御
 - `if / else if / else`
 - 演算子、呼び出し、インデックスで構成される式
 - `crossover`、`state`、`activated`、`barssince`、`valuewhen` などの helper builtins
@@ -36,6 +37,7 @@ plot(bn.close - bb.close)
 - 上位インターバルはその足が完全に確定したときだけ更新されます
 - 履歴不足やソース整列不足は `na` として現れます
 - `plot`、`export`、`regime`、`trigger`、戦略宣言は各実行ステップの後に結果を出します
+- `cooldown` と `max_bars_in_trade` は再エントリー制御と時間ベースのクローズを明示するコンパイル時バー数宣言です
 
 ## 正確なルールを知るには
 

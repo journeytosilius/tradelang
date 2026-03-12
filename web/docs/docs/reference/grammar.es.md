@@ -34,6 +34,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | regime_stmt
                          | trigger_stmt
+                         | risk_control_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_stmt
@@ -47,6 +48,8 @@ input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+risk_control_stmt      ::= "cooldown" signal_side "=" expr
+                         | "max_bars_in_trade" signal_side "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -165,6 +168,8 @@ ademas exige:
   en v1
 - `entry long` y `target long|short` siguen siendo aliases de compatibilidad
   para la etapa 1
+- `cooldown long|short` y `max_bars_in_trade long|short` requieren una
+  expresion escalar entera no negativa resuelta en compilacion
 - `size entry1..3 long|short` y `size target1..3 long|short` son declaraciones
   `size` escalonadas validas en v1
 - los tamanos de entrada escalonada aceptan una fraccion numerica legacy,

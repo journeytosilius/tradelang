@@ -286,6 +286,42 @@ fn input_optimization_metadata_rejects_out_of_range_defaults() {
 }
 
 #[test]
+fn declarative_risk_controls_require_compile_time_numeric_scalars() {
+    let diagnostics = compile_diagnostics(&with_interval("cooldown long = close\nplot(close)"));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("`cooldown` requires a compile-time numeric scalar expression")
+    }));
+}
+
+#[test]
+fn declarative_risk_controls_reject_negative_bar_counts() {
+    let diagnostics =
+        compile_diagnostics(&with_interval("max_bars_in_trade long = -1\nplot(close)"));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("`max_bars_in_trade` requires a non-negative whole number of bars")
+    }));
+}
+
+#[test]
+fn declarative_risk_controls_reject_duplicate_side_declarations() {
+    let diagnostics = compile_diagnostics(&with_interval(
+        "cooldown long = 2\ncooldown long = 3\nplot(close)",
+    ));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("duplicate `cooldown` declaration for `long`")
+    }));
+}
+
+#[test]
 fn compile_accepts_new_exchange_backed_source_templates() {
     let cases = [
         "interval 1m\nsource a = bybit.spot(\"BTCUSDT\")\nplot(a.close)",

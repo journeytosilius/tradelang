@@ -10,6 +10,8 @@ Blocos comuns:
 - declaracoes opcionais `use <alias> <interval>` para intervalos suplementares
 - funcoes de nivel superior
 - `let`, `const`, `input`, desestruturacao de tuplas, `export`, `regime`, `trigger`, `entry` / `exit` e `order`
+- controles declarativos de backtest como `cooldown long = 12` e `max_bars_in_trade short = 48`
+- `if / else if / else`
 - expressoes construidas com operadores, chamadas e indexacao
 - helpers builtin como `crossover`, `state`, `activated`, `barssince` e `valuewhen`
 - literais enum tipados `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>` e `exit_kind.<variant>`
@@ -35,6 +37,7 @@ plot(bn.close - bb.close)
 - timeframes superiores so atualizam quando esses candles fecham por completo
 - falta de historico ou de dados alinhados aparece como `na`
 - `plot`, `export`, `regime`, `trigger` e declaracoes de estrategia emitem resultados apos cada passo de execucao
+- `cooldown` e `max_bars_in_trade` sao declaracoes de contagem de barras em tempo de compilacao para tornar explicitas a reentrada e as saidas por tempo
 
 ## Para Onde Ir Pelas Regras Exatas
 

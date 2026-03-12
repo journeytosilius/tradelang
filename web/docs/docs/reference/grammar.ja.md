@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | regime_stmt
                          | trigger_stmt
+                         | risk_control_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_stmt
@@ -45,6 +46,8 @@ input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+risk_control_stmt      ::= "cooldown" signal_side "=" expr
+                         | "max_bars_in_trade" signal_side "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -147,6 +150,7 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - `last_exit.*`、`last_long_exit.*`、`last_short_exit.*` はバックテスト駆動の最新クローズトレード名前空間
 - `entry1..3 long|short`, `target1..3 long|short`, `protect_after_target1..3 long|short` は v1 の有効な staged 宣言
 - `entry long` と `target long|short` は stage 1 の互換エイリアスのまま
+- `cooldown long|short` と `max_bars_in_trade long|short` はコンパイル時に解決される非負整数スカラー式を必要とする
 - `size entry1..3 long|short` と `size target1..3 long|short` は v1 の有効な staged `size` 宣言
 - staged entry size は、旧来の裸の数値比率、`capital_fraction(x)`、または `risk_pct(pct, stop_price)` を受け付ける
 - `size entry ...` には、同じロールの対応する staged `order entry ...` 宣言が必要

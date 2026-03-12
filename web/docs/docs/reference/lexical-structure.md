@@ -17,6 +17,8 @@ The following tokens are reserved keywords:
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`

@@ -6,12 +6,13 @@
 use crate::ast::{
     Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam,
     InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
-    SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    RiskControlKind, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals,
+    UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
 use crate::token::{Token, TokenKind};
-use crate::{MarketField, SourceTemplate};
+use crate::{MarketField, PositionSide, SourceTemplate};
 
 pub fn parse(tokens: &[Token]) -> Result<Ast, CompileError> {
     Parser::new(tokens).parse()
@@ -151,6 +152,26 @@ impl<'a> Parser<'a> {
                 return None;
             }
             return self.parse_output_stmt(OutputStmtKind::Trigger);
+        }
+        if self.matches_keyword(&TokenKind::Cooldown) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "risk control declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_risk_control_stmt(RiskControlKind::Cooldown);
+        }
+        if self.matches_keyword(&TokenKind::MaxBarsInTrade) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "risk control declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_risk_control_stmt(RiskControlKind::MaxBarsInTrade);
         }
         if self.matches_keyword(&TokenKind::Entry) {
             if self.block_depth > 0 {
@@ -614,6 +635,26 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span: start.merge(expr.span),
             kind: StmtKind::Signal { role, expr },
+        })
+    }
+
+    fn parse_risk_control_stmt(&mut self, kind: RiskControlKind) -> Option<Stmt> {
+        let start = self.previous().span;
+        let side = self.parse_position_side(match kind {
+            RiskControlKind::Cooldown => "expected `long` or `short` after `cooldown`",
+            RiskControlKind::MaxBarsInTrade => {
+                "expected `long` or `short` after `max_bars_in_trade`"
+            }
+        })?;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after risk control side",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::RiskControl { kind, side, expr },
         })
     }
 
@@ -1548,6 +1589,18 @@ impl<'a> Parser<'a> {
         match side.kind {
             TokenKind::Long => Some(map(true)),
             TokenKind::Short => Some(map(false)),
+            _ => {
+                self.push_diagnostic(message, side.span);
+                None
+            }
+        }
+    }
+
+    fn parse_position_side(&mut self, message: &'static str) -> Option<PositionSide> {
+        let side = self.advance()?.clone();
+        match side.kind {
+            TokenKind::Long => Some(PositionSide::Long),
+            TokenKind::Short => Some(PositionSide::Short),
             _ => {
                 self.push_diagnostic(message, side.span);
                 None

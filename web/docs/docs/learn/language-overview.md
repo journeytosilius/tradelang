@@ -10,6 +10,7 @@ Common building blocks:
 - top-level functions
 - `let`, `const`, `input`, tuple destructuring, `export`, `regime`, `trigger`, `entry` / `exit`, and `order`
 - optional `input ... optimize(...)` metadata for optimizer search-space inference
+- declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
 - helper builtins such as `crossover`, `state`, `activated`, `barssince`, and `valuewhen`
@@ -37,6 +38,7 @@ plot(bn.close - bb.close)
 - missing history or missing aligned source data appears as `na`
 - `plot`, `export`, `regime`, `trigger`, and strategy declarations emit results after each execution step
 - optimizer-aware `input` declarations can carry bounded integer, float, or choice search metadata without changing runtime semantics
+- `cooldown` and `max_bars_in_trade` are compile-time bar-count declarations that make re-entry and time-based exits explicit in the script
 
 ## Where To Go For Exact Rules
 

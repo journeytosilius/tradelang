@@ -5,7 +5,7 @@
 
 use crate::span::Span;
 use crate::{Interval, MarketField, SourceTemplate};
-use crate::{LastExitField, LastExitScope, PositionEventField, PositionField};
+use crate::{LastExitField, LastExitScope, PositionEventField, PositionField, PositionSide};
 use serde::{Deserialize, Serialize};
 
 pub type NodeId = u32;
@@ -173,6 +173,12 @@ pub enum OrderSpecKind {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RiskControlKind {
+    Cooldown,
+    MaxBarsInTrade,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
@@ -220,6 +226,11 @@ pub enum StmtKind {
     },
     OrderSize {
         role: SignalRole,
+        expr: Expr,
+    },
+    RiskControl {
+        kind: RiskControlKind,
+        side: PositionSide,
         expr: Expr,
     },
     If {

@@ -18,6 +18,8 @@ Los siguientes tokens son palabras clave reservadas:
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`

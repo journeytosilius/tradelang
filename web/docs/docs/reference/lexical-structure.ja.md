@@ -16,6 +16,8 @@ PalmScript ソースは構文解析の前にトークン化されます。レキ
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`

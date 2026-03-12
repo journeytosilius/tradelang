@@ -15,6 +15,8 @@ The following forms must appear only at the top level of a script:
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`
@@ -138,7 +140,7 @@ Rules:
 
 ## Outputs
 
-`export`, `regime`, `trigger`, first-class strategy signals, and order-facing backtest declarations are top-level only:
+`export`, `regime`, `trigger`, first-class strategy signals, declarative risk controls, and order-facing backtest declarations are top-level only:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
@@ -155,6 +157,8 @@ size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
 size target1 long = 0.5
+cooldown long = 12
+max_bars_in_trade short = 48
 ```
 
 Rules:
@@ -167,6 +171,9 @@ Rules:
 - `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
 - `entry1`, `entry2`, and `entry3` are staged backtest entry signal declarations
 - `exit long` and `exit short` remain single discretionary full-position exits
+- `cooldown long|short = <bars>` blocks new same-side staged entries for the next `<bars>` execution bars after a full close on that side
+- `max_bars_in_trade long|short = <bars>` forces a same-side market exit at the next execution open once the open trade has been held for `<bars>` execution bars
+- both declarative risk controls are compile-time only in v1 and require a non-negative whole-number scalar expression
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role
 - `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
 - `size entry1..3 long|short` optionally size a staged entry fill with either `capital_fraction(x)` / legacy bare numeric fraction semantics, or `risk_pct(pct, stop_price)` for risk-based entry sizing

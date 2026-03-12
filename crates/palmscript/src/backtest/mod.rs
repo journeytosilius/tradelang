@@ -280,6 +280,7 @@ pub struct BacktestCaptureSummary {
 pub enum OpportunityEventKind {
     ExportActivated,
     SignalQueued,
+    SignalIgnoredCooldown,
     SignalIgnoredSameSide,
     SignalIgnoredNoPosition,
     SignalConflicted,

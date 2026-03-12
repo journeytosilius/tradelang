@@ -18,6 +18,12 @@ numeric `input` grids by stitched out-of-sample performance.
 PalmScript also exposes a first-class optimizer layer that performs seeded,
 bounded hyper-parameter search over selected numeric `input`s.
 
+PalmScript also supports declarative backtest controls for two common safety
+policies:
+
+- `cooldown long|short = <bars>` blocks same-side re-entry for a fixed number of execution bars after a full exit
+- `max_bars_in_trade long|short = <bars>` forces a same-side market exit at the next execution open once the position has been held for the declared number of execution bars
+
 ## CLI
 
 Run a backtest end to end:
@@ -155,6 +161,23 @@ PalmScript cannot mathematically prevent overfitting, but the CLI now applies a 
 - after ranking, the best candidate is rerun with full pre-holdout context and scored separately on the untouched tail
 
 This does not replace paper trading or live forward validation, but it does make the default tuning workflow less likely to confuse in-sample fitting with genuinely unseen performance.
+
+## Declarative Risk Controls
+
+PalmScript can express two common backtest guardrails directly in the script:
+
+```palmscript
+cooldown long = 6
+max_bars_in_trade long = 48
+```
+
+Rules:
+
+- both declarations are top-level only
+- both declarations currently require a compile-time non-negative whole-number scalar expression
+- `cooldown` is side-specific and applies after a full close on that side
+- `max_bars_in_trade` is side-specific and exits at the next execution-bar open when the limit is reached
+- the forced exit is reported as a signal-style exit so `last_exit.*` and `position_event.*` stay deterministic
 
 ## Rust API
 

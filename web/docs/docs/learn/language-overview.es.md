@@ -10,6 +10,7 @@ Bloques comunes:
 - declaraciones opcionales `use <alias> <interval>` para intervalos suplementarios
 - funciones de nivel superior
 - `let`, `const`, `input`, destructuracion de tuplas, `export`, `regime`, `trigger`, `entry` / `exit` y `order`
+- controles declarativos de backtest como `cooldown long = 12` y `max_bars_in_trade short = 48`
 - `if / else if / else`
 - expresiones construidas con operadores, llamadas e indexacion
 - builtins auxiliares como `crossover`, `state`, `activated`, `barssince` y `valuewhen`
@@ -36,6 +37,7 @@ plot(bn.close - bb.close)
 - los intervalos superiores se actualizan solo cuando esas velas cierran por completo
 - la falta de historial o de datos alineados aparece como `na`
 - `plot`, `export`, `regime`, `trigger` y las declaraciones de estrategia emiten resultados despues de cada paso de ejecucion
+- `cooldown` y `max_bars_in_trade` son declaraciones de conteo de barras de tiempo de compilacion para explicitar la reentrada y las salidas por tiempo
 
 ## Donde Ir Para Las Reglas Exactas
 

@@ -15,6 +15,8 @@
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`
@@ -160,6 +162,13 @@ size target1 long = 0.5
 - `entry long` と `entry short` は `entry1 long` と `entry1 short` の互換エイリアス
 - `entry1`、`entry2`、`entry3` は段階的なバックテスト entry シグナル宣言
 - `exit long` と `exit short` は単一の裁量的フルポジション exit のまま
+- `cooldown long|short = <bars>` は、そのサイドで完全決済した後の次の
+  `<bars>` 本の実行バーについて同方向の新規エントリーをブロックします
+- `max_bars_in_trade long|short = <bars>` は、ポジション保有が `<bars>`
+  本の実行バーに達した時点で次の実行始値で同方向の market exit を強制
+  します
+- どちらの宣言的制御も v1 ではコンパイル時に解決される非負整数スカラー
+  式が必要です
 - `order entry ...` と `order exit ...` は、対応するシグナルロールに実行テンプレートを付ける
 - `protect`、`protect_after_target1..3`、`target1..3` は、対応ポジションが開いている間だけ有効になる段階付き attached exit を宣言する
 - `size entry1..3 long|short` は、`capital_fraction(x)` / 旧来の裸の数値比率セマンティクス、またはリスクベース entry sizing 用の `risk_pct(pct, stop_price)` によって段階付き entry fill のサイズを任意指定できる

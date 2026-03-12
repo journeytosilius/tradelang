@@ -135,6 +135,22 @@ fn parses_input_optimization_metadata() {
 }
 
 #[test]
+fn parses_declarative_risk_control_statements() {
+    compile(&with_interval(
+        "cooldown long = 3\nmax_bars_in_trade short = 24\nplot(close)",
+    ))
+    .expect("risk control declarations should compile");
+}
+
+#[test]
+fn rejects_nested_risk_control_declarations() {
+    let message = compile_err(&with_interval(
+        "if true { cooldown long = 1 } else { plot(close) }",
+    ));
+    assert!(message.contains("risk control declarations are only allowed at the top level"));
+}
+
+#[test]
 fn parses_else_if_chains() {
     compile(&with_interval(
         "if false { plot(0) } else if true { plot(1) } else { plot(2) }",

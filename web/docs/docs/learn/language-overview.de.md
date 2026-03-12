@@ -10,6 +10,7 @@ Haufige Bausteine:
 - optionale zusatzliche `use <alias> <interval>`-Deklarationen
 - Top-Level-Funktionen
 - `let`, `const`, `input`, Tupel-Destrukturierung, `export`, `regime`, `trigger`, `entry` / `exit` und `order`
+- deklarative Backtest-Kontrollen wie `cooldown long = 12` und `max_bars_in_trade short = 48`
 - `if / else if / else`
 - Ausdrucke aus Operatoren, Aufrufen und Indexierung
 - Helper-Builtins wie `crossover`, `state`, `activated`, `barssince` und `valuewhen`
@@ -36,6 +37,7 @@ plot(bn.close - bb.close)
 - hohere Intervalle aktualisieren sich nur, wenn diese Kerzen vollstandig schliessen
 - fehlender Verlauf oder fehlende ausgerichtete Quelldaten erscheinen als `na`
 - `plot`, `export`, `regime`, `trigger` und Strategiedeklarationen emittieren nach jedem Ausfuhrungsschritt Ergebnisse
+- `cooldown` und `max_bars_in_trade` sind Compile-Time-Balkenzaehler, die Re-Entry und zeitbasierte Exits explizit machen
 
 ## Wohin Fur Exakte Regeln
 

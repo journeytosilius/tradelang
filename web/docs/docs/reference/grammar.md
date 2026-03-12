@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | regime_stmt
                          | trigger_stmt
+                         | risk_control_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_stmt
@@ -49,6 +50,8 @@ optimize_space         ::= "int" "," number "," number ("," number)?
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+risk_control_stmt      ::= "cooldown" signal_side "=" expr
+                         | "max_bars_in_trade" signal_side "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -137,7 +140,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -152,6 +155,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
 - `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
 - `entry long` and `target long|short` remain compatibility aliases for stage 1
+- `cooldown long|short` and `max_bars_in_trade long|short` require a compile-time non-negative whole-number scalar expression
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
 - staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role

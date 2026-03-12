@@ -336,6 +336,19 @@ pub struct OrderDecl {
     pub risk_stop_field_id: Option<u16>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RiskControlKind {
+    Cooldown,
+    MaxBarsInTrade,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RiskControlDecl {
+    pub side: crate::position::PositionSide,
+    pub kind: RiskControlKind,
+    pub bars: usize,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalInfo {
     pub name: Option<String>,
@@ -359,6 +372,7 @@ pub struct Program {
     pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub last_exit_fields: Vec<LastExitFieldDecl>,
     pub orders: Vec<OrderDecl>,
+    pub risk_controls: Vec<RiskControlDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,
     pub source_intervals: Vec<SourceIntervalRef>,

@@ -1,0 +1,27 @@
+interval 1h
+source spot = binance.spot("BTCUSDT")
+
+input fast_len = 21 optimize(int, 8, 34, 1)
+input slow_len = 55 optimize(int, 21, 89, 1)
+input reentry_cooldown_bars = 6 optimize(int, 0, 24, 1)
+input max_hold_bars = 48 optimize(int, 12, 96, 1)
+
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let trend_long = above(fast, slow)
+
+cooldown long = reentry_cooldown_bars
+max_bars_in_trade long = max_hold_bars
+
+entry long = crossover(fast, slow)
+entry short = false
+exit long = crossunder(fast, slow)
+exit short = true
+
+order entry long = market()
+protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
+
+export trend_long_state = trend_long
+export timed_reentry_gate = last_long_exit.bars_held
+
+plot(fast - slow)

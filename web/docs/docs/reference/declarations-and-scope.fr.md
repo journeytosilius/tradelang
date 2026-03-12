@@ -16,6 +16,8 @@ Les formes suivantes ne doivent apparaitre qu'au top-level d'un script :
 - `export`
 - `regime`
 - `trigger`
+- `cooldown`
+- `max_bars_in_trade`
 - `entry`
 - `exit`
 - `protect`
@@ -180,6 +182,14 @@ Regles :
   echelonnes pour le backtest
 - `exit long` et `exit short` restent des sorties discretionnaires completes
   sur une seule etape
+- `cooldown long|short = <bars>` bloque les nouvelles entrees du meme cote
+  pendant les `<bars>` barres d execution suivantes apres une cloture complete
+  de ce cote
+- `max_bars_in_trade long|short = <bars>` force une sortie market du meme cote
+  a la prochaine ouverture d execution quand la position a ete tenue pendant
+  `<bars>` barres d execution
+- ces deux controles declaratifs exigent en v1 une expression scalaire entiere
+  non negative resolue a la compilation
 - `order entry ...` et `order exit ...` attachent un template d'execution au
   role de signal correspondant
 - `protect`, `protect_after_target1..3` et `target1..3` declarent des sorties

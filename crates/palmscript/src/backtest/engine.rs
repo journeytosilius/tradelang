@@ -19,7 +19,10 @@ use crate::backtest::{
     OrderStatus, PerpBacktestMetadata, PositionSnapshot, Trade, TradeDiagnostic,
     TradeExitClassification,
 };
-use crate::bytecode::{LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
+use crate::bytecode::{
+    LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, RiskControlKind,
+    SignalRole,
+};
 use crate::exchange::{RiskTier, VenueRiskSnapshot};
 use crate::order::OrderKind;
 use crate::output::StepOutput;
@@ -148,6 +151,43 @@ pub(crate) fn simulate_backtest(
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
             }
 
+            if let Some(timeout_outcome) = maybe_force_time_exit(
+                &prepared.risk_controls,
+                execution_cursor,
+                bar.time,
+                bar.open,
+                &accounting,
+                fee_rate,
+                &mut cash,
+                &mut position,
+                &mut open_trade,
+                &mut fills,
+                &mut trades,
+                &mut trade_diagnostics,
+                &mut total_realized_pnl,
+                last_snapshot.clone(),
+            ) {
+                if let Some(snapshot) = timeout_outcome.snapshot {
+                    set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                    update_last_exit_snapshots(
+                        &mut last_exit,
+                        &mut last_long_exit,
+                        &mut last_short_exit,
+                        snapshot,
+                    );
+                }
+                if let Some(side) = timeout_outcome.fully_closed_side {
+                    reset_target_consumption(&mut target_consumption, side);
+                    reset_entry_progress(&mut entry_progress, side);
+                    cancel_orders_for_closed_side(
+                        &mut active_orders,
+                        side,
+                        exit_signal_role(side),
+                        &mut orders,
+                    );
+                }
+            }
+
             if pending_entry_requests_conflict(&pending_requests, position.as_ref(), entry_progress)
             {
                 return Err(BacktestError::ConflictingSignals {
@@ -165,6 +205,9 @@ pub(crate) fn simulate_backtest(
                 &mut diagnostics,
                 position.as_ref(),
                 entry_progress,
+                &prepared.risk_controls,
+                last_long_exit.as_ref(),
+                last_short_exit.as_ref(),
                 last_snapshot.clone(),
                 current_position_snapshot(position.as_ref(), bar.open, bar.time),
                 execution_cursor,
@@ -931,6 +974,40 @@ fn last_exit_value(snapshot: Option<&LastExitSnapshot>, field: LastExitField) ->
     }
 }
 
+fn risk_control_bars(
+    controls: &[RiskControlDecl],
+    side: PositionSide,
+    kind: RiskControlKind,
+) -> Option<usize> {
+    controls
+        .iter()
+        .find(|decl| decl.side == side && decl.kind == kind)
+        .map(|decl| decl.bars)
+}
+
+fn cooldown_blocks_entry(
+    controls: &[RiskControlDecl],
+    side: PositionSide,
+    bar_index: usize,
+    last_long_exit: Option<&LastExitSnapshot>,
+    last_short_exit: Option<&LastExitSnapshot>,
+) -> bool {
+    let Some(cooldown_bars) = risk_control_bars(controls, side, RiskControlKind::Cooldown) else {
+        return false;
+    };
+    if cooldown_bars == 0 {
+        return false;
+    }
+    let last_exit = match side {
+        PositionSide::Long => last_long_exit,
+        PositionSide::Short => last_short_exit,
+    };
+    let Some(last_exit) = last_exit else {
+        return false;
+    };
+    bar_index <= last_exit.bar_index.saturating_add(cooldown_bars)
+}
+
 fn set_exit_events(position_events: &mut PositionEventStep, side: PositionSide, kind: ExitKind) {
     match side {
         PositionSide::Long => {
@@ -1113,6 +1190,9 @@ fn place_pending_requests(
     diagnostics: &mut DiagnosticsAccumulator,
     position: Option<&PositionState>,
     entry_progress: EntryProgressState,
+    risk_controls: &[RiskControlDecl],
+    last_long_exit: Option<&LastExitSnapshot>,
+    last_short_exit: Option<&LastExitSnapshot>,
     placed_snapshot: Option<FeatureSnapshot>,
     placed_position: Option<PositionSnapshot>,
     bar_index: usize,
@@ -1125,6 +1205,26 @@ fn place_pending_requests(
         };
         let signal_snapshot = pending_snapshots[slot].take();
         let signal_name = pending_signal_names[slot].take();
+        if role.is_entry()
+            && cooldown_blocks_entry(
+                risk_controls,
+                current_side_for_role(role),
+                bar_index,
+                last_long_exit,
+                last_short_exit,
+            )
+        {
+            diagnostics.record_signal_event(
+                OpportunityEventKind::SignalIgnoredCooldown,
+                signal_name.as_deref().unwrap_or(role.canonical_name()),
+                role,
+                bar_index,
+                time,
+                placed_position.as_ref(),
+                placed_snapshot.as_ref().or(signal_snapshot.as_ref()),
+            );
+            continue;
+        }
         if !request_applicable(request, position, entry_progress) {
             diagnostics.record_signal_event(
                 if matches!(
@@ -1889,6 +1989,59 @@ fn liquidation_signal_role(side: PositionSide) -> SignalRole {
         PositionSide::Long => SignalRole::ProtectLong,
         PositionSide::Short => SignalRole::ProtectShort,
     }
+}
+
+fn exit_signal_role(side: PositionSide) -> SignalRole {
+    match side {
+        PositionSide::Long => SignalRole::LongExit,
+        PositionSide::Short => SignalRole::ShortExit,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn maybe_force_time_exit(
+    controls: &[RiskControlDecl],
+    bar_index: usize,
+    time: f64,
+    execution_price: f64,
+    accounting: &AccountingMode,
+    fee_rate: f64,
+    cash: &mut f64,
+    position: &mut Option<PositionState>,
+    open_trade: &mut Option<OpenTrade>,
+    fills: &mut Vec<Fill>,
+    trades: &mut Vec<Trade>,
+    trade_diagnostics: &mut Vec<TradeDiagnostic>,
+    total_realized_pnl: &mut f64,
+    snapshot: Option<FeatureSnapshot>,
+) -> Option<CloseOutcome> {
+    let position_side = position.as_ref()?.side;
+    let max_bars = risk_control_bars(controls, position_side, RiskControlKind::MaxBarsInTrade)?;
+    let bars_held = bar_index.saturating_sub(position.as_ref()?.entry_bar_index);
+    if bars_held < max_bars {
+        return None;
+    }
+
+    Some(maybe_close_position_for_role(
+        exit_signal_role(position_side),
+        usize::MAX,
+        OrderKind::Market,
+        None,
+        snapshot,
+        bar_index,
+        time,
+        execution_price,
+        execution_price,
+        accounting,
+        fee_rate,
+        cash,
+        position,
+        open_trade,
+        fills,
+        trades,
+        trade_diagnostics,
+        total_realized_pnl,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]

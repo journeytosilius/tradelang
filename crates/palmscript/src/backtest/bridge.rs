@@ -4,7 +4,8 @@ use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
 use crate::backtest::{BacktestError, OrderKind};
 use crate::bytecode::{
-    LastExitFieldDecl, OrderDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl, SignalRole,
+    LastExitFieldDecl, OrderDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl,
+    RiskControlDecl, SignalRole,
 };
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
@@ -22,6 +23,7 @@ pub(crate) struct PreparedExport {
 pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
+    pub risk_controls: Vec<RiskControlDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub last_exit_fields: Vec<LastExitFieldDecl>,
@@ -73,6 +75,7 @@ pub(crate) fn prepare_backtest(
     Ok(PreparedBacktest {
         signal_roles,
         order_templates,
+        risk_controls: compiled.program.risk_controls.clone(),
         position_fields: compiled.program.position_fields.clone(),
         position_event_fields: compiled.program.position_event_fields.clone(),
         last_exit_fields: compiled.program.last_exit_fields.clone(),

@@ -5,7 +5,7 @@ use palmscript::{
     compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, Interval,
     MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus, PerpBacktestConfig,
     PerpBacktestContext, PerpMarginMode, RiskTier, SignalRole, SizeMode, SourceFeed,
-    SourceRuntimeConfig, VenueRiskSnapshot, VmLimits,
+    SourceRuntimeConfig, TradeExitClassification, VenueRiskSnapshot, VmLimits,
 };
 
 #[path = "support/mod.rs"]
@@ -232,6 +232,132 @@ plot(spot.close)",
 
     assert_eq!(result.fills.len(), 2);
     assert_eq!(result.trades.len(), 1);
+}
+
+#[test]
+fn cooldown_blocks_same_side_reentry_for_declared_bars() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+cooldown long = 2
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+entry short = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    9.0,
+                    9.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    10.0,
+                    10.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+                    11.0,
+                    11.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 5 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 6 * support::MINUTE_MS,
+                    13.0,
+                    13.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 3);
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(result.fills[0].bar_index, 2);
+    assert_eq!(result.fills[1].bar_index, 3);
+    assert_eq!(result.fills[2].bar_index, 6);
+    assert_eq!(
+        result
+            .diagnostics
+            .opportunity_events
+            .iter()
+            .filter(|event| event.kind == palmscript::OpportunityEventKind::SignalIgnoredCooldown)
+            .count(),
+        2
+    );
+}
+
+#[test]
+fn max_bars_in_trade_forces_next_open_exit() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+cooldown long = 10
+max_bars_in_trade long = 2
+entry long = spot.close > spot.close[1]
+exit long = false
+entry short = false
+exit short = false
+export timed_out = last_long_exit.kind == exit_kind.signal
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    13.0,
+                    13.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 4 * support::MINUTE_MS,
+                    14.0,
+                    14.0,
+                ),
+            ],
+        }],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 2);
+    assert_eq!(result.trades.len(), 1);
+    assert_eq!(result.fills[0].bar_index, 2);
+    assert_eq!(result.fills[1].bar_index, 4);
+    assert_eq!(result.diagnostics.trade_diagnostics.len(), 1);
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0].exit_classification,
+        TradeExitClassification::Signal
+    );
+    assert_eq!(result.diagnostics.trade_diagnostics[0].bars_held, 2);
 }
 
 #[test]
