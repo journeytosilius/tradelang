@@ -14,6 +14,7 @@ Die folgenden Formen duerfen nur auf Top-Level eines Skripts erscheinen:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`
@@ -142,11 +143,12 @@ Regeln:
 
 ## Ausgaben
 
-`export`, `trigger`, erstklassige Strategie-Signale und backtestbezogene
+`export`, `regime`, `trigger`, erstklassige Strategie-Signale und backtestbezogene
 Order-Deklarationen sind nur auf Top-Level erlaubt:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
+regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
 trigger long_entry = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
@@ -165,6 +167,8 @@ Regeln:
 
 - alle Formen sind nur auf Top-Level erlaubt
 - doppelte Namen im selben Scope werden abgelehnt
+- `regime` erfordert `bool`, `series<bool>` oder `na` und ist fuer persistente Marktzustands-Serien gedacht
+- `regime`-Namen werden nach ihrem Deklarationspunkt zu Bindungen und mit gewoehnlichen exportierten Diagnosen erfasst
 - `trigger`-Namen werden nach ihrem Deklarationspunkt zu Bindungen
 - `entry long` und `entry short` sind Kompatibilitaets-Aliase fuer
   `entry1 long` und `entry1 short`

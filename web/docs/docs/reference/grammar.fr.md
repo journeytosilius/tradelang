@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | const_stmt
                          | input_stmt
                          | export_stmt
+                         | regime_stmt
                          | trigger_stmt
                          | signal_stmt
                          | attached_exit_stmt
@@ -44,6 +45,7 @@ let_stmt               ::= "let" ident "=" expr
 const_stmt             ::= "const" ident "=" expr
 input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
+regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
@@ -137,7 +139,7 @@ L'implementation exige aussi :
 
 - un script doit declarer exactement un `interval` de base
 - un script doit declarer au moins une `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`,
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`,
   `entry`, `exit`, `protect`, `target`, `order` et `size` ne doivent apparaitre
   qu'au top-level
 - les identifiants de marche nus comme `close` sont rejetes et les series de

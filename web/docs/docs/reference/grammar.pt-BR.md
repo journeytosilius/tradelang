@@ -32,6 +32,7 @@ stmt                   ::= let_stmt
                          | const_stmt
                          | input_stmt
                          | export_stmt
+                         | regime_stmt
                          | trigger_stmt
                          | signal_stmt
                          | attached_exit_stmt
@@ -44,6 +45,7 @@ let_stmt               ::= "let" ident "=" expr
 const_stmt             ::= "const" ident "=" expr
 input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
+regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
@@ -136,7 +138,7 @@ exige:
 
 - um script deve declarar exatamente um `interval` base
 - um script deve declarar pelo menos uma `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`,
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`,
   `entry`, `exit`, `protect`, `target`, `order` e `size` devem aparecer apenas
   no nivel superior
 - identificadores de mercado soltos como `close` sao rejeitados e series de

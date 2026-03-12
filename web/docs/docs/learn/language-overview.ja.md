@@ -9,10 +9,10 @@ PalmScript スクリプトはトップレベルのソースファイルであり
 - 市場由来シリーズのための `source` 宣言
 - 任意の補助 `use <alias> <interval>` 宣言
 - トップレベル関数
-- `let`、`const`、`input`、タプル分解、`export`、`trigger`、`entry` / `exit`、`order`
+- `let`、`const`、`input`、タプル分解、`export`、`regime`、`trigger`、`entry` / `exit`、`order`
 - `if / else if / else`
 - 演算子、呼び出し、インデックスで構成される式
-- `crossover`、`activated`、`barssince`、`valuewhen` などの helper builtins
+- `crossover`、`state`、`activated`、`barssince`、`valuewhen` などの helper builtins
 - 型付き enum リテラル `ma_type.<variant>`、`tif.<variant>`、`trigger_ref.<variant>`、`position_side.<variant>`、`exit_kind.<variant>`
 
 ## スクリプトの形
@@ -35,7 +35,7 @@ plot(bn.close - bb.close)
 - シリーズ値は時間とともに変化します
 - 上位インターバルはその足が完全に確定したときだけ更新されます
 - 履歴不足やソース整列不足は `na` として現れます
-- `plot`、`export`、`trigger`、戦略宣言は各実行ステップの後に結果を出します
+- `plot`、`export`、`regime`、`trigger`、戦略宣言は各実行ステップの後に結果を出します
 
 ## 正確なルールを知るには
 

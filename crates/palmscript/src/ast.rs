@@ -176,6 +176,11 @@ pub enum StmtKind {
         name_span: Span,
         expr: Expr,
     },
+    Regime {
+        name: String,
+        name_span: Span,
+        expr: Expr,
+    },
     Trigger {
         name: String,
         name_span: Span,

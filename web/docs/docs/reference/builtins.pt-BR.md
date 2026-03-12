@@ -31,7 +31,7 @@ PalmScript atualmente expoe estas categorias de builtin:
   `coalesce(value, fallback)`
 - helpers de serie e janela: `change`, `highest`, `lowest`, `highestbars`,
   `lowestbars`, `rising`, `falling`, `cum`
-- helpers de memoria de evento: `activated`, `deactivated`, `barssince`,
+- helpers de memoria de evento: `state`, `activated`, `deactivated`, `barssince`,
   `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`,
   `lowestbars_since`, `valuewhen_since`, `count_since`
 - saidas: `plot`
@@ -242,6 +242,26 @@ Regras:
   amostra anterior era `true`
 - se a amostra atual for `na`, ambos os helpers retornam `false`
 - o tipo de resultado e `series<bool>`
+
+### `state(enter, exit)`
+
+Regras:
+
+- exige exatamente dois argumentos
+- ambos os argumentos devem ser `series<bool>`
+- retorna um estado persistente `series<bool>` que comeca em `false`
+- `enter = true` com `exit = false` liga o estado
+- `exit = true` com `enter = false` desliga o estado
+- se ambos os argumentos forem `true` na mesma barra, o estado anterior e preservado
+- se qualquer amostra de entrada atual for `na`, essa entrada e tratada como uma transicao inativa na barra atual
+- o tipo de resultado e `series<bool>`
+
+Esta e a base pretendida para declaracoes `regime` de primeira classe:
+
+```palmscript
+regime trend_long = state(close > ema(close, 20), close < ema(close, 20))
+export trend_started = activated(trend_long)
+```
 
 ### `barssince(condition)`
 

@@ -9,6 +9,7 @@ PalmScript expose trois constructions productrices de sortie :
 
 - `plot(value)`
 - `export name = expr`
+- `regime name = expr`
 - `trigger name = expr`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
@@ -35,7 +36,7 @@ PalmScript expose trois constructions productrices de sortie :
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
 
-`plot` est un appel builtin. `export` et `trigger` sont des declarations.
+`plot` est un appel builtin. `export`, `regime` et `trigger` sont des declarations.
 
 ## `plot`
 
@@ -70,6 +71,26 @@ Normalisation des types :
 - les `export` numeriques, series numeriques et `na` deviennent
   `series<float>`
 - les `export` bool et series bool deviennent `series<bool>`
+
+## `regime`
+
+`regime` publie une serie booleenne persistante d'etat de marche avec nom :
+
+```palmscript
+regime trend_long = state(
+    ema(spot.close, 20) > ema(spot.close, 50),
+    ema(spot.close, 20) < ema(spot.close, 50)
+)
+```
+
+Regles :
+
+- reserve au top-level
+- l'expression doit s'evaluer en `bool`, `series<bool>` ou `na`
+- le type de sortie est toujours `series<bool>`
+- les noms `regime` deviennent des liaisons reutilisables apres leur declaration
+- `regime` est pense pour fonctionner avec `state(...)`, `activated(...)` et `deactivated(...)`
+- les diagnostics runtime l'enregistrent avec les series exportees ordinaires
 
 ## `trigger`
 

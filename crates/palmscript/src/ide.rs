@@ -22,13 +22,14 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 12] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 13] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
     ("export", "Publish a named output series"),
+    ("regime", "Declare a named persistent regime series"),
     ("trigger", "Publish a named trigger series"),
     ("if", "Start a conditional block"),
     ("else", "Start an alternate conditional block"),
@@ -486,6 +487,25 @@ fn resolve_stmt(
             );
             scope.insert(name.clone(), index);
         }
+        StmtKind::Regime {
+            name,
+            name_span,
+            expr,
+        } => {
+            resolve_expr(context, expr, scope);
+            let index = push_definition(
+                context,
+                DefinitionTarget {
+                    name: name.clone(),
+                    kind: SymbolKind::Export,
+                    span: stmt.span,
+                    selection_span: *name_span,
+                    detail: Some("regime series<bool>".to_string()),
+                    navigable: true,
+                },
+            );
+            scope.insert(name.clone(), index);
+        }
         StmtKind::Trigger {
             name,
             name_span,
@@ -718,6 +738,16 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             span: stmt.span,
             selection_span: *name_span,
             detail: Some(render_output_type(expr, context, false)),
+            children: Vec::new(),
+        }),
+        StmtKind::Regime {
+            name, name_span, ..
+        } => context.document_symbols.push(DocumentSymbolInfo {
+            name: name.clone(),
+            kind: SymbolKind::Export,
+            span: stmt.span,
+            selection_span: *name_span,
+            detail: Some("series<bool>".to_string()),
             children: Vec::new(),
         }),
         StmtKind::Trigger {
@@ -1034,6 +1064,16 @@ fn collect_definition_fallbacks(ast: &Ast) -> Vec<DefinitionTarget> {
                 detail: Some(format!("export {}", name)),
                 navigable: true,
             }),
+            StmtKind::Regime {
+                name, name_span, ..
+            } => definitions.push(DefinitionTarget {
+                name: name.clone(),
+                kind: SymbolKind::Export,
+                span: stmt.span,
+                selection_span: *name_span,
+                detail: Some("regime series<bool>".to_string()),
+                navigable: true,
+            }),
             StmtKind::Trigger {
                 name, name_span, ..
             } => definitions.push(DefinitionTarget {
@@ -1174,6 +1214,7 @@ pub(crate) fn classify_highlight(
         | TokenKind::Source
         | TokenKind::Use
         | TokenKind::Export
+        | TokenKind::Regime
         | TokenKind::Trigger
         | TokenKind::Entry
         | TokenKind::Exit
@@ -1403,6 +1444,9 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         }
         StmtKind::Export { name, expr, .. } => {
             lines.push(format!("{prefix}export {name} = {}", format_expr(expr, 0)));
+        }
+        StmtKind::Regime { name, expr, .. } => {
+            lines.push(format!("{prefix}regime {name} = {}", format_expr(expr, 0)));
         }
         StmtKind::Trigger { name, expr, .. } => {
             lines.push(format!("{prefix}trigger {name} = {}", format_expr(expr, 0)));

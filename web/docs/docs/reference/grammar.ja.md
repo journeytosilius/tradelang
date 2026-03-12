@@ -30,6 +30,7 @@ stmt                   ::= let_stmt
                          | const_stmt
                          | input_stmt
                          | export_stmt
+                         | regime_stmt
                          | trigger_stmt
                          | signal_stmt
                          | attached_exit_stmt
@@ -42,6 +43,7 @@ let_stmt               ::= "let" ident "=" expr
 const_stmt             ::= "const" ident "=" expr
 input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
+regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
@@ -131,7 +133,7 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 
 - スクリプトはちょうど一つのベース `interval` を宣言しなければならない
 - スクリプトは少なくとも一つの `source` を宣言しなければならない
-- `interval`、`source`、`use`、`fn`、`const`、`input`、`export`、`trigger`、`entry`、`exit`、`protect`、`target`、`order`、`size` はトップレベルにのみ現れなければならない
+- `interval`、`source`、`use`、`fn`、`const`、`input`、`export`、`regime`、`trigger`、`entry`、`exit`、`protect`、`target`、`order`、`size` はトップレベルにのみ現れなければならない
 - `close` のような裸の市場識別子は拒否され、市場シリーズはソース修飾されていなければならない
 - 上位ソースインターバル参照には `use <alias> <interval>` が必要
 - すべての `if` は `else` を持たなければならない

@@ -54,6 +54,7 @@ pub enum BuiltinKind {
     Rising,
     Falling,
     BoolEdge,
+    StateMachine,
     BarsSince,
     ValueWhen,
     SinceExtrema,
@@ -216,10 +217,11 @@ pub enum BuiltinId {
     CountSince = 131,
     Activated = 132,
     Deactivated = 133,
+    State = 134,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 134] = [
+    pub const RESERVED: [Self; 135] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -354,9 +356,10 @@ impl BuiltinId {
         Self::CountSince,
         Self::Activated,
         Self::Deactivated,
+        Self::State,
     ];
 
-    pub const CALLABLE: [Self; 121] = [
+    pub const CALLABLE: [Self; 122] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -377,6 +380,7 @@ impl BuiltinId {
         Self::BarsSince,
         Self::ValueWhen,
         Self::CountSince,
+        Self::State,
         Self::Ma,
         Self::Macd,
         Self::Acos,
@@ -507,6 +511,7 @@ impl BuiltinId {
             "falling" => Some(Self::Falling),
             "activated" => Some(Self::Activated),
             "deactivated" => Some(Self::Deactivated),
+            "state" => Some(Self::State),
             "barssince" => Some(Self::BarsSince),
             "valuewhen" => Some(Self::ValueWhen),
             "highest_since" => Some(Self::HighestSince),
@@ -756,6 +761,7 @@ impl BuiltinId {
             131 => Some(Self::CountSince),
             132 => Some(Self::Activated),
             133 => Some(Self::Deactivated),
+            134 => Some(Self::State),
             _ => None,
         }
     }
@@ -787,6 +793,7 @@ impl BuiltinId {
             Self::Falling => "falling",
             Self::Activated => "activated",
             Self::Deactivated => "deactivated",
+            Self::State => "state",
             Self::BarsSince => "barssince",
             Self::ValueWhen => "valuewhen",
             Self::HighestSince => "highest_since",
@@ -959,6 +966,7 @@ impl BuiltinId {
             Self::Rising => BuiltinKind::Rising,
             Self::Falling => BuiltinKind::Falling,
             Self::Activated | Self::Deactivated => BuiltinKind::BoolEdge,
+            Self::State => BuiltinKind::StateMachine,
             Self::BarsSince => BuiltinKind::BarsSince,
             Self::ValueWhen => BuiltinKind::ValueWhen,
             Self::HighestSince | Self::LowestSince => BuiltinKind::SinceExtrema,
@@ -1034,6 +1042,7 @@ impl BuiltinId {
             | Self::Tanh
             | Self::NaFunc
             | Self::Cum => BuiltinArity::Exact(1),
+            Self::State => BuiltinArity::Exact(2),
             Self::Sma
             | Self::Ema
             | Self::Rsi
@@ -1159,6 +1168,7 @@ impl BuiltinId {
             Self::Falling => "falling(series, length)",
             Self::Activated => "activated(condition)",
             Self::Deactivated => "deactivated(condition)",
+            Self::State => "state(enter, exit)",
             Self::BarsSince => "barssince(condition)",
             Self::ValueWhen => "valuewhen(condition, source, occurrence)",
             Self::HighestSince => "highest_since(anchor, source)",
@@ -1304,6 +1314,7 @@ impl BuiltinId {
             Self::Falling => "True when the current sample is strictly less than every prior sample in the trailing window.",
             Self::Activated => "True when a boolean condition turns true on the current bar, treating prior false or na as inactive history.",
             Self::Deactivated => "True when a boolean condition turns false on the current bar after being true on the prior bar.",
+            Self::State => "Persistent boolean state machine: enter turns the state on, exit turns it off, and conflicting or na transitions preserve the prior state.",
             Self::BarsSince => "Bars since the last true condition on the condition's update clock.",
             Self::ValueWhen => "Captured source value from the Nth most recent true condition.",
             Self::HighestSince => "Highest value since the most recent true anchor, including the anchor bar.",

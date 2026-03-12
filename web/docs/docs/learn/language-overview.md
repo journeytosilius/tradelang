@@ -8,10 +8,10 @@ Common building blocks:
 - `source` declarations for market-backed series
 - optional supplemental `use <alias> <interval>` declarations
 - top-level functions
-- `let`, `const`, `input`, tuple destructuring, `export`, `trigger`, `entry` / `exit`, and `order`
+- `let`, `const`, `input`, tuple destructuring, `export`, `regime`, `trigger`, `entry` / `exit`, and `order`
 - `if / else if / else`
 - expressions built from operators, calls, and indexing
-- helper builtins such as `crossover`, `activated`, `barssince`, and `valuewhen`
+- helper builtins such as `crossover`, `state`, `activated`, `barssince`, and `valuewhen`
 - typed `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` enum literals
 
 ## Script Shape
@@ -34,7 +34,7 @@ plot(bn.close - bb.close)
 - series values evolve over time
 - higher intervals update only when those candles fully close
 - missing history or missing aligned source data appears as `na`
-- `plot`, `export`, `trigger`, and strategy declarations emit results after each execution step
+- `plot`, `export`, `regime`, `trigger`, and strategy declarations emit results after each execution step
 
 ## Where To Go For Exact Rules
 

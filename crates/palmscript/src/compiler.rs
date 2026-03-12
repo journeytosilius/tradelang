@@ -1093,6 +1093,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::Export { name, expr, .. } => {
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None);
             }
+            StmtKind::Regime { name, expr, .. } => {
+                self.analyze_regime_stmt(stmt, name, expr);
+            }
             StmtKind::Trigger { name, expr, .. } => {
                 self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger, None);
             }
@@ -1141,6 +1144,19 @@ impl<'a> Analyzer<'a> {
             OutputKind::Trigger,
             Some(compiled_role),
         );
+    }
+
+    fn analyze_regime_stmt(&mut self, stmt: &Stmt, name: &str, expr: &Expr) {
+        let expr_info = self.analyze_expr(expr);
+        if !expr_info.ty.allow_bool() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "regime requires bool, series<bool>, or na",
+                expr.span,
+            ));
+            return;
+        }
+        self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None);
     }
 
     fn analyze_output_stmt(
@@ -2461,6 +2477,7 @@ fn collect_source_series_stmt(
         | StmtKind::Input { expr, .. }
         | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
+        | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
@@ -2581,6 +2598,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Input { expr, .. }
         | StmtKind::LetTuple { expr, .. }
         | StmtKind::Export { expr, .. }
+        | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
@@ -3814,6 +3832,28 @@ fn analyze_helper_builtin(
                 update_mask: condition_info.update_mask,
             }
         }
+        BuiltinKind::StateMachine => {
+            let enter_info = arg_info[0];
+            let exit_info = arg_info[1];
+            if !enter_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !exit_info.ty.is_series_bool() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesBool),
+                update_mask: enter_info.update_mask | exit_info.update_mask,
+            }
+        }
         BuiltinKind::BarsSince => {
             let condition_info = arg_info[0];
             if !condition_info.ty.is_series_bool() {
@@ -4122,7 +4162,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::Plot => ExprInfo::scalar(Type::Void),
         BuiltinKind::Relation2 | BuiltinKind::Relation3 => ExprInfo::scalar(Type::Bool),
         BuiltinKind::Cross => ExprInfo::series(0),
-        BuiltinKind::Rising | BuiltinKind::Falling | BuiltinKind::BoolEdge => ExprInfo {
+        BuiltinKind::Rising
+        | BuiltinKind::Falling
+        | BuiltinKind::BoolEdge
+        | BuiltinKind::StateMachine => ExprInfo {
             ty: InferredType::Concrete(Type::SeriesBool),
             update_mask: 0,
         },
@@ -4959,7 +5002,9 @@ impl<'a> Compiler<'a> {
                     .unwrap()
                     .insert(name.clone(), CompilerSymbol { slot, ty: local.ty });
             }
-            StmtKind::Export { name, expr, .. } | StmtKind::Trigger { name, expr, .. } => {
+            StmtKind::Export { name, expr, .. }
+            | StmtKind::Regime { name, expr, .. }
+            | StmtKind::Trigger { name, expr, .. } => {
                 self.emit_expr(expr, expr_info, user_calls);
                 let slot = self.analysis.resolved_output_slots[&stmt.id];
                 self.emit(
@@ -5424,6 +5469,7 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Falling
             | BuiltinId::Activated
             | BuiltinId::Deactivated
+            | BuiltinId::State
             | BuiltinId::BarsSince
             | BuiltinId::ValueWhen
             | BuiltinId::HighestSince
@@ -6498,6 +6544,17 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(1)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::StateMachine => {
+                self.emit_series_ref(&args[0], 2, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 2, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(2)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

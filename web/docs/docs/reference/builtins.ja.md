@@ -23,7 +23,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - crossing helper: `cross`, `crossover`, `crossunder`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
-- event-memory helper: `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
+- event-memory helper: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - 出力: `plot`
 
 市場フィールドは `spot.open`, `spot.close`, `bb.1h.volume` のようなソース修飾 series を通じて選択されます。呼び出せるのは識別子だけなので、`spot.close()` は拒否されます。
@@ -210,6 +210,26 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - `deactivated` は現在サンプルが `false` かつ prior sample が `true` のとき `true`
 - 現在サンプルが `na` のとき、どちらも `false`
 - 結果型は `series<bool>`
+
+### `state(enter, exit)`
+
+ルール:
+
+- 引数はちょうど二つ
+- 両引数は `series<bool>`
+- `false` から始まる持続的な `series<bool>` 状態を返す
+- `enter = true` かつ `exit = false` なら状態はオンになる
+- `exit = true` かつ `enter = false` なら状態はオフになる
+- 同じバーで両引数が `true` の場合、直前の状態を保持する
+- 現在入力サンプルのどちらかが `na` なら、その入力は現在バーで非アクティブな遷移として扱われる
+- 結果型は `series<bool>`
+
+これは第一級 `regime` 宣言のための基盤です。
+
+```palmscript
+regime trend_long = state(close > ema(close, 20), close < ema(close, 20))
+export trend_started = activated(trend_long)
+```
 
 ### `barssince(condition)`
 

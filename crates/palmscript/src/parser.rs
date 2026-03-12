@@ -130,7 +130,17 @@ impl<'a> Parser<'a> {
                 );
                 return None;
             }
-            return self.parse_output_stmt(true);
+            return self.parse_output_stmt(OutputStmtKind::Export);
+        }
+        if self.matches_keyword(&TokenKind::Regime) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "regime statements are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_output_stmt(OutputStmtKind::Regime);
         }
         if self.matches_keyword(&TokenKind::Trigger) {
             if self.block_depth > 0 {
@@ -140,7 +150,7 @@ impl<'a> Parser<'a> {
                 );
                 return None;
             }
-            return self.parse_output_stmt(false);
+            return self.parse_output_stmt(OutputStmtKind::Trigger);
         }
         if self.matches_keyword(&TokenKind::Entry) {
             if self.block_depth > 0 {
@@ -431,31 +441,31 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_output_stmt(&mut self, export: bool) -> Option<Stmt> {
+    fn parse_output_stmt(&mut self, kind: OutputStmtKind) -> Option<Stmt> {
         let start = self.previous().span;
-        let (name, name_span) = self.expect_ident(if export {
-            "expected identifier after `export`"
-        } else {
-            "expected identifier after `trigger`"
-        })?;
+        let (name, name_span) = self.expect_ident(kind.ident_error())?;
         self.expect_assign()?;
         let expr = self.parse_expr(0)?;
         let span = start.merge(expr.span);
         Some(Stmt {
             id: self.alloc_id(),
             span,
-            kind: if export {
-                StmtKind::Export {
+            kind: match kind {
+                OutputStmtKind::Export => StmtKind::Export {
                     name,
                     name_span,
                     expr,
-                }
-            } else {
-                StmtKind::Trigger {
+                },
+                OutputStmtKind::Regime => StmtKind::Regime {
                     name,
                     name_span,
                     expr,
-                }
+                },
+                OutputStmtKind::Trigger => StmtKind::Trigger {
+                    name,
+                    name_span,
+                    expr,
+                },
             },
         })
     }
@@ -1443,4 +1453,21 @@ enum ParsedItem {
     UseInterval(SourceIntervalDecl),
     Function(FunctionDecl),
     Stmt(Box<Stmt>),
+}
+
+#[derive(Clone, Copy)]
+enum OutputStmtKind {
+    Export,
+    Regime,
+    Trigger,
+}
+
+impl OutputStmtKind {
+    const fn ident_error(self) -> &'static str {
+        match self {
+            Self::Export => "expected identifier after `export`",
+            Self::Regime => "expected identifier after `regime`",
+            Self::Trigger => "expected identifier after `trigger`",
+        }
+    }
 }

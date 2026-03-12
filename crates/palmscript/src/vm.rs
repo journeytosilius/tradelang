@@ -19,9 +19,9 @@ use crate::indicators::{
     CumState, DirectionalKind, DirectionalState, DmKind, DmState, EmaState, FallingState,
     HighestState, HtDcPeriodState, HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState,
     HtTrendlineState, IndicatorState, LowestState, MacdExtState, MacdState, MamaState, MavpState,
-    MovingAverageState, ObvState, OscillatorKind, PriceOscillatorState, RegressionOutput,
-    RisingState, RsiState, SarConfig, SarState, SmaState, StochFastState, StochRsiState,
-    StochState, TrixState, UnaryMathTransform, ValueWhenState,
+    MovingAverageState, ObvState, OscillatorKind, PersistentState, PriceOscillatorState,
+    RegressionOutput, RisingState, RsiState, SarConfig, SarState, SmaState, StochFastState,
+    StochRsiState, StochState, TrixState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -487,6 +487,7 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Falling => self.call_falling(callsite, arity, args, pc),
             BuiltinId::Activated => self.call_activated(callsite, arity, args, pc),
             BuiltinId::Deactivated => self.call_deactivated(callsite, arity, args, pc),
+            BuiltinId::State => self.call_state_machine(callsite, arity, args, pc),
             BuiltinId::BarsSince => self.call_barssince(callsite, arity, args, pc),
             BuiltinId::ValueWhen => self.call_valuewhen(callsite, arity, args, pc),
             BuiltinId::HighestSince => {
@@ -2288,6 +2289,44 @@ impl<'a> VmEngine<'a> {
         });
         let result = match &mut state {
             IndicatorState::BoolEdge(state) => state.update(condition, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_state_machine(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "state",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let enter_slot = series_ref(args[0].clone(), pc)?;
+        let exit_slot = series_ref(args[1].clone(), pc)?;
+        self.consume_steps(2, pc)?;
+        let enter = self
+            .series_values
+            .get(enter_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: enter_slot })?;
+        let exit = self
+            .series_values
+            .get(exit_slot)
+            .ok_or(RuntimeError::InvalidSeriesSlot { slot: exit_slot })?;
+        let key = (BuiltinId::State, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::StateMachine(PersistentState::new()));
+        let result = match &mut state {
+            IndicatorState::StateMachine(state) => state.update(enter, exit, pc)?,
             _ => unreachable!(),
         };
         self.indicator_state.insert(key, state);

@@ -13,6 +13,7 @@ The following forms must appear only at the top level of a script:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`
@@ -130,10 +131,11 @@ Rules:
 
 ## Outputs
 
-`export`, `trigger`, first-class strategy signals, and order-facing backtest declarations are top-level only:
+`export`, `regime`, `trigger`, first-class strategy signals, and order-facing backtest declarations are top-level only:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
+regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
 trigger long_entry = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
@@ -152,6 +154,8 @@ Rules:
 
 - all forms are top-level only
 - duplicate names in the same scope are rejected
+- `regime` requires `bool`, `series<bool>`, or `na` and is intended for persistent market-state series
+- `regime` names become bindings after the declaration point and are recorded with ordinary exported diagnostics
 - `trigger` names become bindings after the declaration point
 - `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
 - `entry1`, `entry2`, and `entry3` are staged backtest entry signal declarations

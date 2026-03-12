@@ -8,6 +8,7 @@ PalmScript stellt drei Konstrukte zur Ausgabeerzeugung bereit:
 
 - `plot(value)`
 - `export name = expr`
+- `regime name = expr`
 - `trigger name = expr`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
@@ -34,7 +35,7 @@ PalmScript stellt drei Konstrukte zur Ausgabeerzeugung bereit:
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
 
-`plot` ist ein Builtin-Aufruf. `export` und `trigger` sind Deklarationen.
+`plot` ist ein Builtin-Aufruf. `export`, `regime` und `trigger` sind Deklarationen.
 
 ## `plot`
 
@@ -68,6 +69,26 @@ Typ-Normalisierung:
 
 - numerische, numerische Serien- und `na`-Exports werden zu `series<float>`
 - boolesche und boolesche Serien-Exports werden zu `series<bool>`
+
+## `regime`
+
+`regime` veroeffentlicht eine benannte persistente boolesche Marktzustandsserie:
+
+```palmscript
+regime trend_long = state(
+    ema(spot.close, 20) > ema(spot.close, 50),
+    ema(spot.close, 20) < ema(spot.close, 50)
+)
+```
+
+Regeln:
+
+- nur auf Top-Level
+- der Ausdruck muss zu `bool`, `series<bool>` oder `na` auswerten
+- der Ausgabetyp ist immer `series<bool>`
+- `regime`-Namen werden nach dem Deklarationspunkt zu wiederverwendbaren Bindungen
+- `regime` ist fuer die Kombination mit `state(...)`, `activated(...)` und `deactivated(...)` gedacht
+- Laufzeitdiagnosen erfassen es zusammen mit gewoehnlichen exportierten Serien
 
 ## `trigger`
 

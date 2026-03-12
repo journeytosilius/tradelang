@@ -16,6 +16,7 @@ Os seguintes tokens sao palavras-chave reservadas:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`

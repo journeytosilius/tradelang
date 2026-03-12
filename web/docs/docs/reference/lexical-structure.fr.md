@@ -16,6 +16,7 @@ Les tokens suivants sont des mots-cles reserves :
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`

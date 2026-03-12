@@ -14,6 +14,7 @@ PalmScript ソースは構文解析の前にトークン化されます。レキ
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`

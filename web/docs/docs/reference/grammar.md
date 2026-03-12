@@ -30,6 +30,7 @@ stmt                   ::= let_stmt
                          | const_stmt
                          | input_stmt
                          | export_stmt
+                         | regime_stmt
                          | trigger_stmt
                          | signal_stmt
                          | attached_exit_stmt
@@ -42,6 +43,7 @@ let_stmt               ::= "let" ident "=" expr
 const_stmt             ::= "const" ident "=" expr
 input_stmt             ::= "input" ident "=" expr
 export_stmt            ::= "export" ident "=" expr
+regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
@@ -131,7 +133,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `trigger`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`

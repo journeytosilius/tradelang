@@ -16,6 +16,7 @@ Die folgenden Tokens sind reservierte Schluesselwoerter:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`

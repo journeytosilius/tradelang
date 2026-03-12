@@ -9,10 +9,10 @@ Bloques comunes:
 - declaraciones `source` para series respaldadas por mercado
 - declaraciones opcionales `use <alias> <interval>` para intervalos suplementarios
 - funciones de nivel superior
-- `let`, `const`, `input`, destructuracion de tuplas, `export`, `trigger`, `entry` / `exit` y `order`
+- `let`, `const`, `input`, destructuracion de tuplas, `export`, `regime`, `trigger`, `entry` / `exit` y `order`
 - `if / else if / else`
 - expresiones construidas con operadores, llamadas e indexacion
-- builtins auxiliares como `crossover`, `activated`, `barssince` y `valuewhen`
+- builtins auxiliares como `crossover`, `state`, `activated`, `barssince` y `valuewhen`
 - literales enum tipados `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>` y `exit_kind.<variant>`
 
 ## Forma Del Script
@@ -35,7 +35,7 @@ plot(bn.close - bb.close)
 - los valores de las series evolucionan a traves del tiempo
 - los intervalos superiores se actualizan solo cuando esas velas cierran por completo
 - la falta de historial o de datos alineados aparece como `na`
-- `plot`, `export`, `trigger` y las declaraciones de estrategia emiten resultados despues de cada paso de ejecucion
+- `plot`, `export`, `regime`, `trigger` y las declaraciones de estrategia emiten resultados despues de cada paso de ejecucion
 
 ## Donde Ir Para Las Reglas Exactas
 

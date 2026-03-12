@@ -23,7 +23,7 @@ PalmScript currently exposes these builtin categories:
 - crossing helpers: `cross`, `crossover`, `crossunder`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
-- event-memory helpers: `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
+- event-memory helpers: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `bb.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
@@ -210,6 +210,26 @@ Rules:
 - `deactivated` returns `true` when the current condition sample is `false` and the prior sample was `true`
 - if the current sample is `na`, both helpers return `false`
 - the result type is `series<bool>`
+
+### `state(enter, exit)`
+
+Rules:
+
+- it requires exactly two arguments
+- both arguments must be `series<bool>`
+- it returns a persistent `series<bool>` state that starts as `false`
+- `enter = true` with `exit = false` turns the state on
+- `exit = true` with `enter = false` turns the state off
+- if both arguments are `true` on the same bar, the prior state is preserved
+- if either current input sample is `na`, that input is treated as an inactive transition on the current bar
+- the result type is `series<bool>`
+
+This is the intended foundation for first-class regime declarations:
+
+```palmscript
+regime trend_long = state(close > ema(close, 20), close < ema(close, 20))
+export trend_started = activated(trend_long)
+```
 
 ### `barssince(condition)`
 

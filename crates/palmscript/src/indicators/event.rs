@@ -75,6 +75,14 @@ pub(crate) struct BoolEdgeState {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct PersistentState {
+    active: bool,
+    last_enter_version: u64,
+    last_exit_version: u64,
+    cached_output: Value,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct CumState {
     total: f64,
     initialized: bool,
@@ -177,6 +185,62 @@ impl BarsSinceState {
                 });
             }
         }
+        Ok(self.cached_output.clone())
+    }
+}
+
+impl PersistentState {
+    pub(crate) fn new() -> Self {
+        Self {
+            active: false,
+            last_enter_version: 0,
+            last_exit_version: 0,
+            cached_output: Value::Bool(false),
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        enter: &SeriesBuffer,
+        exit: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if enter.version() == self.last_enter_version && exit.version() == self.last_exit_version {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_enter_version = enter.version();
+        self.last_exit_version = exit.version();
+
+        let enter_now = match enter.get(0) {
+            Value::Bool(value) => value,
+            Value::NA => false,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        };
+        let exit_now = match exit.get(0) {
+            Value::Bool(value) => value,
+            Value::NA => false,
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "bool",
+                    found: other.type_name(),
+                });
+            }
+        };
+
+        match (enter_now, exit_now) {
+            (true, false) => self.active = true,
+            (false, true) => self.active = false,
+            _ => {}
+        }
+
+        self.cached_output = Value::Bool(self.active);
         Ok(self.cached_output.clone())
     }
 }

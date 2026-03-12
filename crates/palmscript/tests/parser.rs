@@ -94,6 +94,14 @@ fn parses_na_predicate_call() {
 }
 
 #[test]
+fn parses_regime_declarations_and_state_builtin() {
+    compile(&with_interval(
+        "regime trend_long = state(close > close[1], close < close[1])\nexport entered = activated(trend_long)\nplot(0)",
+    ))
+    .expect("regime declarations should compile");
+}
+
+#[test]
 fn parses_ternary_conditional_expression() {
     compile(&with_interval("plot(close > close[1] ? 1 : 0)"))
         .expect("ternary conditional should compile");
@@ -329,6 +337,14 @@ fn rejects_function_declarations_inside_blocks() {
         "if true { fn helper() = close > open } else { plot(0) }",
     ));
     assert!(message.contains("function declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_regime_inside_blocks() {
+    let message = compile_err(&with_interval(
+        "if true { regime trend_long = close > close[1] } else { plot(0) }",
+    ));
+    assert!(message.contains("regime statements are only allowed at the top level"));
 }
 
 #[test]

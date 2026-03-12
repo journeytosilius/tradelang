@@ -684,6 +684,79 @@ fn exports_are_recorded_each_bar() {
 }
 
 #[test]
+fn state_builtin_persists_regime_transitions() {
+    let compiled = palmscript::compile(&with_interval(
+        "regime trend_long = state(close > close[1], close < close[1])\nexport entered = activated(trend_long)\nexport exited = deactivated(trend_long)\nplot(0)",
+    ))
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 10.0, 11.0],
+        ),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    assert_eq!(outputs.exports[0].name, "trend_long");
+    assert_eq!(outputs.exports[1].name, "entered");
+    assert_eq!(outputs.exports[2].name, "exited");
+
+    let trend_values = outputs.exports[0]
+        .points
+        .iter()
+        .map(|point| point.value.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        trend_values,
+        vec![
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(true),
+            palmscript::OutputValue::Bool(true),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(true),
+        ]
+    );
+
+    let entered_values = outputs.exports[1]
+        .points
+        .iter()
+        .map(|point| point.value.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        entered_values,
+        vec![
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(true),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(true),
+        ]
+    );
+
+    let exited_values = outputs.exports[2]
+        .points
+        .iter()
+        .map(|point| point.value.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        exited_values,
+        vec![
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(true),
+            palmscript::OutputValue::Bool(false),
+            palmscript::OutputValue::Bool(false),
+        ]
+    );
+}
+
+#[test]
 fn triggers_emit_samples_and_events() {
     let compiled = palmscript::compile(&with_interval(
         "trigger long_entry = close > close[1]\nplot(0)",

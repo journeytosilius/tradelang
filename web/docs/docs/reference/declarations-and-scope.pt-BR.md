@@ -14,6 +14,7 @@ As formas a seguir devem aparecer apenas no nivel superior de um script:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`
@@ -141,11 +142,12 @@ Regras:
 
 ## Saidas
 
-`export`, `trigger`, sinais de estrategia de primeira classe e declaracoes de
+`export`, `regime`, `trigger`, sinais de estrategia de primeira classe e declaracoes de
 backtest orientadas a ordens sao apenas de nivel superior:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
+regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
 trigger long_entry = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
@@ -164,6 +166,8 @@ Regras:
 
 - todas as formas sao apenas de nivel superior
 - nomes duplicados no mesmo escopo sao rejeitados
+- `regime` exige `bool`, `series<bool>` ou `na` e se destina a series persistentes de estado de mercado
+- nomes `regime` viram bindings depois do ponto de declaracao e sao registrados com diagnosticos exportados comuns
 - nomes `trigger` viram bindings depois do ponto de declaracao
 - `entry long` e `entry short` sao aliases de compatibilidade para
   `entry1 long` e `entry1 short`

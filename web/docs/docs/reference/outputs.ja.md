@@ -8,6 +8,7 @@ PalmScript は次の出力生成構文を公開します。
 
 - `plot(value)`
 - `export name = expr`
+- `regime name = expr`
 - `trigger name = expr`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
@@ -22,7 +23,7 @@ PalmScript は次の出力生成構文を公開します。
 - `size target long = expr`, `size target1 long = expr`, `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`, `size target2 short = expr`, `size target3 short = expr`
 
-`plot` は builtin 呼び出しです。`export` と `trigger` は宣言です。
+`plot` は builtin 呼び出しです。`export`、`regime`、`trigger` は宣言です。
 
 ## `plot`
 
@@ -54,6 +55,26 @@ export trend = ema(spot.close, 20) > ema(spot.close, 50)
 
 - 数値、数値 series、`na` の export は `series<float>` になる
 - bool と bool series の export は `series<bool>` になる
+
+## `regime`
+
+`regime` は名前付きの持続的な市場状態 boolean series を公開します。
+
+```palmscript
+regime trend_long = state(
+    ema(spot.close, 20) > ema(spot.close, 50),
+    ema(spot.close, 20) < ema(spot.close, 50)
+)
+```
+
+ルール:
+
+- トップレベル専用
+- 式は `bool`、`series<bool>`、または `na` に評価されなければならない
+- 出力型は常に `series<bool>`
+- `regime` 名は宣言以降で再利用可能な束縛になる
+- `regime` は `state(...)`、`activated(...)`、`deactivated(...)` と組み合わせる前提で設計されている
+- ランタイム診断では通常の export series と同じく記録される
 
 ## `trigger`
 

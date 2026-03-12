@@ -14,6 +14,7 @@ The following tokens are reserved keywords:
 - `const`
 - `input`
 - `export`
+- `regime`
 - `trigger`
 - `entry`
 - `exit`

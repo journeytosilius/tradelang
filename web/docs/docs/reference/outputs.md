@@ -8,6 +8,7 @@ PalmScript exposes three output-producing constructs:
 
 - `plot(value)`
 - `export name = expr`
+- `regime name = expr`
 - `trigger name = expr`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
@@ -22,7 +23,7 @@ PalmScript exposes three output-producing constructs:
 - `size target long = expr`, `size target1 long = expr`, `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`, `size target2 short = expr`, `size target3 short = expr`
 
-`plot` is a builtin call. `export` and `trigger` are declarations.
+`plot` is a builtin call. `export`, `regime`, and `trigger` are declarations.
 
 ## `plot`
 
@@ -54,6 +55,26 @@ Type normalization:
 
 - numeric, series numeric, and `na` exports become `series<float>`
 - bool and series bool exports become `series<bool>`
+
+## `regime`
+
+`regime` publishes a named persistent boolean market-state series:
+
+```palmscript
+regime trend_long = state(
+    ema(spot.close, 20) > ema(spot.close, 50),
+    ema(spot.close, 20) < ema(spot.close, 50)
+)
+```
+
+Rules:
+
+- it is top-level only
+- the expression must evaluate to `bool`, `series<bool>`, or `na`
+- the output type is always `series<bool>`
+- `regime` names become reusable bindings after the declaration point
+- `regime` is intended to pair with `state(...)`, `activated(...)`, and `deactivated(...)`
+- runtime diagnostics record it with ordinary exported series output
 
 ## `trigger`
 

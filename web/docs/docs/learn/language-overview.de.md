@@ -9,10 +9,10 @@ Haufige Bausteine:
 - `source`-Deklarationen fur marktgestutzte Serien
 - optionale zusatzliche `use <alias> <interval>`-Deklarationen
 - Top-Level-Funktionen
-- `let`, `const`, `input`, Tupel-Destrukturierung, `export`, `trigger`, `entry` / `exit` und `order`
+- `let`, `const`, `input`, Tupel-Destrukturierung, `export`, `regime`, `trigger`, `entry` / `exit` und `order`
 - `if / else if / else`
 - Ausdrucke aus Operatoren, Aufrufen und Indexierung
-- Helper-Builtins wie `crossover`, `activated`, `barssince` und `valuewhen`
+- Helper-Builtins wie `crossover`, `state`, `activated`, `barssince` und `valuewhen`
 - typisierte Enum-Literale `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>` und `exit_kind.<variant>`
 
 ## Skriptform
@@ -35,7 +35,7 @@ plot(bn.close - bb.close)
 - Serienwerte entwickeln sich uber die Zeit
 - hohere Intervalle aktualisieren sich nur, wenn diese Kerzen vollstandig schliessen
 - fehlender Verlauf oder fehlende ausgerichtete Quelldaten erscheinen als `na`
-- `plot`, `export`, `trigger` und Strategiedeklarationen emittieren nach jedem Ausfuhrungsschritt Ergebnisse
+- `plot`, `export`, `regime`, `trigger` und Strategiedeklarationen emittieren nach jedem Ausfuhrungsschritt Ergebnisse
 
 ## Wohin Fur Exakte Regeln
 

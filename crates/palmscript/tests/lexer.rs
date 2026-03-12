@@ -15,12 +15,14 @@ fn reserves_fn_as_keyword() {
 
 #[test]
 fn reserves_export_trigger_interval_and_use_as_keywords() {
-    let tokens = lex("let export = 1\nlet trigger = 2\nlet interval = 3\nlet use = 4")
-        .expect("source should lex");
+    let tokens =
+        lex("let export = 1\nlet regime = 2\nlet trigger = 3\nlet interval = 4\nlet use = 5")
+            .expect("source should lex");
     assert!(matches!(tokens[1].kind, TokenKind::Export));
-    assert!(matches!(tokens[6].kind, TokenKind::Trigger));
-    assert!(matches!(tokens[11].kind, TokenKind::IntervalKw));
-    assert!(matches!(tokens[16].kind, TokenKind::Use));
+    assert!(matches!(tokens[6].kind, TokenKind::Regime));
+    assert!(matches!(tokens[11].kind, TokenKind::Trigger));
+    assert!(matches!(tokens[16].kind, TokenKind::IntervalKw));
+    assert!(matches!(tokens[21].kind, TokenKind::Use));
 }
 
 #[test]
