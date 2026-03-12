@@ -182,3 +182,7 @@ ademas exige:
   `const` e `input` de nivel superior
 - las reglas de fuente, intervalo, scope y tipos se aplican tal como se
   describen en las otras paginas de `Reference`
+
+## Nota Sobre `input ... optimize(...)`
+
+La superficie del parser ahora acepta un sufijo opcional `optimize(...)` en declaraciones `input`. Ese sufijo puede describir un rango entero, un rango float o una lista `choice`, pero sigue sujeto a validacion semantica adicional.

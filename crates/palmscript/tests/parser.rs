@@ -127,6 +127,14 @@ fn parses_division_with_multiplicative_precedence() {
 }
 
 #[test]
+fn parses_input_optimization_metadata() {
+    compile(&with_interval(
+        "input fast = 21 optimize(int, 8, 34, 1)\ninput threshold = 0.5 optimize(float, -2.0, 2.0, 0.1)\ninput selector = 21 optimize(choice, -13, 8, 13, 21)\nplot(close)",
+    ))
+    .expect("input optimization metadata should compile");
+}
+
+#[test]
 fn parses_else_if_chains() {
     compile(&with_interval(
         "if false { plot(0) } else if true { plot(1) } else { plot(2) }",

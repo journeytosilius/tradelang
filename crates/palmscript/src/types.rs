@@ -24,6 +24,21 @@ pub enum Type {
 }
 
 impl Type {
+    pub const fn type_name(self) -> &'static str {
+        match self {
+            Self::F64 => "f64",
+            Self::Bool => "bool",
+            Self::MaType => "ma-type",
+            Self::TimeInForce => "time-in-force",
+            Self::TriggerReference => "trigger-reference",
+            Self::PositionSide => "position-side",
+            Self::ExitKind => "exit-kind",
+            Self::SeriesF64 => "series<f64>",
+            Self::SeriesBool => "series<bool>",
+            Self::Void => "void",
+        }
+    }
+
     pub const fn is_series(self) -> bool {
         matches!(self, Self::SeriesF64 | Self::SeriesBool)
     }

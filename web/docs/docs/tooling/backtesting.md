@@ -97,8 +97,6 @@ palmscript run optimize strategy.ps \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
-  --param int:fast_len=8:34 \
-  --param float:target_atr_mult=1.5:4.0 \
   --objective robust-return \
   --trials 50 \
   --top 5 \
@@ -108,6 +106,9 @@ palmscript run optimize strategy.ps \
 V1 optimizer notes:
 
 - optimizer tuning is restricted to declared numeric `input`s
+- parameter-space precedence is explicit `--param`, then preset parameter space, then inferred `input ... optimize(...)` metadata from the script
+- integer and float CLI ranges accept optional step syntax: `int:name=low:high[:step]` and `float:name=low:high[:step]`
+- scripts can declare search metadata directly with `optimize(int, ...)`, `optimize(float, ...)`, or `optimize(choice, ...)` on numeric `input`s
 - walk-forward is the default runner; `--runner backtest` is optional
 - by default, walk-forward optimize reserves a final untouched holdout window equal to `test-bars`; use `--holdout-bars <N>` to change it or `--no-holdout` to disable it explicitly
 - the search is seeded and deterministic for the same script, seed, and search space
@@ -125,8 +126,6 @@ palmscript runs submit optimize strategy.ps \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
-  --param int:fast_len=8:34 \
-  --param float:target_atr_mult=1.5:4.0 \
   --objective robust-return \
   --trials 50 \
   --top 5
@@ -140,6 +139,7 @@ palmscript runs best <run-id> --preset-out /tmp/adaptive-best.json
 Durable optimize notes:
 
 - `runs submit optimize` reuses the same optimizer config model as `run optimize`
+- when `--param` is omitted, durable optimize runs use the same preset-or-input-metadata inference path as foreground optimize runs
 - every completed candidate batch is persisted into local SQLite state plus run artifacts
 - `runs serve` owns execution and can resume interrupted queued or running jobs
 - `runs best` can export the best known preset from the persisted run state without rerunning the search

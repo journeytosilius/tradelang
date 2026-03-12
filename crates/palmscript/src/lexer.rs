@@ -207,6 +207,7 @@ impl<'a> LexerState<'a> {
             "source" => TokenKind::Source,
             "use" => TokenKind::Use,
             "export" => TokenKind::Export,
+            "optimize" => TokenKind::Optimize,
             "regime" => TokenKind::Regime,
             "trigger" => TokenKind::Trigger,
             "entry" => TokenKind::Entry,

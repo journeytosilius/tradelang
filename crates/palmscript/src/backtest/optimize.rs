@@ -42,9 +42,24 @@ pub enum OptimizeObjective {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "space_kind", rename_all = "snake_case")]
 pub enum OptimizeParamSpace {
-    IntegerRange { name: String, low: i64, high: i64 },
-    FloatRange { name: String, low: f64, high: f64 },
-    Choice { name: String, values: Vec<f64> },
+    IntegerRange {
+        name: String,
+        low: i64,
+        high: i64,
+        #[serde(default = "default_integer_step")]
+        step: i64,
+    },
+    FloatRange {
+        name: String,
+        low: f64,
+        high: f64,
+        #[serde(default)]
+        step: Option<f64>,
+    },
+    Choice {
+        name: String,
+        values: Vec<f64>,
+    },
 }
 
 impl OptimizeParamSpace {
@@ -58,8 +73,21 @@ impl OptimizeParamSpace {
 
     fn sample_random(&self, rng: &mut StdRng) -> f64 {
         match self {
-            Self::IntegerRange { low, high, .. } => rng.gen_range(*low..=*high) as f64,
-            Self::FloatRange { low, high, .. } => rng.gen_range(*low..=*high),
+            Self::IntegerRange {
+                low, high, step, ..
+            } => {
+                let slots = integer_slot_count(*low, *high, *step);
+                (*low + rng.gen_range(0..slots) * *step) as f64
+            }
+            Self::FloatRange {
+                low, high, step, ..
+            } => {
+                let sampled = rng.gen_range(*low..=*high);
+                match step {
+                    Some(step) => quantize_float_step(*low, *high, *step, sampled),
+                    None => sampled,
+                }
+            }
             Self::Choice { values, .. } => {
                 let index = rng.gen_range(0..values.len());
                 values[index]
@@ -69,16 +97,30 @@ impl OptimizeParamSpace {
 
     fn clamp(&self, value: f64) -> f64 {
         match self {
-            Self::IntegerRange { low, high, .. } => value.round().clamp(*low as f64, *high as f64),
-            Self::FloatRange { low, high, .. } => value.clamp(*low, *high),
+            Self::IntegerRange {
+                low, high, step, ..
+            } => quantize_integer_step(*low, *high, *step, value),
+            Self::FloatRange {
+                low, high, step, ..
+            } => match step {
+                Some(step) => quantize_float_step(*low, *high, *step, value),
+                None => value.clamp(*low, *high),
+            },
             Self::Choice { values, .. } => closest_choice(values, value),
         }
     }
 
     fn span(&self) -> f64 {
         match self {
-            Self::IntegerRange { low, high, .. } => (*high - *low).max(1) as f64,
-            Self::FloatRange { low, high, .. } => (*high - *low).abs().max(MIN_BANDWIDTH),
+            Self::IntegerRange {
+                low, high, step, ..
+            } => ((*high - *low).max(*step).max(1)) as f64,
+            Self::FloatRange {
+                low, high, step, ..
+            } => match step {
+                Some(step) => (*high - *low).abs().max(*step).max(MIN_BANDWIDTH),
+                None => (*high - *low).abs().max(MIN_BANDWIDTH),
+            },
             Self::Choice { values, .. } => {
                 if values.len() <= 1 {
                     1.0
@@ -90,6 +132,28 @@ impl OptimizeParamSpace {
             }
         }
     }
+}
+
+const fn default_integer_step() -> i64 {
+    1
+}
+
+fn integer_slot_count(low: i64, high: i64, step: i64) -> i64 {
+    ((high - low) / step) + 1
+}
+
+fn quantize_integer_step(low: i64, high: i64, step: i64, value: f64) -> f64 {
+    let value = value.clamp(low as f64, high as f64);
+    let offset = ((value - low as f64) / step as f64).round();
+    let clamped_offset = offset.clamp(0.0, (integer_slot_count(low, high, step) - 1) as f64);
+    (low + (clamped_offset as i64) * step) as f64
+}
+
+fn quantize_float_step(low: f64, high: f64, step: f64, value: f64) -> f64 {
+    let value = value.clamp(low, high);
+    let offset = ((value - low) / step).round();
+    let max_offset = ((high - low) / step).round().max(0.0);
+    (low + offset.clamp(0.0, max_offset) * step).clamp(low, high)
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -252,9 +316,11 @@ pub enum OptimizeError {
     HoldoutLeavesTooFewBars { available: usize, required: usize },
     #[error("optimize parameter `{name}` is defined more than once")]
     DuplicateParam { name: String },
-    #[error("optimize integer parameter `{name}` must use low <= high")]
+    #[error(
+        "optimize integer parameter `{name}` must use low <= high with step > 0 and aligned bounds"
+    )]
     InvalidIntegerRange { name: String },
-    #[error("optimize float parameter `{name}` must use finite low/high with low <= high")]
+    #[error("optimize float parameter `{name}` must use finite low/high with low <= high and a finite step when present")]
     InvalidFloatRange { name: String },
     #[error("optimize choice parameter `{name}` must include at least one finite value")]
     EmptyChoice { name: String },
@@ -786,13 +852,24 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
             });
         }
         match param {
-            OptimizeParamSpace::IntegerRange { name, low, high } => {
-                if low > high {
+            OptimizeParamSpace::IntegerRange {
+                name,
+                low,
+                high,
+                step,
+            } => {
+                if low > high || *step <= 0 || (*high - *low) % *step != 0 {
                     return Err(OptimizeError::InvalidIntegerRange { name: name.clone() });
                 }
             }
-            OptimizeParamSpace::FloatRange { name, low, high } => {
-                if !low.is_finite() || !high.is_finite() || low > high {
+            OptimizeParamSpace::FloatRange {
+                name,
+                low,
+                high,
+                step,
+            } => {
+                let valid_step = step.is_none_or(|value| value.is_finite() && value > 0.0);
+                if !low.is_finite() || !high.is_finite() || low > high || !valid_step {
                     return Err(OptimizeError::InvalidFloatRange { name: name.clone() });
                 }
             }

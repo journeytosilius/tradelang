@@ -176,6 +176,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
                 name: "threshold".to_string(),
                 low: 0,
                 high: 1,
+                step: 1,
             },
         ],
         objective: OptimizeObjective::RobustReturn,
@@ -259,6 +260,67 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
         compile_with_input_overrides(optimize_source(), &result.best_candidate.input_overrides)
             .expect("best candidate overrides should compile");
     assert_eq!(compiled.program.declared_sources.len(), 1);
+}
+
+#[test]
+fn optimize_respects_stepped_param_spaces() {
+    let source = "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+input threshold = 0
+input offset = 0
+entry long = spot.close > spot.close[1] + threshold + offset
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = true";
+    let result = run_optimize_with_source(
+        source,
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            runner: OptimizeRunner::Backtest,
+            backtest: optimize_backtest_config(),
+            walk_forward: None,
+            holdout: None,
+            params: vec![
+                OptimizeParamSpace::IntegerRange {
+                    name: "threshold".to_string(),
+                    low: 0,
+                    high: 4,
+                    step: 2,
+                },
+                OptimizeParamSpace::FloatRange {
+                    name: "offset".to_string(),
+                    low: 0.0,
+                    high: 1.0,
+                    step: Some(0.25),
+                },
+            ],
+            objective: OptimizeObjective::EndingEquity,
+            trials: 8,
+            startup_trials: 8,
+            seed: 5,
+            workers: 2,
+            top_n: 2,
+            base_input_overrides: BTreeMap::from([(String::from("offset"), 0.0)]),
+        },
+    )
+    .expect("optimize with stepped param spaces should succeed");
+
+    for candidate in result.top_candidates {
+        let threshold = candidate
+            .input_overrides
+            .get("threshold")
+            .copied()
+            .expect("threshold override");
+        let offset = candidate
+            .input_overrides
+            .get("offset")
+            .copied()
+            .expect("offset override");
+        assert!(matches!(threshold as i64, 0 | 2 | 4));
+        let offset_steps = (offset / 0.25).round();
+        assert!((offset - offset_steps * 0.25).abs() < 1.0e-9);
+    }
 }
 
 #[test]

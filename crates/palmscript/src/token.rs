@@ -18,6 +18,7 @@ pub enum TokenKind {
     Source,
     Use,
     Export,
+    Optimize,
     Regime,
     Trigger,
     Entry,

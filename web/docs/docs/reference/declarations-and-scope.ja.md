@@ -202,3 +202,20 @@ if spot.close > spot.open {
 - 条件は `bool`、`series<bool>`、または `na` に評価されなければならない
 - 両方の分岐は独立したスコープを持つ
 - 一方の分岐で作られた束縛は `if` の外では見えない
+
+## `input` の最適化メタデータ
+
+数値 `input` は探索空間メタデータを直接宣言できます。
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
+
+ルール:
+
+- `optimize(int, low, high[, step])` は、包括範囲内にあり step に整列した整数デフォルト値を要求します
+- `optimize(float, low, high[, step])` は、包括範囲内の有限なデフォルト値を要求します
+- `optimize(choice, v1, v2, ...)` は、デフォルト値が列挙された数値候補のどれかであることを要求します
+- このメタデータは最適化探索空間を記述するだけで、コンパイル後の `input` 値自体は変えません

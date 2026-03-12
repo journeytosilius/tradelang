@@ -120,3 +120,7 @@ Par exemple :
 - `1w` est valide
 - `1M` est valide
 - `1W` est invalide
+
+## Note Sur `optimize`
+
+`optimize` est maintenant un mot cle reserve. Il sert de suffixe de metadonnees dans `input ... optimize(...)` et ne peut plus etre reutilise comme identifiant ordinaire.

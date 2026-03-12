@@ -67,8 +67,8 @@ palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--step-bars <N>] \
   [--holdout-bars <N>] \
   [--no-holdout] \
-  [--param int:name=low:high] \
-  [--param float:name=low:high] \
+  [--param int:name=low:high[:step]] \
+  [--param float:name=low:high[:step]] \
   [--param choice:name=v1,v2,v3] \
   [--objective robust-return|total-return|ending-equity|return-over-drawdown] \
   [--trials <N>] \
@@ -91,7 +91,7 @@ Arguments and flags:
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
 - `--holdout-bars <N>`: reserve the final `N` execution bars as a final untouched holdout
 - `--no-holdout`: explicitly disable the default untouched holdout reservation
-- `--param ...`: search-space declaration; repeat for multiple tuned inputs
+- `--param ...`: search-space declaration; repeat for multiple tuned inputs, with optional integer/float step support
 - `--objective ...`: ranking objective; defaults to `robust-return`
 - `--trials <N>`: total bounded trial budget
 - `--startup-trials <N>`: initial random trial count before the TPE search phase
@@ -106,6 +106,7 @@ Default safety behavior:
 - `walk-forward` is the default optimizer runner
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
+- if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
 
 ## `palmscript runs serve`
 
@@ -143,6 +144,7 @@ Default safety behavior:
 - the default holdout size is `test-bars`
 - use `--holdout-bars <N>` to reserve a different final holdout size
 - use `--no-holdout` only when you intentionally want to disable that protection
+- when `--param` is omitted, durable optimize submission infers its search space from the preset or compiled `input ... optimize(...)` metadata exactly like `palmscript run optimize`
 
 ## `palmscript runs status`
 

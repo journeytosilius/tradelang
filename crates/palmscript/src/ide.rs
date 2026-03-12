@@ -9,7 +9,8 @@ use std::collections::{BTreeMap, HashMap};
 use serde::{Deserialize, Serialize};
 
 use crate::ast::{
-    Ast, Block, Expr, ExprKind, FunctionDecl, SourceIntervalDecl, Stmt, StmtKind, UnaryOp,
+    Ast, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, SourceIntervalDecl, Stmt,
+    StmtKind, UnaryOp,
 };
 use crate::builtins::BuiltinId;
 use crate::compiler::{analyze_semantics, ExprInfo, InferredType};
@@ -22,12 +23,13 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 13] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 14] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
+    ("optimize", "Attach optimizer metadata to an input"),
     ("export", "Publish a named output series"),
     ("regime", "Declare a named persistent regime series"),
     ("trigger", "Publish a named trigger series"),
@@ -421,6 +423,7 @@ fn resolve_stmt(
             name,
             name_span,
             expr,
+            ..
         } => {
             resolve_expr(context, expr, scope);
             let detail = context
@@ -720,6 +723,7 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             name,
             name_span,
             expr,
+            ..
         } => context.document_symbols.push(DocumentSymbolInfo {
             name: name.clone(),
             kind: SymbolKind::Let,
@@ -1227,6 +1231,7 @@ pub(crate) fn classify_highlight(
         | TokenKind::Else
         | TokenKind::And
         | TokenKind::Or
+        | TokenKind::Optimize
         | TokenKind::True
         | TokenKind::False
         | TokenKind::Na => Some(HighlightKind::Keyword),
@@ -1428,8 +1433,20 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Const { name, expr, .. } => {
             lines.push(format!("{prefix}const {name} = {}", format_expr(expr, 0)));
         }
-        StmtKind::Input { name, expr, .. } => {
-            lines.push(format!("{prefix}input {name} = {}", format_expr(expr, 0)));
+        StmtKind::Input {
+            name,
+            expr,
+            optimization,
+            ..
+        } => {
+            let optimization = optimization
+                .as_ref()
+                .map(format_input_optimization)
+                .unwrap_or_default();
+            lines.push(format!(
+                "{prefix}input {name} = {}{optimization}",
+                format_expr(expr, 0)
+            ));
         }
         StmtKind::LetTuple { names, expr } => {
             let bindings = names
@@ -1556,6 +1573,26 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
             then_block,
             else_block,
         } => format_if(condition, then_block, else_block, indent, lines),
+    }
+}
+
+fn format_input_optimization(optimization: &crate::ast::InputOptimization) -> String {
+    match &optimization.kind {
+        InputOptimizationKind::IntegerRange { low, high, step } => {
+            format!(" optimize(int, {low}, {high}, {step})")
+        }
+        InputOptimizationKind::FloatRange { low, high, step } => match step {
+            Some(step) => format!(" optimize(float, {low}, {high}, {step})"),
+            None => format!(" optimize(float, {low}, {high})"),
+        },
+        InputOptimizationKind::Choice { values } => {
+            let values = values
+                .iter()
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" optimize(choice, {values})")
+        }
     }
 }
 
@@ -2042,6 +2079,13 @@ let basis = fast.
         let formatted = format_document(source).expect("formatted");
         let reformatted = format_document(&formatted).expect("reformatted");
         assert_eq!(formatted, reformatted);
+    }
+
+    #[test]
+    fn formatter_preserves_input_optimization_metadata() {
+        let source = "interval 1m\nsource src = binance.spot(\"BTCUSDT\")\ninput fast = 21 optimize(int, 8, 34, 1)\nplot(src.close)";
+        let formatted = format_document(source).expect("formatted");
+        assert!(formatted.contains("optimize(int, 8, 34, 1)"));
     }
 
     #[test]

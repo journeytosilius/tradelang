@@ -1504,6 +1504,133 @@ fn run_optimize_emits_ranked_json() {
 }
 
 #[test]
+fn run_optimize_infers_params_from_input_metadata() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "optimize_metadata.ps",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0 optimize(choice, 0, 100)\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("optimize command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(
+        json["config"]["params"][0]["space_kind"],
+        Value::from("choice")
+    );
+    assert_eq!(
+        json["config"]["params"][0]["name"],
+        Value::from("threshold")
+    );
+}
+
+#[test]
+fn run_optimize_accepts_step_syntax_in_param_ranges() {
+    let mut server = Server::new();
+    mock_binance_interval(
+        &mut server,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "11.0", "9.0", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "12.0", "9.0", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "13.0", "10.0", "12.0", "12.0"]),
+            serde_json::json!([1704067380000_i64, "12.0", "12.5", "10.0", "11.0", "13.0"]),
+            serde_json::json!([1704067440000_i64, "11.0", "13.0", "10.5", "12.0", "14.0"]),
+            serde_json::json!([1704067500000_i64, "12.0", "14.0", "11.5", "13.0", "15.0"]),
+            serde_json::json!([1704067560000_i64, "13.0", "13.5", "11.0", "12.0", "16.0"]),
+            serde_json::json!([1704067620000_i64, "12.0", "14.0", "11.5", "13.0", "17.0"]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "optimize_step.ps",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\ninput threshold = 0\nentry long = spot.close > spot.close[1] + threshold\nentry short = false\nexit long = spot.close < spot.close[1]\nexit short = true",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url())
+        .args([
+            "run",
+            "optimize",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067680000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+            "--runner",
+            "backtest",
+            "--param",
+            "int:threshold=0:4:2",
+            "--trials",
+            "8",
+            "--startup-trials",
+            "8",
+            "--seed",
+            "7",
+            "--workers",
+            "2",
+        ])
+        .output()
+        .expect("optimize command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["config"]["params"][0]["step"], Value::from(2));
+}
+
+#[test]
 fn run_optimize_walk_forward_defaults_to_final_holdout() {
     let mut server = Server::new();
     mock_binance_interval(

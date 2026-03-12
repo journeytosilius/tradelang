@@ -119,3 +119,7 @@ Por ejemplo:
 - `1w` es valido
 - `1M` es valido
 - `1W` es invalido
+
+## Nota Sobre `optimize`
+
+`optimize` ahora es una palabra reservada. Se usa como sufijo de metadata en declaraciones `input ... optimize(...)` y no puede reutilizarse como identificador ordinario.

@@ -260,6 +260,32 @@ fn compile_with_input_overrides_rejects_unknown_inputs() {
 }
 
 #[test]
+fn input_optimization_metadata_rejects_non_numeric_inputs() {
+    let diagnostics = compile_diagnostics(&with_interval(
+        "input enabled = true optimize(int, 0, 1)\nplot(close)",
+    ));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag.1.contains(
+                "input optimization metadata is only supported on numeric `input` bindings",
+            )
+    }));
+}
+
+#[test]
+fn input_optimization_metadata_rejects_out_of_range_defaults() {
+    let diagnostics = compile_diagnostics(&with_interval(
+        "input fast = 21 optimize(int, 8, 20, 1)\nplot(close)",
+    ));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("input `fast` default value 21 must lie inside optimize int range 8..=20")
+    }));
+}
+
+#[test]
 fn compile_accepts_new_exchange_backed_source_templates() {
     let cases = [
         "interval 1m\nsource a = bybit.spot(\"BTCUSDT\")\nplot(a.close)",

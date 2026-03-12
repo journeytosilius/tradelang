@@ -291,6 +291,36 @@ pub struct LastExitFieldDecl {
     pub slot: u16,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InputDecl {
+    pub name: String,
+    pub ty: Type,
+    pub default_value: Value,
+    pub optimization: Option<InputOptimizationDecl>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InputOptimizationDecl {
+    pub kind: InputOptimizationDeclKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum InputOptimizationDeclKind {
+    IntegerRange {
+        low: i64,
+        high: i64,
+        step: i64,
+    },
+    FloatRange {
+        low: f64,
+        high: f64,
+        step: Option<f64>,
+    },
+    Choice {
+        values: Vec<f64>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderDecl {
     pub role: SignalRole,
@@ -322,6 +352,7 @@ pub struct Program {
     pub instructions: Vec<Instruction>,
     pub constants: Vec<Constant>,
     pub locals: Vec<LocalInfo>,
+    pub inputs: Vec<InputDecl>,
     pub outputs: Vec<OutputDecl>,
     pub order_fields: Vec<OrderFieldDecl>,
     pub position_fields: Vec<PositionFieldDecl>,

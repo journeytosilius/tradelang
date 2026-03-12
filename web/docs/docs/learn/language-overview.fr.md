@@ -45,3 +45,13 @@ plot(bn.close - bb.close)
 - regles des series de marche : [Intervalles et sources](../reference/intervals-and-sources.md)
 - indicateurs et builtins auxiliaires : [Indicateurs](../reference/indicators.md) et [Builtins](../reference/builtins.md)
 - sorties : [Sorties](../reference/outputs.md)
+
+## Metadonnees D Optimisation
+
+Les `input` numeriques peuvent maintenant declarer des metadonnees de recherche directement dans le script :
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+```
+
+Ainsi, `run optimize` et `runs submit optimize` peuvent inferer l espace de recherche depuis le script lui-meme quand `--param` n est pas fourni.

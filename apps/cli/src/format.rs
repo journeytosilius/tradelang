@@ -104,6 +104,18 @@ pub fn render_bytecode_text(compiled: &CompiledProgram) -> String {
         let _ = writeln!(out, "  [{}] {}", index, fmt_local(local));
     }
 
+    let _ = writeln!(out, "Inputs");
+    for input in &program.inputs {
+        let _ = writeln!(
+            out,
+            "  name={} ty={:?} default={} optimization={}",
+            input.name,
+            input.ty,
+            fmt_value(&input.default_value),
+            fmt_input_optimization(input.optimization.as_ref())
+        );
+    }
+
     let _ = writeln!(out, "Outputs");
     for output in &program.outputs {
         let _ = writeln!(
@@ -713,6 +725,33 @@ fn fmt_constant(constant: &Constant) -> String {
     }
 }
 
+fn fmt_input_optimization(
+    optimization: Option<&palmscript::bytecode::InputOptimizationDecl>,
+) -> String {
+    match optimization {
+        Some(optimization) => match &optimization.kind {
+            palmscript::bytecode::InputOptimizationDeclKind::IntegerRange { low, high, step } => {
+                format!("optimize(int, {low}, {high}, {step})")
+            }
+            palmscript::bytecode::InputOptimizationDeclKind::FloatRange { low, high, step } => {
+                match step {
+                    Some(step) => format!("optimize(float, {low}, {high}, {step})"),
+                    None => format!("optimize(float, {low}, {high})"),
+                }
+            }
+            palmscript::bytecode::InputOptimizationDeclKind::Choice { values } => format!(
+                "optimize(choice, {})",
+                values
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        },
+        None => "none".to_string(),
+    }
+}
+
 fn fmt_input_overrides(overrides: &std::collections::BTreeMap<String, f64>) -> String {
     overrides
         .iter()
@@ -891,6 +930,18 @@ mod tests {
         let program = Program {
             constants: vec![Constant::Value(palmscript::Value::F64(1.0))],
             locals: vec![LocalInfo::scalar(Some("x".to_string()), Type::F64, false)],
+            inputs: vec![palmscript::bytecode::InputDecl {
+                name: "fast_len".to_string(),
+                ty: Type::F64,
+                default_value: palmscript::Value::F64(21.0),
+                optimization: Some(palmscript::bytecode::InputOptimizationDecl {
+                    kind: palmscript::bytecode::InputOptimizationDeclKind::IntegerRange {
+                        low: 8,
+                        high: 34,
+                        step: 1,
+                    },
+                }),
+            }],
             outputs: vec![OutputDecl {
                 name: "trend".to_string(),
                 kind: OutputKind::ExportSeries,
@@ -914,6 +965,8 @@ mod tests {
         assert!(rendered.contains("base=1m"));
         assert!(rendered.contains("Constants"));
         assert!(rendered.contains("Locals"));
+        assert!(rendered.contains("Inputs"));
+        assert!(rendered.contains("optimization=optimize(int, 8, 34, 1)"));
         assert!(rendered.contains("Outputs"));
         assert!(rendered.contains("Instructions"));
     }

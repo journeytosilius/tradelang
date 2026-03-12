@@ -4,9 +4,9 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam, IntervalDecl,
-    NodeId, OrderSpec, OrderSpecKind, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind,
-    StrategyIntervals, UnaryOp,
+    Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam,
+    InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
+    SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -326,6 +326,11 @@ impl<'a> Parser<'a> {
             },
         )?;
         let expr = self.parse_expr(0)?;
+        let optimization = if !is_const && self.matches_keyword(&TokenKind::Optimize) {
+            Some(self.parse_input_optimization(self.previous().span)?)
+        } else {
+            None
+        };
         let span = start.merge(expr.span);
         Some(Stmt {
             id: self.alloc_id(),
@@ -341,9 +346,119 @@ impl<'a> Parser<'a> {
                     name,
                     name_span,
                     expr,
+                    optimization,
                 }
             },
         })
+    }
+
+    fn parse_input_optimization(&mut self, start: Span) -> Option<InputOptimization> {
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after `optimize`",
+        )?;
+        let (kind_name, kind_span) =
+            self.expect_ident("expected optimization kind after `optimize(`")?;
+        let kind = match kind_name.as_str() {
+            "int" => self.parse_integer_input_optimization(kind_span)?,
+            "float" => self.parse_float_input_optimization()?,
+            "choice" => self.parse_choice_input_optimization(kind_span)?,
+            _ => {
+                self.push_diagnostic(
+                    "input optimization kind must be `int`, `float`, or `choice`",
+                    kind_span,
+                );
+                return None;
+            }
+        };
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after input optimization metadata",
+        )?;
+        Some(InputOptimization {
+            span: start.merge(right.span),
+            kind,
+        })
+    }
+
+    fn parse_integer_input_optimization(
+        &mut self,
+        kind_span: Span,
+    ) -> Option<InputOptimizationKind> {
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Comma),
+            "expected `,` after `int` in input optimization metadata",
+        )?;
+        let low = self.parse_integer_metadata_value(
+            "expected integer low bound in `optimize(int, low, high[, step])`",
+        )?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Comma),
+            "expected `,` after integer low bound",
+        )?;
+        let high = self.parse_integer_metadata_value(
+            "expected integer high bound in `optimize(int, low, high[, step])`",
+        )?;
+        let step = if matches!(self.peek_kind(), TokenKind::Comma) {
+            self.advance();
+            self.parse_integer_metadata_value(
+                "expected integer step in `optimize(int, low, high, step)`",
+            )?
+        } else {
+            1
+        };
+        if step <= 0 {
+            self.push_diagnostic("input optimization integer step must be > 0", kind_span);
+            return None;
+        }
+        Some(InputOptimizationKind::IntegerRange { low, high, step })
+    }
+
+    fn parse_float_input_optimization(&mut self) -> Option<InputOptimizationKind> {
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Comma),
+            "expected `,` after `float` in input optimization metadata",
+        )?;
+        let low = self.parse_float_metadata_value(
+            "expected float low bound in `optimize(float, low, high[, step])`",
+        )?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Comma),
+            "expected `,` after float low bound",
+        )?;
+        let high = self.parse_float_metadata_value(
+            "expected float high bound in `optimize(float, low, high[, step])`",
+        )?;
+        let step = if matches!(self.peek_kind(), TokenKind::Comma) {
+            self.advance();
+            Some(self.parse_float_metadata_value(
+                "expected float step in `optimize(float, low, high, step)`",
+            )?)
+        } else {
+            None
+        };
+        Some(InputOptimizationKind::FloatRange { low, high, step })
+    }
+
+    fn parse_choice_input_optimization(
+        &mut self,
+        kind_span: Span,
+    ) -> Option<InputOptimizationKind> {
+        let mut values = Vec::new();
+        while matches!(self.peek_kind(), TokenKind::Comma) {
+            self.advance();
+            values.push(self.parse_float_metadata_value(
+                "expected numeric choice in `optimize(choice, v1, v2, ...)`",
+            )?);
+        }
+        if values.is_empty() {
+            self.push_diagnostic(
+                "`optimize(choice, ...)` requires at least one numeric choice",
+                kind_span,
+            );
+            return None;
+        }
+        Some(InputOptimizationKind::Choice { values })
     }
 
     fn parse_let_tuple_stmt(&mut self, start: Span) -> Option<Stmt> {
@@ -1307,6 +1422,52 @@ impl<'a> Parser<'a> {
             unreachable!();
         };
         Some((value, token.span))
+    }
+
+    fn expect_number_literal(&mut self, message: &'static str) -> Option<(String, Span)> {
+        let token = self.expect_kind(|kind| matches!(kind, TokenKind::Number(_)), message)?;
+        let TokenKind::Number(raw) = token.kind else {
+            unreachable!();
+        };
+        Some((raw, token.span))
+    }
+
+    fn parse_signed_number_literal(&mut self, message: &'static str) -> Option<(String, Span)> {
+        if matches!(self.peek_kind(), TokenKind::Minus) {
+            let minus_span = self.advance().expect("peeked minus token").span;
+            let (raw, span) = self.expect_number_literal(message)?;
+            return Some((format!("-{raw}"), minus_span.merge(span)));
+        }
+        self.expect_number_literal(message)
+    }
+
+    fn parse_integer_metadata_value(&mut self, message: &'static str) -> Option<i64> {
+        let (raw, span) = self.parse_signed_number_literal(message)?;
+        let Ok(value) = raw.parse::<f64>() else {
+            self.push_diagnostic("failed to parse integer input optimization value", span);
+            return None;
+        };
+        if !value.is_finite() || value.fract() != 0.0 {
+            self.push_diagnostic(
+                "input optimization integer values must be whole finite numbers",
+                span,
+            );
+            return None;
+        }
+        Some(value as i64)
+    }
+
+    fn parse_float_metadata_value(&mut self, message: &'static str) -> Option<f64> {
+        let (raw, span) = self.parse_signed_number_literal(message)?;
+        let Ok(value) = raw.parse::<f64>() else {
+            self.push_diagnostic("failed to parse input optimization value", span);
+            return None;
+        };
+        if !value.is_finite() {
+            self.push_diagnostic("input optimization values must be finite numbers", span);
+            return None;
+        }
+        Some(value)
     }
 
     fn expect_kind(

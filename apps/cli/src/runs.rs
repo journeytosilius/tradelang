@@ -280,7 +280,7 @@ fn submit_optimize(args: OptimizeRunArgs) -> Result<(), String> {
     if compiled.program.declared_sources.is_empty() {
         return Err("runs submit optimize requires at least one `source` declaration".to_string());
     }
-    let params = resolve_optimize_params(&args, preset.as_ref())?;
+    let params = resolve_optimize_params(&args, preset.as_ref(), &compiled)?;
     let execution_source_alias =
         resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
     let spec = OptimizeJobSpec {

@@ -243,3 +243,20 @@ Regles :
 - la condition doit s'evaluer en `bool`, `series<bool>` ou `na`
 - les deux branches ont des portees independantes
 - les liaisons creees dans une branche ne sont pas visibles en dehors du `if`
+
+## Metadonnees D Optimisation Sur `input`
+
+Les `input` numeriques peuvent declarer directement des metadonnees de recherche :
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
+
+Regles :
+
+- `optimize(int, low, high[, step])` exige une valeur par defaut entiere dans la plage inclusive et alignee sur le pas
+- `optimize(float, low, high[, step])` exige une valeur par defaut finie dans la plage inclusive
+- `optimize(choice, v1, v2, ...)` exige que la valeur par defaut soit l une des valeurs numeriques listees
+- ces metadonnees decrivent seulement l espace de recherche de l optimiseur ; elles ne changent pas la valeur compilee du `input`

@@ -75,8 +75,6 @@ palmscript runs submit optimize strategy.ps \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
-  --param int:fast_len=8:34 \
-  --param float:target_atr_mult=1.5:4.0 \
   --trials 50
 
 palmscript runs serve
@@ -88,6 +86,26 @@ palmscript runs best <run-id> --preset-out best.json
 These commands keep local durable state under the platform state directory, persist artifacts for each run, and let you resume interrupted optimize work without changing strategy syntax.
 
 Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
+
+Optimizer parameter-space precedence is:
+
+1. explicit repeated `--param ...`
+2. preset parameter space from `--preset`
+3. inferred script metadata from `input ... optimize(...)`
+
+Explicit `--param` declarations still accept:
+
+- `int:name=low:high[:step]`
+- `float:name=low:high[:step]`
+- `choice:name=v1,v2,v3`
+
+So a script can either keep the search space in the CLI, or declare it directly on the inputs:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input target_atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
 
 ## Output Formats
 

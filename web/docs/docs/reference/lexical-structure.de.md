@@ -121,3 +121,7 @@ Zum Beispiel:
 - `1w` ist gueltig
 - `1M` ist gueltig
 - `1W` ist ungueltig
+
+## Hinweis Zu `optimize`
+
+`optimize` ist jetzt ein reserviertes Schluesselwort. Es wird als Metadaten-Suffix in `input ... optimize(...)` verwendet und darf nicht als normaler Bezeichner wiederverwendet werden.

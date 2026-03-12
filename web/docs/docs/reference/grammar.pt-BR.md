@@ -178,3 +178,7 @@ exige:
   superior `const` e `input`
 - regras de source, intervalo, escopo e tipo sao aplicadas como descrito nas
   outras paginas de `Reference`
+
+## Nota Sobre `input ... optimize(...)`
+
+A superficie do parser agora aceita um sufixo opcional `optimize(...)` em declaracoes `input`. Esse sufixo pode descrever um intervalo inteiro, um intervalo float ou uma lista `choice`, mas continua sujeito a validacao semantica adicional.

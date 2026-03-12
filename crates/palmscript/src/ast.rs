@@ -84,6 +84,29 @@ pub struct BindingName {
     pub span: Span,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct InputOptimization {
+    pub span: Span,
+    pub kind: InputOptimizationKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum InputOptimizationKind {
+    IntegerRange {
+        low: i64,
+        high: i64,
+        step: i64,
+    },
+    FloatRange {
+        low: f64,
+        high: f64,
+        step: Option<f64>,
+    },
+    Choice {
+        values: Vec<f64>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SignalRole {
     LongEntry,
@@ -166,6 +189,7 @@ pub enum StmtKind {
         name: String,
         name_span: Span,
         expr: Expr,
+        optimization: Option<InputOptimization>,
     },
     LetTuple {
         names: Vec<BindingName>,

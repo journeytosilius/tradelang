@@ -180,3 +180,7 @@ fordert zusaetzlich:
   `const` und `input` capturen
 - Quell-, Intervall-, Scope- und Typregeln werden wie in den anderen
   `Reference`-Seiten beschrieben durchgesetzt
+
+## Hinweis Zu `input ... optimize(...)`
+
+Die Parser-Oberflaeche akzeptiert jetzt ein optionales `optimize(...)`-Suffix an `input`-Deklarationen. Dieses Suffix kann einen Integer-Bereich, einen Float-Bereich oder eine `choice`-Liste beschreiben, unterliegt aber weiterhin zusaetzlicher semantischer Validierung.

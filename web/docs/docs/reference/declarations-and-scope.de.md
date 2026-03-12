@@ -239,3 +239,20 @@ Regeln:
 - beide Zweige haben voneinander unabhaengige Scopes
 - Bindungen, die in einem Zweig erzeugt werden, sind ausserhalb des `if` nicht
   sichtbar
+
+## Optimierungsmetadaten Bei `input`
+
+Numerische `input`-Deklarationen koennen Suchraum-Metadaten direkt angeben:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
+
+Regeln:
+
+- `optimize(int, low, high[, step])` verlangt einen ganzzahligen Default im inklusiven Bereich, der auf den Schritt ausgerichtet ist
+- `optimize(float, low, high[, step])` verlangt einen endlichen Default im inklusiven Bereich
+- `optimize(choice, v1, v2, ...)` verlangt, dass der Default einer der aufgefuehrten numerischen Werte ist
+- diese Metadaten beschreiben nur den Suchraum des Optimierers; sie aendern den kompilierten `input`-Wert nicht

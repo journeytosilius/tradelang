@@ -235,3 +235,20 @@ Regras:
 - a condicao deve se avaliar como `bool`, `series<bool>` ou `na`
 - ambos os ramos tem escopos independentes
 - bindings criados dentro de um ramo nao ficam visiveis fora do `if`
+
+## Metadados De Otimizacao Em `input`
+
+`input`s numericos podem declarar metadados de busca diretamente:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
+
+Regras:
+
+- `optimize(int, low, high[, step])` exige um valor padrao inteiro dentro do intervalo inclusivo e alinhado ao passo
+- `optimize(float, low, high[, step])` exige um valor padrao finito dentro do intervalo inclusivo
+- `optimize(choice, v1, v2, ...)` exige que o valor padrao seja uma das opcoes numericas listadas
+- esses metadados apenas descrevem o espaco de busca do otimizador; eles nao mudam o valor compilado do `input`

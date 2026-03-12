@@ -41,7 +41,11 @@ stmt                   ::= let_stmt
 let_stmt               ::= "let" ident "=" expr
                          | "let" "(" ident ("," ident)+ ")" "=" expr
 const_stmt             ::= "const" ident "=" expr
-input_stmt             ::= "input" ident "=" expr
+input_stmt             ::= "input" ident "=" expr input_optimize?
+input_optimize         ::= "optimize" "(" optimize_space ")"
+optimize_space         ::= "int" "," number "," number ("," number)?
+                         | "float" "," number "," number ("," number)?
+                         | "choice" "," number ("," number)*
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
@@ -141,6 +145,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - only identifiers may be called
 - series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
+- `input ... optimize(...)` metadata is only valid on numeric `input` declarations and must pass the range/choice validation rules described in [Declarations and Scope](declarations-and-scope.md)
 - `ma_type.<variant>`, `tif.<variant>`, `trigger_ref.<variant>`, `position_side.<variant>`, and `exit_kind.<variant>` are typed enum namespaces
 - `position.*` is valid only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace

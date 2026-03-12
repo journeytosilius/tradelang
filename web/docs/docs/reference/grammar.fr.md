@@ -184,3 +184,7 @@ L'implementation exige aussi :
   immuables top-level `const` et `input`
 - les regles de source, d'intervalle, de portee et de type sont imposees comme
   decrit dans les autres pages de `Reference`
+
+## Note Sur `input ... optimize(...)`
+
+La surface du parseur accepte maintenant un suffixe optionnel `optimize(...)` sur les declarations `input`. Ce suffixe peut decrire une plage entiere, une plage float ou une liste `choice`, mais il reste soumis a une validation semantique supplementaire.

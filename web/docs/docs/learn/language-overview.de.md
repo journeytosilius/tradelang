@@ -45,3 +45,13 @@ plot(bn.close - bb.close)
 - Regeln fur Marktserien: [Intervalle und Quellen](../reference/intervals-and-sources.md)
 - Indikatoren und Helper-Builtins: [Indikatoren](../reference/indicators.md) und [Builtins](../reference/builtins.md)
 - Ausgaben: [Ausgaben](../reference/outputs.md)
+
+## Optimierungsmetadaten
+
+Numerische `input`-Deklarationen koennen jetzt Suchraum-Metadaten direkt im Skript tragen:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+```
+
+Dadurch koennen `run optimize` und `runs submit optimize` den Suchraum aus dem Skript selbst ableiten, wenn kein `--param` uebergeben wird.

@@ -44,3 +44,13 @@ plot(bn.close - bb.close)
 - regras de series de mercado: [Intervalos e Fontes](../reference/intervals-and-sources.md)
 - indicadores e builtins auxiliares: [Indicadores](../reference/indicators.md) e [Builtins](../reference/builtins.md)
 - saidas: [Saidas](../reference/outputs.md)
+
+## Metadados De Otimizacao
+
+`input`s numericos agora podem declarar metadados de busca para o otimizador diretamente no script:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+```
+
+Isso permite que `run optimize` e `runs submit optimize` infiram o espaco de busca do proprio script quando `--param` nao for informado.

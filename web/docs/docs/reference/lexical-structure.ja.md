@@ -113,3 +113,7 @@ let fast = ema(spot.close, 5)
 - `1w` は有効
 - `1M` は有効
 - `1W` は無効
+
+## `optimize` について
+
+`optimize` は新しい予約語です。`input ... optimize(...)` のメタデータ接尾辞として使われるため、通常の識別子としては再利用できません。

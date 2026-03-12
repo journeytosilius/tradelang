@@ -13,6 +13,7 @@ The following tokens are reserved keywords:
 - `use`
 - `const`
 - `input`
+- `optimize`
 - `export`
 - `regime`
 - `trigger`

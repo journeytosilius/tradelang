@@ -45,3 +45,13 @@ plot(bn.close - bb.close)
 - 市場シリーズのルール: [インターバルとソース](../reference/intervals-and-sources.md)
 - インジケーターと helper builtins: [インジケーター](../reference/indicators.md) と [Builtins](../reference/builtins.md)
 - 出力: [出力](../reference/outputs.md)
+
+## 最適化メタデータ
+
+数値 `input` は、最適化用の探索空間メタデータをスクリプト内に直接持てるようになりました。
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+```
+
+これにより `--param` を渡さない場合でも、`run optimize` と `runs submit optimize` はスクリプトから探索空間を推論できます。

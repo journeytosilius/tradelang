@@ -115,7 +115,9 @@ Additional rules:
 PalmScript supports top-level immutable bindings for strategy configuration:
 
 ```palmscript
-input fast_len = 21
+input fast_len = 21 optimize(int, 8, 34, 1)
+input target_atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input regime_selector = 21 optimize(choice, 8, 13, 21, 34)
 const neutral_rsi = 50
 ```
 
@@ -128,6 +130,11 @@ Rules:
 - `input` values must be scalar literals or enum literals
 - `const` values may reference previously declared `const` / `input` bindings and pure scalar builtins
 - windowed builtins and series indexing accept immutable numeric bindings anywhere an integer literal is required
+- `input` may optionally end with `optimize(...)` metadata so the optimizer can infer a search space directly from the script
+- `optimize(int, low, high[, step])` requires an integer-valued default inside the inclusive range and aligned to the step
+- `optimize(float, low, high[, step])` requires a finite default inside the inclusive range; when a step is supplied the default must align to it
+- `optimize(choice, v1, v2, ...)` requires the default value to be one of the listed numeric choices
+- optimizer metadata is descriptive only; it does not change the compiled runtime value of the `input`
 
 ## Outputs
 

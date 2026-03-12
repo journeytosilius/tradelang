@@ -6,14 +6,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, NodeId, OrderSpec, OrderSpecKind,
-    SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
+    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, NodeId, OrderSpec,
+    OrderSpecKind, SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
-    Constant, Instruction, LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl,
-    OutputDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl, Program,
-    SignalRole as CompiledSignalRole,
+    Constant, InputDecl, InputOptimizationDecl, InputOptimizationDeclKind, Instruction,
+    LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
+    PositionEventFieldDecl, PositionFieldDecl, Program, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -563,10 +563,22 @@ impl<'a> Analyzer<'a> {
         for stmt in &ast.statements {
             match &stmt.kind {
                 StmtKind::Const { name, expr, .. } => {
-                    self.analyze_immutable_stmt(stmt.id, name, expr, true, stmt.span);
+                    self.analyze_immutable_stmt(stmt.id, name, expr, true, None, stmt.span);
                 }
-                StmtKind::Input { name, expr, .. } => {
-                    self.analyze_immutable_stmt(stmt.id, name, expr, false, stmt.span);
+                StmtKind::Input {
+                    name,
+                    expr,
+                    optimization,
+                    ..
+                } => {
+                    self.analyze_immutable_stmt(
+                        stmt.id,
+                        name,
+                        expr,
+                        false,
+                        optimization.as_ref(),
+                        stmt.span,
+                    );
                 }
                 _ => {}
             }
@@ -579,6 +591,7 @@ impl<'a> Analyzer<'a> {
         name: &str,
         expr: &Expr,
         is_const: bool,
+        optimization: Option<&crate::ast::InputOptimization>,
         span: Span,
     ) {
         if self.scopes[0].contains_key(name) {
@@ -625,6 +638,9 @@ impl<'a> Analyzer<'a> {
             .immutable_binding_slots
             .insert(name.to_string(), slot);
         if let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) {
+            if let Some(metadata) = optimization {
+                self.validate_input_optimization(name, metadata, ty, &value);
+            }
             self.analysis
                 .immutable_values
                 .insert(name.to_string(), value);
@@ -638,6 +654,157 @@ impl<'a> Analyzer<'a> {
                 },
                 expr.span,
             ));
+        }
+    }
+
+    fn validate_input_optimization(
+        &mut self,
+        name: &str,
+        optimization: &crate::ast::InputOptimization,
+        ty: Type,
+        value: &Value,
+    ) {
+        if ty != Type::F64 {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "input optimization metadata is only supported on numeric `input` bindings; `{name}` is `{}`",
+                    ty.type_name()
+                ),
+                optimization.span,
+            ));
+            return;
+        }
+        let Value::F64(default_value) = value else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "input optimization metadata requires a concrete numeric default value",
+                optimization.span,
+            ));
+            return;
+        };
+        if !default_value.is_finite() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "input optimization metadata requires a finite numeric default value",
+                optimization.span,
+            ));
+            return;
+        }
+        match &optimization.kind {
+            InputOptimizationKind::IntegerRange { low, high, step } => {
+                if low > high {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` optimize int metadata requires low <= high, found {low} > {high}"
+                        ),
+                        optimization.span,
+                    ));
+                }
+                if *step <= 0 {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("input `{name}` optimize int step must be > 0"),
+                        optimization.span,
+                    ));
+                }
+                if (*default_value).fract() != 0.0 {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` optimize int metadata requires an integer default value"
+                        ),
+                        optimization.span,
+                    ));
+                }
+                let default_value = *default_value as i64;
+                if default_value < *low || default_value > *high {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` default value {default_value} must lie inside optimize int range {low}..={high}"
+                        ),
+                        optimization.span,
+                    ));
+                }
+                if default_value >= *low && (*step > 0) && (default_value - *low) % *step != 0 {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` default value {default_value} must align to optimize int step {step} from low {low}"
+                        ),
+                        optimization.span,
+                    ));
+                }
+            }
+            InputOptimizationKind::FloatRange { low, high, step } => {
+                if !low.is_finite() || !high.is_finite() || low > high {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` optimize float metadata requires finite low/high with low <= high"
+                        ),
+                        optimization.span,
+                    ));
+                }
+                if *default_value < *low || *default_value > *high {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` default value {:.6} must lie inside optimize float range {:.6}..={:.6}",
+                            default_value, low, high
+                        ),
+                        optimization.span,
+                    ));
+                }
+                if let Some(step) = step {
+                    if !step.is_finite() || *step <= 0.0 {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!(
+                                "input `{name}` optimize float step must be a finite value > 0"
+                            ),
+                            optimization.span,
+                        ));
+                    } else if *default_value >= *low {
+                        let delta = (*default_value - *low) / *step;
+                        if (delta.round() - delta).abs() > 1.0e-9 {
+                            self.diagnostics.push(Diagnostic::new(
+                                DiagnosticKind::Type,
+                                format!(
+                                    "input `{name}` default value {:.6} must align to optimize float step {:.6} from low {:.6}",
+                                    default_value, step, low
+                                ),
+                                optimization.span,
+                            ));
+                        }
+                    }
+                }
+            }
+            InputOptimizationKind::Choice { values } => {
+                if values.is_empty() || values.iter().any(|value| !value.is_finite()) {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` optimize choice metadata requires one or more finite numeric choices"
+                        ),
+                        optimization.span,
+                    ));
+                } else if !values
+                    .iter()
+                    .any(|value| (*value - *default_value).abs() <= 1.0e-9)
+                {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "input `{name}` default value {:.6} must be present in optimize choice metadata",
+                            default_value
+                        ),
+                        optimization.span,
+                    ));
+                }
+            }
         }
     }
 
@@ -4907,6 +5074,7 @@ impl<'a> Compiler<'a> {
     fn compile(mut self) -> Result<CompiledProgram, CompileError> {
         self.analysis = Analyzer::new(self.ast).analyze(self.ast)?;
         self.program.locals = self.analysis.locals.clone();
+        self.program.inputs = collect_input_decls(self.ast, &self.analysis);
         self.program.outputs = self.analysis.outputs.clone();
         self.program.order_fields = self.analysis.order_fields.clone();
         self.program.position_fields = self.analysis.position_fields.clone();
@@ -6962,4 +7130,52 @@ impl<'a> Compiler<'a> {
     fn pop_scope(&mut self) {
         self.scopes.pop();
     }
+}
+
+fn collect_input_decls(ast: &Ast, analysis: &Analysis) -> Vec<InputDecl> {
+    let mut inputs = Vec::new();
+    for stmt in &ast.statements {
+        let StmtKind::Input {
+            name, optimization, ..
+        } = &stmt.kind
+        else {
+            continue;
+        };
+        let Some(info) = analysis.immutable_bindings.get(name).copied() else {
+            continue;
+        };
+        let Some(ty) = info.concrete() else {
+            continue;
+        };
+        let Some(default_value) = analysis.immutable_values.get(name).cloned() else {
+            continue;
+        };
+        inputs.push(InputDecl {
+            name: name.clone(),
+            ty,
+            default_value,
+            optimization: optimization.as_ref().map(|metadata| InputOptimizationDecl {
+                kind: match &metadata.kind {
+                    InputOptimizationKind::IntegerRange { low, high, step } => {
+                        InputOptimizationDeclKind::IntegerRange {
+                            low: *low,
+                            high: *high,
+                            step: *step,
+                        }
+                    }
+                    InputOptimizationKind::FloatRange { low, high, step } => {
+                        InputOptimizationDeclKind::FloatRange {
+                            low: *low,
+                            high: *high,
+                            step: *step,
+                        }
+                    }
+                    InputOptimizationKind::Choice { values } => InputOptimizationDeclKind::Choice {
+                        values: values.clone(),
+                    },
+                },
+            }),
+        });
+    }
+    inputs
 }

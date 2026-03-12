@@ -240,3 +240,20 @@ Reglas:
 - la condicion debe evaluar a `bool`, `series<bool>` o `na`
 - ambas ramas tienen scopes independientes
 - los bindings creados dentro de una rama no son visibles fuera del `if`
+
+## Metadata De Optimizacion En `input`
+
+Los `input` numericos pueden declarar metadata de busqueda directamente:
+
+```palmscript
+input fast_len = 21 optimize(int, 8, 34, 1)
+input atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
+input weekly_bias = 21 optimize(choice, 13, 21, 34)
+```
+
+Reglas:
+
+- `optimize(int, low, high[, step])` exige un default entero dentro del rango inclusivo y alineado al paso
+- `optimize(float, low, high[, step])` exige un default finito dentro del rango inclusivo
+- `optimize(choice, v1, v2, ...)` exige que el default sea una de las opciones numericas listadas
+- esta metadata solo describe el espacio de busqueda del optimizador; no cambia el valor compilado del `input`

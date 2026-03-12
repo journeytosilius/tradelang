@@ -3,14 +3,14 @@ use std::path::Path;
 use std::thread;
 
 use palmscript::{
-    compile, compile_with_input_overrides, fetch_perp_backtest_context,
-    fetch_source_runtime_config, run_backtest_with_sources, run_optimize_with_source,
-    run_walk_forward_sweep_with_source, run_walk_forward_with_sources, run_with_sources,
-    BacktestConfig, CompiledProgram, ExchangeEndpoints, InputSweepDefinition, OptimizeConfig,
-    OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
-    OptimizeResult, OptimizeRunner, PerpBacktestConfig, PerpMarginMode, RuntimeError,
-    SourceTemplate, VmLimits, WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError,
-    WalkForwardSweepObjective,
+    bytecode::InputOptimizationDeclKind, compile, compile_with_input_overrides,
+    fetch_perp_backtest_context, fetch_source_runtime_config, run_backtest_with_sources,
+    run_optimize_with_source, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
+    run_with_sources, BacktestConfig, CompiledProgram, ExchangeEndpoints, InputSweepDefinition,
+    OptimizeConfig, OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace,
+    OptimizePreset, OptimizeResult, OptimizeRunner, PerpBacktestConfig, PerpMarginMode,
+    RuntimeError, SourceTemplate, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
+    WalkForwardSweepError, WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
@@ -246,7 +246,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         return Err("optimize mode requires at least one `source` declaration".to_string());
     }
 
-    let params = resolve_optimize_params(&args, preset.as_ref())?;
+    let params = resolve_optimize_params(&args, preset.as_ref(), &base_compiled)?;
     let execution_source_alias =
         resolve_execution_source_alias(&base_compiled, args.execution_source.clone())?;
     let endpoints = ExchangeEndpoints::from_env();
@@ -563,6 +563,7 @@ fn parse_input_sweep_definitions(raw_sets: &[String]) -> Result<Vec<InputSweepDe
 pub(crate) fn resolve_optimize_params(
     args: &OptimizeRunArgs,
     preset: Option<&OptimizePreset>,
+    compiled: &CompiledProgram,
 ) -> Result<Vec<OptimizeParamSpace>, String> {
     if !args.params.is_empty() {
         return args
@@ -571,11 +572,16 @@ pub(crate) fn resolve_optimize_params(
             .map(|raw| parse_optimize_param_space(raw))
             .collect();
     }
-    preset
-        .map(|preset| preset.parameter_space.clone())
-        .ok_or_else(|| {
-            "optimize mode requires at least one `--param` or a preset parameter space".to_string()
-        })
+    if let Some(preset) = preset {
+        return Ok(preset.parameter_space.clone());
+    }
+    let inferred = infer_optimize_params(compiled);
+    if !inferred.is_empty() {
+        return Ok(inferred);
+    }
+    Err(
+        "optimize mode requires at least one `--param`, a preset parameter space, or `input ... optimize(...)` metadata".to_string(),
+    )
 }
 
 pub(crate) fn resolve_optimize_holdout(
@@ -621,35 +627,61 @@ pub(crate) fn parse_optimize_param_space(raw: &str) -> Result<OptimizeParamSpace
     }
     match kind {
         "int" => {
-            let (low, high) = values
-                .split_once(':')
-                .ok_or_else(|| format!("invalid `--param {raw}`: expected int:name=low:high"))?;
-            let low = low.parse::<i64>().map_err(|err| {
-                format!("invalid `--param {raw}`: failed to parse `{low}` as integer: {err}")
+            let parts = values.split(':').collect::<Vec<_>>();
+            if !(2..=3).contains(&parts.len()) {
+                return Err(format!(
+                    "invalid `--param {raw}`: expected int:name=low:high[:step]"
+                ));
+            }
+            let low_raw = parts[0];
+            let high_raw = parts[1];
+            let low = low_raw.parse::<i64>().map_err(|err| {
+                format!("invalid `--param {raw}`: failed to parse `{low_raw}` as integer: {err}")
             })?;
-            let high = high.parse::<i64>().map_err(|err| {
-                format!("invalid `--param {raw}`: failed to parse `{high}` as integer: {err}")
+            let high = high_raw.parse::<i64>().map_err(|err| {
+                format!("invalid `--param {raw}`: failed to parse `{high_raw}` as integer: {err}")
             })?;
+            let step = match parts.get(2) {
+                Some(step_raw) => step_raw.parse::<i64>().map_err(|err| {
+                    format!(
+                        "invalid `--param {raw}`: failed to parse `{step_raw}` as integer: {err}"
+                    )
+                })?,
+                None => 1,
+            };
             Ok(OptimizeParamSpace::IntegerRange {
                 name: name.to_string(),
                 low,
                 high,
+                step,
             })
         }
         "float" => {
-            let (low, high) = values
-                .split_once(':')
-                .ok_or_else(|| format!("invalid `--param {raw}`: expected float:name=low:high"))?;
-            let low = low.parse::<f64>().map_err(|err| {
-                format!("invalid `--param {raw}`: failed to parse `{low}` as float: {err}")
+            let parts = values.split(':').collect::<Vec<_>>();
+            if !(2..=3).contains(&parts.len()) {
+                return Err(format!(
+                    "invalid `--param {raw}`: expected float:name=low:high[:step]"
+                ));
+            }
+            let low_raw = parts[0];
+            let high_raw = parts[1];
+            let low = low_raw.parse::<f64>().map_err(|err| {
+                format!("invalid `--param {raw}`: failed to parse `{low_raw}` as float: {err}")
             })?;
-            let high = high.parse::<f64>().map_err(|err| {
-                format!("invalid `--param {raw}`: failed to parse `{high}` as float: {err}")
+            let high = high_raw.parse::<f64>().map_err(|err| {
+                format!("invalid `--param {raw}`: failed to parse `{high_raw}` as float: {err}")
             })?;
+            let step = match parts.get(2) {
+                Some(step_raw) => Some(step_raw.parse::<f64>().map_err(|err| {
+                    format!("invalid `--param {raw}`: failed to parse `{step_raw}` as float: {err}")
+                })?),
+                None => None,
+            };
             Ok(OptimizeParamSpace::FloatRange {
                 name: name.to_string(),
                 low,
                 high,
+                step,
             })
         }
         "choice" => {
@@ -679,6 +711,39 @@ pub(crate) fn parse_optimize_param_space(raw: &str) -> Result<OptimizeParamSpace
             "invalid `--param {raw}`: kind must be one of int, float, choice"
         )),
     }
+}
+
+fn infer_optimize_params(compiled: &CompiledProgram) -> Vec<OptimizeParamSpace> {
+    compiled
+        .program
+        .inputs
+        .iter()
+        .filter_map(|input| {
+            let optimization = input.optimization.as_ref()?;
+            Some(match &optimization.kind {
+                InputOptimizationDeclKind::IntegerRange { low, high, step } => {
+                    OptimizeParamSpace::IntegerRange {
+                        name: input.name.clone(),
+                        low: *low,
+                        high: *high,
+                        step: *step,
+                    }
+                }
+                InputOptimizationDeclKind::FloatRange { low, high, step } => {
+                    OptimizeParamSpace::FloatRange {
+                        name: input.name.clone(),
+                        low: *low,
+                        high: *high,
+                        step: *step,
+                    }
+                }
+                InputOptimizationDeclKind::Choice { values } => OptimizeParamSpace::Choice {
+                    name: input.name.clone(),
+                    values: values.clone(),
+                },
+            })
+        })
+        .collect()
 }
 
 fn map_sweep_objective(objective: WalkForwardSweepObjectiveArg) -> WalkForwardSweepObjective {
