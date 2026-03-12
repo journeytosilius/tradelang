@@ -1,0 +1,565 @@
+# Backtesting
+
+Esta pagina vuelve a estar disponible publicamente porque PalmScript ahora es de codigo abierto. La localizacion completa se publicara en una actualizacion posterior. Mientras tanto, el contenido canonico en ingles se incluye abajo para que esta version del sitio exponga la misma superficie publica de CLI y herramientas.
+
+## English Canonical Content
+
+
+PalmScript exposes a deterministic backtester on top of the existing
+source-aware runtime.
+
+The backtester runs a compiled script, consumes runtime trigger events plus
+compiled signal-role and order metadata, and simulates fills, orders, trades,
+and equity for one configured execution source.
+
+PalmScript also exposes a walk-forward layer on top of the same deterministic
+backtester. Walk-forward reuses the existing fill semantics and venue rules,
+but evaluates the strategy over rolling train/test windows and stitches only
+the out-of-sample slices together.
+
+PalmScript also exposes a bounded walk-forward sweep layer that ranks explicit
+numeric `input` grids by stitched out-of-sample performance.
+
+PalmScript also exposes a first-class optimizer layer that performs seeded,
+bounded hyper-parameter search over selected numeric `input`s.
+
+## CLI
+
+Run a backtest end to end:
+
+```bash
+palmscript run backtest strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --fee-bps 10 \
+  --slippage-bps 2
+```
+
+When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
+
+Backtest results depend on the script, venue, time window, fees, and slippage.
+Treat any performance report as strategy-specific rather than a property of the
+backtester itself.
+
+Perp execution sources also accept isolated-margin controls:
+
+```bash
+palmscript run backtest strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --execution-source perp \
+  --leverage 3 \
+  --margin-mode isolated
+```
+
+Run a rolling walk-forward evaluation:
+
+```bash
+palmscript run walk-forward strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63
+```
+
+V1 notes:
+
+- walk-forward uses the same deterministic order/fill engine as ordinary backtests
+- each segment uses the leading `train-bars` as in-sample context and reports the trailing `test-bars` as out-of-sample
+- `step-bars` controls how far each segment advances
+- v1 does not optimize parameters automatically; it evaluates the fixed script and inputs you passed in
+
+Run a bounded walk-forward sweep:
+
+```bash
+palmscript run walk-forward-sweep strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --set fast_len=13,21,34 \
+  --set target_atr_mult=2.0,2.5,3.0 \
+  --objective total-return \
+  --top 5
+```
+
+V1 sweep notes:
+
+- sweeps only override numeric `input` declarations
+- each candidate recompiles the same script with one explicit override combination
+- each candidate reuses the same fetched runtime data and deterministic walk-forward engine
+- the explicit candidate grid is bounded to `10000` combinations
+- stitched OOS ranking supports `total-return`, `ending-equity`, and `return-over-drawdown`
+
+Run seeded optimization:
+
+```bash
+palmscript run optimize strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --objective robust-return \
+  --trials 50 \
+  --top 5 \
+  --preset-out /tmp/adaptive-best.json
+```
+
+V1 optimizer notes:
+
+- optimizer tuning is restricted to declared numeric `input`s
+- walk-forward is the default runner; `--runner backtest` is optional
+- the search is seeded and deterministic for the same script, seed, and search space
+- `--workers` only controls bounded parallel evaluation
+- `--preset-out` writes a reusable preset containing the best overrides and top candidates
+- `walk-forward-sweep` remains the explicit grid-search baseline tool
+
+Run the same optimize job through the durable local run registry:
+
+```bash
+palmscript runs submit optimize strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --train-bars 252 \
+  --test-bars 63 \
+  --step-bars 63 \
+  --param int:fast_len=8:34 \
+  --param float:target_atr_mult=1.5:4.0 \
+  --objective robust-return \
+  --trials 50 \
+  --top 5
+
+palmscript runs serve
+palmscript runs status <run-id>
+palmscript runs tail <run-id>
+palmscript runs best <run-id> --preset-out /tmp/adaptive-best.json
+```
+
+Durable optimize notes:
+
+- `runs submit optimize` reuses the same optimizer config model as `run optimize`
+- every completed candidate batch is persisted into local SQLite state plus run artifacts
+- `runs serve` owns execution and can resume interrupted queued or running jobs
+- `runs best` can export the best known preset from the persisted run state without rerunning the search
+
+## Rust API
+
+Use `run_backtest_with_sources` from the library crate:
+
+```rust
+use palmscript::{
+    compile, run_backtest_with_sources, BacktestConfig, Interval, SourceFeed, SourceRuntimeConfig,
+    VmLimits,
+};
+
+let source = r#"
+interval 1m
+source spot = binance.spot("BTCUSDT")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+plot(spot.close)
+"#;
+
+let compiled = compile(source).expect("script compiles");
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_backtest_with_sources(
+    &compiled,
+    runtime,
+    VmLimits::default(),
+    BacktestConfig {
+        execution_source_alias: "spot".to_string(),
+        initial_capital: 10_000.0,
+        fee_bps: 5.0,
+        slippage_bps: 2.0,
+        perp: None,
+        perp_context: None,
+    },
+)
+.expect("backtest succeeds");
+
+println!("ending equity = {}", result.summary.ending_equity);
+```
+
+Use `run_walk_forward_with_sources` for rolling train/test evaluation:
+
+```rust
+use palmscript::{
+    compile, run_walk_forward_with_sources, BacktestConfig, Interval, SourceFeed,
+    SourceRuntimeConfig, VmLimits, WalkForwardConfig,
+};
+
+let compiled = compile(source).expect("script compiles");
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_walk_forward_with_sources(
+    &compiled,
+    runtime,
+    VmLimits::default(),
+    WalkForwardConfig {
+        backtest: BacktestConfig {
+            execution_source_alias: "spot".to_string(),
+            initial_capital: 10_000.0,
+            fee_bps: 5.0,
+            slippage_bps: 2.0,
+            perp: None,
+            perp_context: None,
+        },
+        train_bars: 252,
+        test_bars: 63,
+        step_bars: 63,
+    },
+)
+.expect("walk-forward succeeds");
+
+println!(
+    "stitched out-of-sample return = {:.2}%",
+    result.stitched_summary.total_return * 100.0
+);
+```
+
+Use `run_walk_forward_sweep_with_source` to rank explicit numeric `input` grids:
+
+```rust
+use palmscript::{
+    run_walk_forward_sweep_with_source, BacktestConfig, InputSweepDefinition, Interval, SourceFeed,
+    SourceRuntimeConfig, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
+    WalkForwardSweepObjective,
+};
+
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_walk_forward_sweep_with_source(
+    source,
+    runtime,
+    VmLimits::default(),
+    WalkForwardSweepConfig {
+        walk_forward: WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 10_000.0,
+                fee_bps: 5.0,
+                slippage_bps: 2.0,
+                perp: None,
+                perp_context: None,
+            },
+            train_bars: 252,
+            test_bars: 63,
+            step_bars: 63,
+        },
+        inputs: vec![
+            InputSweepDefinition {
+                name: "fast_len".to_string(),
+                values: vec![13.0, 21.0, 34.0],
+            },
+            InputSweepDefinition {
+                name: "target_atr_mult".to_string(),
+                values: vec![2.0, 2.5, 3.0],
+            },
+        ],
+        objective: WalkForwardSweepObjective::TotalReturn,
+        top_n: 5,
+        base_input_overrides: std::collections::BTreeMap::new(),
+    },
+)
+.expect("walk-forward sweep succeeds");
+
+println!("best ending equity = {}", result.best_candidate.stitched_summary.ending_equity);
+```
+
+Use `run_optimize_with_source` for seeded bounded optimization:
+
+```rust
+use std::collections::BTreeMap;
+
+use palmscript::{
+    run_optimize_with_source, BacktestConfig, Interval, OptimizeConfig, OptimizeObjective,
+    OptimizeParamSpace, OptimizeRunner, SourceFeed, SourceRuntimeConfig, VmLimits,
+    WalkForwardConfig,
+};
+
+let runtime = SourceRuntimeConfig {
+    base_interval: Interval::Min1,
+    feeds: vec![SourceFeed {
+        source_id: 0,
+        interval: Interval::Min1,
+        bars: vec![],
+    }],
+};
+let result = run_optimize_with_source(
+    source,
+    runtime,
+    VmLimits::default(),
+    OptimizeConfig {
+        runner: OptimizeRunner::WalkForward,
+        backtest: BacktestConfig {
+            execution_source_alias: "spot".to_string(),
+            initial_capital: 10_000.0,
+            fee_bps: 5.0,
+            slippage_bps: 2.0,
+            perp: None,
+            perp_context: None,
+        },
+        walk_forward: Some(WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                initial_capital: 10_000.0,
+                fee_bps: 5.0,
+                slippage_bps: 2.0,
+                perp: None,
+                perp_context: None,
+            },
+            train_bars: 252,
+            test_bars: 63,
+            step_bars: 63,
+        }),
+        params: vec![OptimizeParamSpace::IntegerRange {
+            name: "fast_len".to_string(),
+            low: 8,
+            high: 34,
+        }],
+        objective: OptimizeObjective::RobustReturn,
+        trials: 50,
+        startup_trials: 16,
+        seed: 7,
+        workers: 4,
+        top_n: 5,
+        base_input_overrides: BTreeMap::new(),
+    },
+)
+.expect("optimize succeeds");
+
+println!("best score = {}", result.best_candidate.objective_score);
+```
+
+The result includes:
+
+- raw runtime `outputs`
+- order lifecycle records in `orders`
+- per-fill records in `fills`
+- closed round trips in `trades`
+- event-centered diagnostics in `diagnostics`
+- per-bar account marks in `equity_curve`
+- aggregate metrics in `summary`
+- any still-open position in `open_position`
+- optional perp metadata in `perp`
+
+Walk-forward results instead include:
+
+- per-segment `in_sample` summaries
+- per-segment `out_of_sample` summaries
+- per-segment `out_of_sample_diagnostics` with compact trade/order/export context for the test slice
+- a stitched out-of-sample equity curve
+- a stitched out-of-sample summary across all segments
+
+Each segment-level out-of-sample diagnostics payload currently includes:
+
+- an out-of-sample diagnostic summary with fill rate, average hold metrics, and protect/target/signal exit counts
+- an out-of-sample capture summary with flat/long/short bar mix and execution-asset return context
+- out-of-sample export summaries built from the test slice only
+
+This makes it possible to compare weak walk-forward slices by regime/setup state
+without rerunning each slice manually.
+
+The `diagnostics` payload is designed for machine analysis and LLM-driven
+iteration. It currently includes:
+
+- per-order diagnostics with signal, placement, and fill snapshots of named `export` features
+- per-order position snapshots at placement and fill time for attached exits and other order paths
+- per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
+- aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, reversal, and liquidation exits
+- capture summaries that compare strategy return with execution-asset return, time spent flat or in market, and opportunity cost while flat
+- export summaries for every named `export`, including numeric distribution stats and bool regime/setup activation counts
+- bounded opportunity events for bool-export activations and backtest-consumed signal decisions, each with forward-return context over `1`, `6`, and `24` execution bars
+
+To make regime and setup context available to diagnostics, export those fields
+explicitly in the strategy:
+
+```palm
+export trend_long_state = trend_long
+export adaptive_bias = spot.close - kama_4h
+export breakout_long_state = breakout_long
+```
+
+Those exported values are then snapshotted automatically around backtest events.
+All exported series also feed the higher-level diagnostics summaries automatically.
+
+Backtest text output keeps those additions compact:
+
+- `Diagnostics Summary` now includes execution-asset return, flat/long/short bar percentages, and opportunity-cost return
+- `Top Export States` shows a short summary of the first few export aggregates
+- `Recent Opportunity Events` shows the latest bounded export-activation and signal-decision events
+
+The full diagnostics payload remains JSON-first and is returned in the normal `BacktestResult`.
+
+## Signal Resolution
+
+Preferred v1 surface:
+
+- `entry long = ...`
+- `exit long = ...`
+- `entry short = ...`
+- `exit short = ...`
+- `protect long = ...`
+- `protect short = ...`
+- `target long = ...`
+- `target short = ...`
+
+Optional execution templates:
+
+- `order entry long = market()`
+- `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
+- `order entry short = limit(spot.close[1], tif.gtc, false)`
+- `order exit short = take_profit_limit(trigger, price, tif.gtc, false, trigger_ref.mark, expire_ms)`
+- `size entry1 long = 0.5`
+- `size entry1 long = risk_pct(0.01, stop_price)`
+- `size entry2 long = 0.5`
+- `size entry1 short = 0.5`
+- `size target1 long = 0.5`
+- `size target2 long = 0.5`
+- `size target1 short = 0.5`
+
+Attached position-aware exits:
+
+- `protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
+- `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
+- `size target1 long = 0.5`
+- `position.*` is valid only inside `protect` and `target`
+
+Actual-fill anchor helpers:
+
+- `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose aggregate real backtest fill events as `series<bool>`
+- exit-kind-specific events are also available:
+  `position_event.long_protect_fill`, `short_protect_fill`, `long_target_fill`, `short_target_fill`,
+  `long_signal_exit_fill`, `short_signal_exit_fill`, `long_reversal_exit_fill`,
+  `short_reversal_exit_fill`, `long_liquidation_fill`, and `short_liquidation_fill`
+- anchored helpers such as `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, and `valuewhen_since` can use those events directly
+- example: `protect long = stop_market(highest_since(position_event.long_entry_fill, spot.high) - 3 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)`
+- outside backtests, `position_event.*` stays deterministic by evaluating to `false` on every step
+
+Latest closed-trade state:
+
+- `last_exit.*` exposes the most recent closed trade regardless of side
+- `last_long_exit.*` and `last_short_exit.*` keep side-specific latest-closed-trade snapshots
+- available fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
+- `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, `exit_kind.reversal`, and `exit_kind.liquidation`
+- outside backtests, `last_*_exit.*` evaluates to `na`
+
+Legacy compatibility bridge:
+
+- if no first-class signal declarations are present, the backtester falls back to trigger names `long_entry`, `long_exit`, `short_entry`, and `short_exit`
+- if no entry signals are present after resolution, backtest startup fails validation
+- ordinary `trigger` declarations remain available for non-backtest consumers
+
+## Execution Model
+
+The backtester stays intentionally simple and deterministic:
+
+- the execution venue profile is inferred from the execution `source` template, for example `binance.spot`, `binance.usdm`, `bybit.spot`, `bybit.usdt_perps`, `gate.spot`, or `gate.usdt_perps`
+- signals produced on bar `t` become active starting on the first execution-source base bar with `bar.time > signal_time`
+- only one net position is supported: `flat`, `long`, or `short`
+- the portfolio model remains net-position based with no explicit quantity expressions
+- same-side re-entry is ignored by default except for explicit staged entries
+- `size entry1..3 long|short = <expr>` opt a staged entry role into explicit entry sizing
+- `size entry1..3 long|short = capital_fraction(x)` uses a finite fraction in `(0, 1]` of current cash or free collateral at fill time
+- `size entry1..3 long|short = risk_pct(pct, stop_price)` sizes from actual fill price and stop distance so the requested loss at `stop_price` is `pct` of current equity, then clamps to capital or margin limits
+- entry size expressions are evaluated as hidden numeric series like other order fields
+- valid `capital_fraction(...)` values are finite values in `(0, 1]`
+- valid `risk_pct(...)` values are finite values `> 0`
+- opposite entry reverses on the same eligible open by closing first and then
+  opening the new side
+- attached exits arm only after an actual entry fill exists and are reevaluated once per execution bar while that position stays open
+- only the currently active staged protect and next staged target are armed for a side at any time
+- `protect_after_target1..3` inherit from the most recent declared protect stage when an exact staged protect is absent
+- `size entry1..3 long|short = <expr>` optionally reduce a staged entry fill to a fraction of current cash or compute a risk-based quantity instead of opening all-in
+- `size target1..3 long|short = <expr>` optionally reduce a staged target fill to a fraction of the current position instead of closing it fully
+- entry and target size expressions are evaluated as hidden numeric series like other order fields
+- v1 only supports explicit sizing for staged `entry` roles and staged attached `target` roles; other order roles still close or open the full position
+- valid target size fractions are finite values in `(0, 1]`
+- `risk_pct(...)` is entry-only in v1 and records the requested risk percentage, stop price, effective risk-per-unit, and whether the final size was capital-limited
+- staged entry fills emit aggregate `position_event.long_entry_fill` / `short_entry_fill` plus staged fields such as `position_event.long_entry2_fill`
+- staged target fills emit aggregate `position_event.long_target_fill` / `short_target_fill` plus staged fields such as `position_event.long_target2_fill`
+- a partial staged target is one-shot for that stage: once `target1` has filled, `target2` becomes the active target and the remaining runner stays managed by the current staged protect / discretionary `exit`
+- if `protect` and `target` both become fillable on one execution bar, `protect` fills and `target` is cancelled
+- spot venues continue to use the original cash/notional model
+- perp venues now support isolated margin, per-venue risk tiers, leverage, and deterministic liquidation checks
+- liquidation checks run after fills and before the strategy step on each execution bar
+- v1 does not liquidate a position from the full mark-price range of its entry bar; liquidation checks begin on the first later execution bar after the fill
+- Binance USD-M uses mark-price kline bars as the liquidation mark basis
+- Bybit USDT perps use mark-price kline bars as the liquidation mark basis
+- Gate USDT perps use mark-price candlesticks as the liquidation mark basis
+- open positions are not force-closed at the end of the run unless liquidation was triggered earlier
+
+Supported order constructors:
+
+- `market()`
+- `limit(price, tif, post_only)`
+- `stop_market(trigger_price, trigger_ref)`
+- `stop_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
+- `take_profit_market(trigger_price, trigger_ref)`
+- `take_profit_limit(trigger_price, limit_price, tif, post_only, trigger_ref, expire_time_ms)`
+
+Enum namespaces:
+
+- `tif.gtc`, `tif.ioc`, `tif.fok`, `tif.gtd`
+- `trigger_ref.last`, `trigger_ref.mark`, `trigger_ref.index`
+
+Deterministic fill rules:
+
+- `market()`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees are charged per fill using `fee_bps`
+- `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`
+- `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`
+- `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`
+- `stop_limit(...)` and `take_profit_limit(...)`: trigger on crossing; if the opening price already satisfies the resulting limit, they fill immediately, otherwise they become resting limit orders starting from the next bar
+- `tif.ioc` and `tif.fok`: evaluate only on the first eligible bar and cancel if they do not fully fill
+- `tif.gtd`: expires deterministically before evaluating any execution bar at or beyond `expire_time_ms`
+
+Venue profile notes:
+
+- Binance Spot supports the order constructors above, but only `trigger_ref.last` on trigger orders and no `tif.gtd`
+- Binance USD-M supports `trigger_ref.last` and `trigger_ref.mark`
+- venue-incompatible orders are rejected before simulation starts
+
+Perp startup requirements:
+
+- Binance USD-M prefers live signed leverage brackets when these env vars are available:
+  - `PALMSCRIPT_BINANCE_USDM_API_KEY`
+  - `PALMSCRIPT_BINANCE_USDM_API_SECRET`
+- without those credentials, Binance USD-M falls back to an approximate single-tier risk snapshot built from public `exchangeInfo` symbol margin fields
+- the fetched or approximated risk snapshot is embedded in `BacktestResult.perp`
+- walk-forward reuses one fetched perp context across all stitched segments in the same run
+- in isolated-margin perp mode, PalmScript caps a closed position's residual value at zero and cancels later entry attempts with `InsufficientCollateral` once free collateral is exhausted
+
+## Current Scope
+
+Not included in V1:
+
+- partial fills
+- order book or queue-position modeling
+- cross-margin accounting
+- funding payments
+- borrow fees
+- venue liquidation penalty fees
