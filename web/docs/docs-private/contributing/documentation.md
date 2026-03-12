@@ -88,6 +88,8 @@ Use `mkdocs build --strict -f web/docs/mkdocs.yml` for config validation and
 local preview of the multilingual source tree. Use
 `sh infra/scripts/build_docs_site.sh` for the production output layout that
 publishes English at `/docs/` and translated locales at `/{lang}/docs/`.
+The production build also normalizes canonical URLs and emits deploy-ready
+locale sitemap XML files plus the root sitemap index.
 The production build overlays locale-suffixed source files like `page.es.md`
 onto their unsuffixed `page.md` targets per locale before invoking MkDocs, so
 the hosted locale trees render translated content instead of default-language

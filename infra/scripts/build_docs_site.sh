@@ -8,6 +8,13 @@ SITE_DIR="$ROOT_DIR/site"
 DOCS_ROOT="$ROOT_DIR/web/docs/docs"
 LOCALES="es pt-BR de ja fr"
 TMP_BASE="${TMPDIR:-$ROOT_DIR/.tmp}"
+NORMALIZER="$ROOT_DIR/infra/scripts/normalize_docs_output.py"
+
+if [ -x "$ROOT_DIR/.venv-docs/bin/mkdocs" ]; then
+    MKDOCS_BIN="$ROOT_DIR/.venv-docs/bin/mkdocs"
+else
+    MKDOCS_BIN="mkdocs"
+fi
 
 mkdir -p "$TMP_BASE"
 
@@ -43,7 +50,7 @@ build_locale() {
     BUILD_ONLY_LOCALE="$locale" \
     DOCS_SITE_URL="$site_url" \
     DOCS_DIR="$docs_dir" \
-    mkdocs build --strict -f "$CONFIG_PATH" -d "$output_dir"
+    "$MKDOCS_BIN" build --strict -f "$CONFIG_PATH" -d "$output_dir"
 
     rm -rf "$docs_dir"
 }
@@ -57,3 +64,5 @@ build_locale "pt-BR" "https://palmscript.dev/pt-BR/docs/" "$SITE_DIR/pt-BR/docs"
 build_locale "de" "https://palmscript.dev/de/docs/" "$SITE_DIR/de/docs"
 build_locale "ja" "https://palmscript.dev/ja/docs/" "$SITE_DIR/ja/docs"
 build_locale "fr" "https://palmscript.dev/fr/docs/" "$SITE_DIR/fr/docs"
+
+python3 "$NORMALIZER" "$SITE_DIR"
