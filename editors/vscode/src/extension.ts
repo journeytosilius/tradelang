@@ -137,20 +137,24 @@ async function resolveServerBinary(context: vscode.ExtensionContext): Promise<st
 function bundledBinaryPath(context: vscode.ExtensionContext): string | undefined {
     const platform = process.platform;
     const arch = process.arch;
-    const candidate = path.join(
-        context.extensionPath,
-        "server",
-        `${platform}-${arch}`,
-        binaryName(),
-    );
-    if (fs.existsSync(candidate)) {
-        return candidate;
+    for (const name of bundledBinaryNames()) {
+        const candidate = path.join(context.extensionPath, "server", `${platform}-${arch}`, name);
+        if (fs.existsSync(candidate)) {
+            return candidate;
+        }
     }
     return undefined;
 }
 
 function binaryName(): string {
     return process.platform === "win32" ? "palmscript-lsp.exe" : "palmscript-lsp";
+}
+
+function bundledBinaryNames(): string[] {
+    if (process.platform === "win32") {
+        return ["palmscript-lsp.exe"];
+    }
+    return ["palmscript-lsp", "tradelang-lsp"];
 }
 
 function traceLevel(): Trace {
@@ -171,3 +175,7 @@ export function startupFailureMessage(error: unknown): string {
     const details = error instanceof Error ? error.message : String(error);
     return `PalmScript language features are unavailable because palmscript-lsp could not be started: ${details}`;
 }
+
+export const testHooks = {
+    bundledBinaryNames,
+};

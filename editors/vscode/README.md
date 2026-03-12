@@ -30,6 +30,9 @@ The extension resolves the language server in this order:
 2. bundled binary in `server/<platform>-<arch>/`
 3. local repo fallback in `../../target/debug/` or `../../target/release/`
 
+For compatibility with older local bundles, the extension also accepts the
+legacy non-Windows binary name `tradelang-lsp` when resolving a bundled server.
+
 ## Packaging
 
 ```bash

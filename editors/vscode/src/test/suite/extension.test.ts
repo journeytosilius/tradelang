@@ -2,7 +2,7 @@ import * as assert from "node:assert/strict";
 import * as path from "node:path";
 
 import * as vscode from "vscode";
-import { startupFailureMessage } from "../../extension";
+import { startupFailureMessage, testHooks } from "../../extension";
 
 suite("PalmScript extension", () => {
     const serverPath = path.resolve(
@@ -80,6 +80,15 @@ suite("PalmScript extension", () => {
         );
         assert.ok(message.includes("language features are unavailable"));
         assert.ok(message.includes("palmscript-lsp"));
+    });
+
+    test("accepts the legacy bundled server name on non-windows platforms", () => {
+        if (process.platform === "win32") {
+            assert.deepEqual(testHooks.bundledBinaryNames(), ["palmscript-lsp.exe"]);
+            return;
+        }
+
+        assert.deepEqual(testHooks.bundledBinaryNames(), ["palmscript-lsp", "tradelang-lsp"]);
     });
 });
 

@@ -51,4 +51,8 @@ server/<platform>-<arch>/palmscript-lsp
 server/<platform>-<arch>/palmscript-lsp.exe
 ```
 
+The extension also tolerates the legacy non-Windows bundled filename
+`tradelang-lsp` so locally checked-out older bundles still activate the
+language server instead of falling back to syntax-only editing.
+
 See [Release Workflows](../contributing/releases.md) for the publishing pipeline.
