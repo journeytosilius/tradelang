@@ -40,7 +40,7 @@ const DEFAULT_MAX_PARALLEL_BACKTESTS: usize = 4;
 const DEFAULT_MAX_LSP_SESSIONS: usize = 32;
 const SESSION_HEADER: &str = "x-palmscript-session";
 const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
-const BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS: i64 = 1_640_995_200_000;
+const BTCUSDT_BINANCE_GATE_SHARED_FROM_MS: i64 = 1_640_995_200_000;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd)]
 #[serde(rename_all = "snake_case")]
@@ -277,21 +277,21 @@ pub fn public_dataset_catalog() -> PublicDatasetCatalog {
     PublicDatasetCatalog {
         datasets: vec![PublicDataset {
             dataset_id: PublicDatasetId::BtcusdtBinanceSpot4h4y,
-            display_name: "BTCUSDT Binance + Bybit Spot 4h".to_string(),
+            display_name: "BTCUSDT Binance + Gate Spot 4h".to_string(),
             sources: vec![
                 PublicDatasetSource {
                     source_template: SourceTemplate::BinanceSpot,
                     symbol: "BTCUSDT".to_string(),
                 },
                 PublicDatasetSource {
-                    source_template: SourceTemplate::BybitSpot,
-                    symbol: "BTCUSDT".to_string(),
+                    source_template: SourceTemplate::GateSpot,
+                    symbol: "BTC_USDT".to_string(),
                 },
             ],
             execution_source_index: 0,
             base_interval: Interval::Hour4,
             supported_intervals: vec![Interval::Hour4, Interval::Day1],
-            from: BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS,
+            from: BTCUSDT_BINANCE_GATE_SHARED_FROM_MS,
             to: next_utc_day_start_ms(),
             initial_capital: 10_000.0,
             fee_bps: 7.5,
@@ -313,23 +313,23 @@ pub fn public_examples() -> Vec<PublicExample> {
         PublicExample {
             id: "starter".to_string(),
             name: "Starter".to_string(),
-            description: "Cross-exchange starter strategy using Binance and Bybit.".to_string(),
+            description: "Cross-exchange starter strategy using Binance and Gate.".to_string(),
             source: r#"interval 4h
 source bn = binance.spot("BTCUSDT")
-source bb = bybit.spot("BTCUSDT")
+source gt = gate.spot("BTC_USDT")
 use bn 1d
-use bb 1d
+use gt 1d
 
 let bn_fast = ema(bn.close, 13)
 let bn_slow = ema(bn.close, 55)
-let bb_fast = ema(bb.close, 13)
-let bb_slow = ema(bb.close, 55)
+let gt_fast = ema(gt.close, 13)
+let gt_slow = ema(gt.close, 55)
 let bn_daily = ema(bn.1d.close, 20)
-let bb_daily = ema(bb.1d.close, 20)
-let spread = (bn.close - bb.close) / bb.close
+let gt_daily = ema(gt.1d.close, 20)
+let spread = (bn.close - gt.close) / gt.close
 
-let trend_confirmed = above(bn_fast, bn_slow) and above(bb_fast, bb_slow)
-let daily_confirmed = above(bn.1d.close, bn_daily) and above(bb.1d.close, bb_daily)
+let trend_confirmed = above(bn_fast, bn_slow) and above(gt_fast, gt_slow)
+let daily_confirmed = above(bn.1d.close, bn_daily) and above(gt.1d.close, gt_daily)
 
 entry long = trend_confirmed and daily_confirmed and spread < -0.002
 exit long = below(bn_fast, bn_slow) or spread > 0.002
@@ -891,8 +891,8 @@ mod tests {
                     symbol: "BTCUSDT".to_string(),
                 },
                 PublicDatasetSource {
-                    source_template: SourceTemplate::BybitSpot,
-                    symbol: "BTCUSDT".to_string(),
+                    source_template: SourceTemplate::GateSpot,
+                    symbol: "BTC_USDT".to_string(),
                 },
             ],
             execution_source_index: 0,
@@ -945,10 +945,10 @@ mod tests {
         let compiled = compile(
             r#"interval 4h
 source bn = binance.spot("BTCUSDT")
-source bb = bybit.spot("BTCUSDT")
+source gt = gate.spot("BTC_USDT")
 use bn 1d
-use bb 1d
-export x = bn.close - bb.close
+use gt 1d
+export x = bn.close - gt.close
 "#,
         )
         .expect("script should compile");
@@ -965,8 +965,8 @@ export x = bn.close - bb.close
         let compiled = compile(
             r#"interval 4h
 source bn = binance.spot("BTCUSDT")
-source gt = gate.spot("BTC_USDT")
-export x = bn.close - gt.close
+source bb = bybit.spot("BTCUSDT")
+export x = bn.close - bb.close
 "#,
         )
         .expect("script should compile");
@@ -985,7 +985,7 @@ export x = bn.close - gt.close
             .into_iter()
             .find(|dataset| dataset.dataset_id == PublicDatasetId::BtcusdtBinanceSpot4h4y)
             .expect("public dataset");
-        assert_eq!(dataset.from, BTCUSDT_BINANCE_BYBIT_SHARED_FROM_MS);
+        assert_eq!(dataset.from, BTCUSDT_BINANCE_GATE_SHARED_FROM_MS);
         assert!(dataset.to > dataset.from);
         assert_eq!(dataset.to % DAY_MS, 0);
     }
@@ -1001,7 +1001,7 @@ export x = bn.close - gt.close
             .contains("source bn = binance.spot(\"BTCUSDT\")"));
         assert!(starter
             .source
-            .contains("source bb = bybit.spot(\"BTCUSDT\")"));
+            .contains("source gt = gate.spot(\"BTC_USDT\")"));
     }
 
     #[tokio::test]

@@ -50,7 +50,7 @@ The first public IDE release is intentionally narrow:
 - PalmScript logo mark in the header instead of a text heading
 - browser tab favicon generated from the current PalmScript logo
 - anonymous ephemeral browser sessions
-- one hosted BTCUSDT Binance + Bybit spot dataset with a two-exchange starter demo and the available history windowed by the selected date range
+- one hosted BTCUSDT Binance + Gate spot dataset with a two-exchange starter demo and the available history windowed by the selected date range
 - live compile diagnostics shown above a formatted backtest summary plus hosted backtest execution
 - no walk-forward, optimize, market mode, or arbitrary exchange fetches
 

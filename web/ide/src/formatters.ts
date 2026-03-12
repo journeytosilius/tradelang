@@ -2,20 +2,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const DEFAULT_SOURCE = `interval 4h
 source bn = binance.spot("BTCUSDT")
-source bb = bybit.spot("BTCUSDT")
+source gt = gate.spot("BTC_USDT")
 use bn 1d
-use bb 1d
+use gt 1d
 
 let bn_fast = ema(bn.close, 13)
 let bn_slow = ema(bn.close, 55)
-let bb_fast = ema(bb.close, 13)
-let bb_slow = ema(bb.close, 55)
+let gt_fast = ema(gt.close, 13)
+let gt_slow = ema(gt.close, 55)
 let bn_daily = ema(bn.1d.close, 20)
-let bb_daily = ema(bb.1d.close, 20)
-let spread = (bn.close - bb.close) / bb.close
+let gt_daily = ema(gt.1d.close, 20)
+let spread = (bn.close - gt.close) / gt.close
 
-let trend_confirmed = above(bn_fast, bn_slow) and above(bb_fast, bb_slow)
-let daily_confirmed = above(bn.1d.close, bn_daily) and above(bb.1d.close, bb_daily)
+let trend_confirmed = above(bn_fast, bn_slow) and above(gt_fast, gt_slow)
+let daily_confirmed = above(bn.1d.close, bn_daily) and above(gt.1d.close, gt_daily)
 
 entry long = trend_confirmed and daily_confirmed and spread < -0.002
 exit long = below(bn_fast, bn_slow) or spread > 0.002
