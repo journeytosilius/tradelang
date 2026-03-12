@@ -97,6 +97,9 @@ Es werden nur einzeilige Kommentare unterstuetzt:
 let fast = ema(spot.close, 5)
 ```
 
+Ein einzelnes `/` ist der arithmetische Divisionsoperator. `//` startet einen
+einzeiligen Kommentar.
+
 ## Anweisungs-Trennzeichen
 
 Anweisungen werden getrennt durch:

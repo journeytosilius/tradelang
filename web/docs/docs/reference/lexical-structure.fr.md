@@ -96,6 +96,9 @@ Seuls les commentaires sur une ligne sont pris en charge :
 let fast = ema(spot.close, 5)
 ```
 
+Un token `/` isole est l'operateur arithmetique de division. `//` demarre un
+commentaire sur une seule ligne.
+
 ## Separateurs D'Instructions
 
 Les instructions sont separees par :

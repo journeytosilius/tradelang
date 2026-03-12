@@ -92,6 +92,9 @@ Only single-line comments are supported:
 let fast = ema(spot.close, 5)
 ```
 
+A standalone `/` token is the arithmetic division operator. `//` starts a
+single-line comment.
+
 ## Statement separators
 
 Statements are separated by:

@@ -96,6 +96,9 @@ Apenas comentarios de linha unica sao suportados:
 let fast = ema(spot.close, 5)
 ```
 
+Um token `/` isolado e o operador aritmetico de divisao. `//` inicia um
+comentario de linha unica.
+
 ## Separadores De Instrucao
 
 Instrucoes sao separadas por:

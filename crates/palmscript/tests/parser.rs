@@ -113,6 +113,12 @@ fn parses_logical_operators_with_expected_precedence() {
 }
 
 #[test]
+fn parses_division_with_multiplicative_precedence() {
+    compile(&with_interval("plot((close - close[1]) / close[1] * 100)"))
+        .expect("division should parse with multiplicative precedence");
+}
+
+#[test]
 fn parses_else_if_chains() {
     compile(&with_interval(
         "if false { plot(0) } else if true { plot(1) } else { plot(2) }",

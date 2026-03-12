@@ -367,6 +367,16 @@ fn logical_precedence_matches_spec() {
 }
 
 #[test]
+fn division_operator_executes_with_numeric_results() {
+    let compiled = palmscript::compile(&with_interval("plot((close - close[1]) / close[1])"))
+        .expect("script should compile");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("script should run");
+    assert_eq!(outputs.plots[0].points[0].value, None);
+    let second = outputs.plots[0].points[1].value.expect("second point");
+    assert!((second - 0.01).abs() < 1e-12);
+}
+
+#[test]
 fn else_if_selects_the_first_matching_branch() {
     let compiled = palmscript::compile(&with_interval(
         "if false { plot(0) } else if true { plot(1) } else { plot(2) }",

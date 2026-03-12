@@ -85,6 +85,7 @@ impl<'a> LexerState<'a> {
                         self.bump_char();
                     }
                 }
+                '/' => self.push_single(TokenKind::Slash, false, false),
                 '"' => self.lex_string(),
                 '0'..='9' => self.lex_number_or_interval(),
                 'a'..='z' | 'A'..='Z' | '_' => self.lex_ident(),

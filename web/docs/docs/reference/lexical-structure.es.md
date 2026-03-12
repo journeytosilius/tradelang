@@ -96,6 +96,9 @@ Solo se soportan comentarios de una linea:
 let fast = ema(spot.close, 5)
 ```
 
+Un token `/` aislado es el operador aritmetico de division. `//` inicia un
+comentario de una sola linea.
+
 ## Separadores De Sentencias
 
 Las sentencias se separan por:

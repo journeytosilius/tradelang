@@ -12,16 +12,16 @@ let gt_fast = ema(gt.close, 13)
 let gt_slow = ema(gt.close, 55)
 let bn_daily = ema(bn.1d.close, 20)
 let gt_daily = ema(gt.1d.close, 20)
-let spread_points = bn.close - gt.close
+let spread = (bn.close - gt.close) / gt.close
 
 let trend_confirmed = above(bn_fast, bn_slow) and above(gt_fast, gt_slow)
 let daily_confirmed = above(bn.1d.close, bn_daily) and above(gt.1d.close, gt_daily)
 
-entry long = trend_confirmed and daily_confirmed and spread_points < -120
-exit long = below(bn_fast, bn_slow) or spread_points > 120
+entry long = trend_confirmed and daily_confirmed and spread < -0.002
+exit long = below(bn_fast, bn_slow) or spread > 0.002
 
-plot(spread_points)
-export spread_points = spread_points
+plot(spread * 10000)
+export spread_bps = spread * 10000
 `;
 
 export function dateInputValue(timeMs: number): string {
