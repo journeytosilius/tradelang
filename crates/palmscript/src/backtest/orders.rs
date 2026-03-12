@@ -1,8 +1,9 @@
 use crate::backtest::{
     FeatureSnapshot, Fill, FillAction, OrderEndReason, OrderRecord, OrderStatus, PositionSide,
-    RiskTier, EPSILON,
+    EPSILON,
 };
 use crate::bytecode::SignalRole;
+use crate::exchange::RiskTier;
 use crate::order::{OrderKind, SizeMode, TimeInForce, TriggerReference};
 
 pub(crate) const ROLE_COUNT: usize = 22;

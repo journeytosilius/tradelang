@@ -32,17 +32,15 @@ pub use backtest::{
     run_backtest_with_sources, run_optimize_with_source, run_walk_forward_sweep_with_source,
     run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig,
     BacktestDiagnosticSummary, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
-    BinanceUsdmRiskSnapshot, BinanceUsdmRiskSource, BoolExportDiagnosticSummary,
-    BybitUsdtPerpsRiskSnapshot, BybitUsdtPerpsRiskSource, EquityPoint, ExportDiagnosticSummary,
-    ExportValueType, FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric,
-    GateUsdtPerpsRiskSnapshot, GateUsdtPerpsRiskSource, InputSweepDefinition, MarkPriceBasis,
+    BoolExportDiagnosticSummary, EquityPoint, ExportDiagnosticSummary, ExportValueType,
+    FeatureSnapshot, FeatureValue, Fill, FillAction, ForwardReturnMetric, InputSweepDefinition,
     NumericExportDiagnosticSummary, OpportunityEvent, OpportunityEventKind,
     OptimizeCandidateSummary, OptimizeConfig, OptimizeError, OptimizeEvaluationSummary,
     OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeResult, OptimizeRunner,
     OrderDiagnostic, OrderEndReason, OrderRecord, OrderStatus, PerpBacktestConfig,
-    PerpBacktestContext, PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, RiskTier,
-    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification, VenueRiskSnapshot,
-    WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    PerpBacktestContext, PerpBacktestMetadata, PerpMarginMode, PositionSnapshot,
+    SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification, WalkForwardConfig,
+    WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
     WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
     WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
     WalkForwardSweepResult, WalkForwardWindowSummary,
@@ -51,7 +49,8 @@ pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};
 pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use exchange::{
-    fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError,
+    fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints,
+    ExchangeFetchError, MarkPriceBasis, RiskTier, VenueRiskSnapshot,
 };
 pub use ide::{
     analyze_document, format_document, highlight_document, CompletionEntry, CompletionKind,

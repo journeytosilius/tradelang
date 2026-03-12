@@ -17,9 +17,10 @@ use crate::backtest::{
     BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
     EquityPoint, FeatureSnapshot, Fill, OpportunityEventKind, OrderEndReason, OrderRecord,
     OrderStatus, PerpBacktestMetadata, PositionSnapshot, Trade, TradeDiagnostic,
-    TradeExitClassification, VenueRiskSnapshot,
+    TradeExitClassification,
 };
 use crate::bytecode::{LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, SignalRole};
+use crate::exchange::{RiskTier, VenueRiskSnapshot};
 use crate::order::OrderKind;
 use crate::output::StepOutput;
 use crate::position::{
@@ -1852,7 +1853,7 @@ fn accounting_mode(config: &BacktestConfig) -> AccountingMode {
     }
 }
 
-fn risk_tiers(snapshot: &VenueRiskSnapshot) -> &[crate::backtest::RiskTier] {
+fn risk_tiers(snapshot: &VenueRiskSnapshot) -> &[RiskTier] {
     match snapshot {
         VenueRiskSnapshot::BinanceUsdm(snapshot) => &snapshot.brackets,
         VenueRiskSnapshot::BybitUsdtPerps(snapshot) => &snapshot.tiers,

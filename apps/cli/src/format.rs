@@ -2,11 +2,11 @@ use std::fmt::Write;
 use std::path::Path;
 
 use palmscript::bytecode::{Constant, LocalInfo, Program};
+use palmscript::exchange::binance::UsdmRiskSource as BinanceUsdmRiskSource;
 use palmscript::{
-    BacktestResult, BinanceUsdmRiskSource, CompiledProgram, ExportDiagnosticSummary,
-    OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeResult, OrderStatus, OutputKind,
-    OutputValue, Outputs, PositionSide, SignalRole, Value, VenueRiskSnapshot, WalkForwardResult,
-    WalkForwardSweepResult,
+    BacktestResult, CompiledProgram, ExportDiagnosticSummary, OptimizeCandidateSummary,
+    OptimizeEvaluationSummary, OptimizeResult, OrderStatus, OutputKind, OutputValue, Outputs,
+    PositionSide, SignalRole, Value, VenueRiskSnapshot, WalkForwardResult, WalkForwardSweepResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {

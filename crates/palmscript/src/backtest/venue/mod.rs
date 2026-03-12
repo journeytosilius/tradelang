@@ -1,5 +1,7 @@
-mod binance_spot;
-mod binance_usdm;
+mod binance;
+mod bybit;
+mod common;
+mod gate;
 
 use crate::backtest::BacktestError;
 use crate::bytecode::OrderDecl;
@@ -45,12 +47,12 @@ pub(crate) fn validate_order_for_template(
     order: &OrderDecl,
 ) -> Result<(), BacktestError> {
     let result = match profile {
-        VenueOrderProfile::BinanceSpot => binance_spot::validate(order),
-        VenueOrderProfile::BinanceUsdm => binance_usdm::validate(order),
-        VenueOrderProfile::BybitSpot => binance_spot::validate(order),
-        VenueOrderProfile::BybitUsdtPerps => binance_usdm::validate(order),
-        VenueOrderProfile::GateSpot => binance_spot::validate(order),
-        VenueOrderProfile::GateUsdtPerps => binance_usdm::validate(order),
+        VenueOrderProfile::BinanceSpot => binance::validate_spot(order),
+        VenueOrderProfile::BinanceUsdm => binance::validate_usdm(order),
+        VenueOrderProfile::BybitSpot => bybit::validate_spot(order),
+        VenueOrderProfile::BybitUsdtPerps => bybit::validate_usdt_perps(order),
+        VenueOrderProfile::GateSpot => gate::validate_spot(order),
+        VenueOrderProfile::GateUsdtPerps => gate::validate_usdt_perps(order),
     };
     result.map_err(|reason| BacktestError::UnsupportedOrderForVenue {
         alias: alias.to_string(),
@@ -59,4 +61,38 @@ pub(crate) fn validate_order_for_template(
         kind: order.kind,
         reason,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VenueOrderProfile;
+    use crate::interval::SourceTemplate;
+
+    #[test]
+    fn profile_dispatch_matches_templates() {
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::BinanceSpot),
+            VenueOrderProfile::BinanceSpot
+        ));
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::BinanceUsdm),
+            VenueOrderProfile::BinanceUsdm
+        ));
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::BybitSpot),
+            VenueOrderProfile::BybitSpot
+        ));
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::BybitUsdtPerps),
+            VenueOrderProfile::BybitUsdtPerps
+        ));
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::GateSpot),
+            VenueOrderProfile::GateSpot
+        ));
+        assert!(matches!(
+            VenueOrderProfile::from_template(SourceTemplate::GateUsdtPerps),
+            VenueOrderProfile::GateUsdtPerps
+        ));
+    }
 }
