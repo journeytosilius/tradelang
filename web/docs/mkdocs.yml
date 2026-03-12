@@ -108,6 +108,14 @@ plugins:
             First Strategy: Primera Estrategia
             Language Overview: Resumen Del Lenguaje
             Cookbook: Recetario
+            Tooling: Herramientas
+            CLI: CLI
+            CLI Command Reference: Referencia De Comandos CLI
+            Market Mode: Modo Market
+            Backtesting: Backtesting
+            Browser IDE: IDE Del Navegador
+            Language Server: Servidor De Lenguaje
+            VS Code Extension: Extension De VS Code
             Multi-Interval Strategy: Estrategia Multi-Intervalo
             Exchange-Backed Sources: Fuentes Respaldadas Por Exchanges
             Cross-Source Spread: Spread Entre Fuentes
@@ -145,6 +153,14 @@ plugins:
             First Strategy: Primeira Estrategia
             Language Overview: Visao Geral Da Linguagem
             Cookbook: Receitas
+            Tooling: Ferramentas
+            CLI: CLI
+            CLI Command Reference: Referencia De Comandos CLI
+            Market Mode: Modo Market
+            Backtesting: Backtesting
+            Browser IDE: IDE Do Navegador
+            Language Server: Servidor De Linguagem
+            VS Code Extension: Extensao VS Code
             Multi-Interval Strategy: Estrategia Multi-Intervalo
             Exchange-Backed Sources: Fontes Com Dados De Exchange
             Cross-Source Spread: Spread Entre Fontes
@@ -182,6 +198,14 @@ plugins:
             First Strategy: Erste Strategie
             Language Overview: Sprachuberblick
             Cookbook: Rezepte
+            Tooling: Werkzeuge
+            CLI: CLI
+            CLI Command Reference: CLI-Befehlsreferenz
+            Market Mode: Market-Modus
+            Backtesting: Backtesting
+            Browser IDE: Browser-IDE
+            Language Server: Language Server
+            VS Code Extension: VS Code-Erweiterung
             Multi-Interval Strategy: Multi-Intervall-Strategie
             Exchange-Backed Sources: Quellen Mit Exchange-Daten
             Cross-Source Spread: Spread Zwischen Quellen
@@ -219,6 +243,14 @@ plugins:
             First Strategy: 最初の戦略
             Language Overview: 言語概要
             Cookbook: クックブック
+            Tooling: ツール
+            CLI: CLI
+            CLI Command Reference: CLI コマンドリファレンス
+            Market Mode: マーケットモード
+            Backtesting: バックテスト
+            Browser IDE: ブラウザ IDE
+            Language Server: 言語サーバー
+            VS Code Extension: VS Code 拡張機能
             Multi-Interval Strategy: マルチインターバル戦略
             Exchange-Backed Sources: 取引所連携ソース
             Cross-Source Spread: ソース間スプレッド
@@ -256,6 +288,14 @@ plugins:
             First Strategy: Premiere Strategie
             Language Overview: Vue Densemble Du Langage
             Cookbook: Recettes
+            Tooling: Outils
+            CLI: CLI
+            CLI Command Reference: Reference Des Commandes CLI
+            Market Mode: Mode Market
+            Backtesting: Backtesting
+            Browser IDE: IDE Navigateur
+            Language Server: Serveur De Langage
+            VS Code Extension: Extension VS Code
             Multi-Interval Strategy: Strategie Multi-Intervalle
             Exchange-Backed Sources: Sources Adossees Aux Exchanges
             Cross-Source Spread: Spread Entre Sources
@@ -290,6 +330,14 @@ nav:
           - Multi-Interval Strategy: learn/cookbook/multi-interval.md
           - Exchange-Backed Sources: learn/cookbook/exchange-backed-sources.md
           - Cross-Source Spread: learn/cookbook/cross-source-spread.md
+  - Tooling:
+      - CLI: tooling/cli.md
+      - CLI Command Reference: reference/cli.md
+      - Market Mode: tooling/market-mode.md
+      - Backtesting: tooling/backtesting.md
+      - Browser IDE: tooling/browser-ide.md
+      - Language Server: tooling/language-server.md
+      - VS Code Extension: tooling/vscode.md
   - Reference:
       - Overview: reference/overview.md
       - Lexical Structure: reference/lexical-structure.md

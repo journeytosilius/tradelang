@@ -55,4 +55,5 @@ The extension also tolerates the legacy non-Windows bundled filename
 `tradelang-lsp` so locally checked-out older bundles still activate the
 language server instead of falling back to syntax-only editing.
 
-See [Release Workflows](../contributing/releases.md) for the publishing pipeline.
+Contributor-only release workflow notes remain in the repository and are not
+part of the public documentation site.

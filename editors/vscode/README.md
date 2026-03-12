@@ -2,10 +2,13 @@
 
 This file is a short repository-local development note for the VS Code extension.
 
-The public PalmScript documentation site is language-focused and does not publish editor-stack internals. Private repo-only notes now live under:
+The public PalmScript documentation site now publishes the user-facing editor tooling pages here:
 
-- `../../web/docs/docs-private/tooling/vscode.md`
-- `../../web/docs/docs-private/tooling/language-server.md`
+- `../../web/docs/docs/tooling/vscode.md`
+- `../../web/docs/docs/tooling/language-server.md`
+
+The contributor-only release workflow note remains repo-local:
+
 - `../../web/docs/docs-private/contributing/releases.md`
 
 The extension now gets callable completion snippets such as `sar(...)` and

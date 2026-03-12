@@ -32,7 +32,7 @@ Start here:
 
 Repo-local tooling docs:
 
-- [Browser IDE](web/docs/docs-private/tooling/browser-ide.md)
+- [Browser IDE](web/docs/docs/tooling/browser-ide.md)
 
 ## Common Commands
 
