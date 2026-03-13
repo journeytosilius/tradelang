@@ -2,6 +2,8 @@ interval 1m
 
 source left = binance.spot("BTCUSDT")
 source right = gate.spot("BTC_USDT")
+execution left = binance.spot("BTCUSDT")
+execution right = gate.spot("BTC_USDT")
 
 portfolio_group "majors" = [left, right]
 max_positions = 2

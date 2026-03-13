@@ -72,6 +72,7 @@ palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- execution-oriented commands require at least one declared `execution` target in the script
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 
 ## `palmscript run walk-forward`
@@ -87,6 +88,7 @@ palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- execution-oriented commands require at least one declared `execution` target in the script
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 
 ## `palmscript run optimize`
@@ -140,6 +142,7 @@ Arguments and flags:
 Default safety behavior:
 
 - `walk-forward` is the default optimizer runner
+- execution-oriented commands require at least one declared `execution` target in the script
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
@@ -176,6 +179,7 @@ Arguments and flags:
 Notes:
 
 - `run paper` submits a persistent local paper session; it does not start the daemon itself
+- `run paper` requires at least one declared `execution` target in the script
 - the session snapshots the script source and queues it under the local execution state root
 - v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
 - `paper-status` and `paper-export` now include shared live quote snapshots for each execution alias: top-of-book bid/ask, derived mid price, and venue last/mark prices when available

@@ -5,6 +5,7 @@ This strategy runs on one-minute bars, computes two moving averages, and turns t
 ```palmscript
 interval 1m
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 
 let fast = ema(spot.close, 5)
 let slow = sma(spot.close, 10)
@@ -20,6 +21,7 @@ order entry long = market()
 
 - `interval 1m` sets the base execution clock
 - `source spot = ...` binds one exchange-backed market
+- `execution spot = ...` binds the venue target used by backtest, walk-forward, optimize, and paper execution commands
 - `spot.close` is a source-qualified base series
 - `let` binds reusable expressions
 - `export` emits a named output series
@@ -36,6 +38,7 @@ Open [https://palmscript.dev/](https://palmscript.dev/), paste the script into t
 ```palmscript
 interval 1d
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 use spot 1w
 
 let weekly_basis = ema(spot.1w.close, 8)

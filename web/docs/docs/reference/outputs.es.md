@@ -291,4 +291,4 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus parameter stability summaries
-
+- Execution-oriented CLI modes now require at least one declared `execution` target.

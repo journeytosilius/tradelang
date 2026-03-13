@@ -6,6 +6,7 @@
 ```palmscript
 interval 1m
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 
 let fast = ema(spot.close, 5)
 let slow = sma(spot.close, 10)
@@ -21,6 +22,7 @@ order entry long = market()
 
 - `interval 1m` はベース実行クロックを設定します
 - `source spot = ...` は一つの取引所バックド市場を束縛します
+- `execution spot = ...` は backtest、walk-forward、optimize、paper コマンドで使う実行 venue を束縛します
 - `spot.close` はソース修飾されたベースシリーズです
 - `let` は再利用可能な式を束縛します
 - `export` は名前付き出力シリーズを公開します
@@ -40,6 +42,7 @@ BTCUSDT 履歴に対して実行してください。診断パネルがクリー
 ```palmscript
 interval 1d
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 use spot 1w
 
 let weekly_basis = ema(spot.1w.close, 8)

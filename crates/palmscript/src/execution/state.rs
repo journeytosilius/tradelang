@@ -156,6 +156,12 @@ pub fn submit_paper_session(
     if compiled.program.declared_sources.is_empty() {
         return Err(ExecutionError::MissingSources);
     }
+    if compiled.program.declared_executions.is_empty() {
+        return Err(ExecutionError::InvalidConfig {
+            message: "paper execution requires at least one declared `execution` target"
+                .to_string(),
+        });
+    }
     let base_interval = compiled
         .program
         .base_interval
@@ -199,7 +205,7 @@ pub fn submit_paper_session(
         config: request.config,
         execution_sources: compiled
             .program
-            .execution_targets()
+            .declared_executions
             .iter()
             .map(|source| PaperExecutionSource {
                 alias: source.alias.clone(),

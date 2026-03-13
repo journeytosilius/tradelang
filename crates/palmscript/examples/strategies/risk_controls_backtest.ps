@@ -1,5 +1,6 @@
 interval 1h
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 
 input fast_len = 21 optimize(int, 8, 34, 1)
 input slow_len = 55 optimize(int, 21, 89, 1)

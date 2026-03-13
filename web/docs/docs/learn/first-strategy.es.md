@@ -6,6 +6,7 @@ convierte ese cruce en un flujo simple de entrada y salida solo en largo.
 ```palmscript
 interval 1m
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 
 let fast = ema(spot.close, 5)
 let slow = sma(spot.close, 10)
@@ -21,6 +22,7 @@ order entry long = market()
 
 - `interval 1m` fija el reloj base de ejecucion
 - `source spot = ...` enlaza un mercado respaldado por un exchange
+- `execution spot = ...` enlaza el objetivo de venue usado por backtest, walk-forward, optimize y paper
 - `spot.close` es una serie base calificada por fuente
 - `let` enlaza expresiones reutilizables
 - `export` publica una serie de salida con nombre
@@ -41,6 +43,7 @@ senales del cruce.
 ```palmscript
 interval 1d
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 use spot 1w
 
 let weekly_basis = ema(spot.1w.close, 8)

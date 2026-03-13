@@ -304,3 +304,4 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - Order constructors accept named arguments in addition to the legacy positional form.
 - `venue = <execution_alias>` binds an `order`, `protect`, or `target` role to a declared execution alias.
 - Named order arguments cannot be mixed with positional arguments in the same constructor call.
+- Execution-oriented CLI modes now require at least one declared `execution` target.

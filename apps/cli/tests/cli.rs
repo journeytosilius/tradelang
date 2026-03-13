@@ -7,9 +7,30 @@ use predicates::prelude::*;
 use serde_json::Value;
 use tempfile::tempdir;
 
+fn mirror_execution_decls(contents: &str) -> String {
+    if contents
+        .lines()
+        .any(|line| line.trim_start().starts_with("execution "))
+    {
+        return contents.to_string();
+    }
+
+    let mut out = Vec::new();
+    for line in contents.lines() {
+        out.push(line.to_string());
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("source ") {
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            out.push(format!("{indent}execution {rest}"));
+        }
+    }
+    out.join("\n")
+}
+
 fn write_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = dir.join(name);
-    fs::write(&path, contents).expect("writes test file");
+    fs::write(&path, mirror_execution_decls(contents)).expect("writes test file");
     path
 }
 
@@ -1126,7 +1147,7 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
         "1704067440000",
     ]);
     cmd.assert().failure().stderr(predicate::str::contains(
-        "this mode requires --execution-source when the script declares multiple `source`s",
+        "this mode requires --execution-source when the script declares multiple `execution` targets",
     ));
 }
 

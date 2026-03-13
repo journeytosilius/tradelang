@@ -12,14 +12,16 @@ use palmscript::{
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
 
-fn optimize_source() -> &'static str {
-    "interval 1m
+fn optimize_source() -> String {
+    support::mirror_execution_decls(
+        "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
 entry long = spot.close > spot.close[1] + threshold
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true"
+exit short = true",
+    )
 }
 
 fn optimize_runtime() -> palmscript::SourceRuntimeConfig {
@@ -123,7 +125,7 @@ impl OptimizeProgressListener for CancelAfterCheckpoint {
 #[test]
 fn optimize_walk_forward_ranks_candidates() {
     let result = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -197,7 +199,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
         base_input_overrides: BTreeMap::new(),
     };
     let err = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config.clone(),
@@ -213,7 +215,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
         values: vec![0.0, 100.0],
     }];
     let result_one = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -224,7 +226,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
     )
     .expect("optimize should succeed");
     let result_many = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -242,7 +244,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
 #[test]
 fn optimize_best_candidate_round_trips_into_input_overrides() {
     let result = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -267,23 +269,25 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
     .expect("optimize should succeed");
 
     let compiled =
-        compile_with_input_overrides(optimize_source(), &result.best_candidate.input_overrides)
+        compile_with_input_overrides(&optimize_source(), &result.best_candidate.input_overrides)
             .expect("best candidate overrides should compile");
     assert_eq!(compiled.program.declared_sources.len(), 1);
 }
 
 #[test]
 fn optimize_respects_stepped_param_spaces() {
-    let source = "interval 1m
+    let source = support::mirror_execution_decls(
+        "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
 input offset = 0
 entry long = spot.close > spot.close[1] + threshold + offset
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true";
+exit short = true",
+    );
     let result = run_optimize_with_source(
-        source,
+        &source,
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -337,7 +341,7 @@ exit short = true";
 #[test]
 fn optimize_rejects_missing_walk_forward_config() {
     let err = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -366,7 +370,7 @@ fn optimize_rejects_missing_walk_forward_config() {
 #[test]
 fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
     let result = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         OptimizeConfig {
@@ -420,7 +424,7 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
 fn optimize_resume_from_pending_batch_matches_fresh_run() {
     let config = backtest_optimize_config();
     let baseline = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config.clone(),
@@ -429,7 +433,7 @@ fn optimize_resume_from_pending_batch_matches_fresh_run() {
 
     let mut capture = PendingBatchCapture::default();
     let err = run_optimize_with_source_resume(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config.clone(),
@@ -440,7 +444,7 @@ fn optimize_resume_from_pending_batch_matches_fresh_run() {
     assert!(matches!(err, OptimizeError::ProgressCallback { .. }));
 
     let resumed = run_optimize_with_source_resume(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config,
@@ -461,7 +465,7 @@ fn optimize_resume_from_pending_batch_matches_fresh_run() {
 fn optimize_resume_from_completed_candidates_matches_fresh_run() {
     let config = backtest_optimize_config();
     let baseline = run_optimize_with_source(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config.clone(),
@@ -470,7 +474,7 @@ fn optimize_resume_from_completed_candidates_matches_fresh_run() {
 
     let mut capture = CancelAfterCheckpoint::default();
     let err = run_optimize_with_source_resume(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config.clone(),
@@ -483,7 +487,7 @@ fn optimize_resume_from_completed_candidates_matches_fresh_run() {
     assert_eq!(capture.checkpoint_count, 1);
 
     let resumed = run_optimize_with_source_resume(
-        optimize_source(),
+        &optimize_source(),
         optimize_runtime(),
         VmLimits::default(),
         config,

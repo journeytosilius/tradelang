@@ -89,7 +89,7 @@ The backtest, walk-forward, and optimize commands all accept:
 
 Use `summary` for normal iterative tuning. Use `full-trace` when you want one typed per-bar decision trace per execution bar so an agent can inspect why signals were queued, blocked, ignored, expired, or forced out.
 
-The same backtest-oriented commands also accept repeated `--execution-source` flags. Passing one alias keeps the legacy single-position mode. Passing multiple aliases activates portfolio mode, which evaluates the compiled strategy logic for each selected execution alias under one shared equity ledger.
+The same backtest-oriented commands also require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI selects it automatically. Repeated `--execution-source` flags still activate portfolio mode, which evaluates the compiled strategy logic for each selected execution alias under one shared equity ledger.
 
 Portfolio scripts can declare compile-time caps directly in the source:
 

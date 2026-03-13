@@ -133,13 +133,14 @@ Rules:
 - order declarations are top-level only
 - there may be at most one `order` declaration per signal role
 - missing `order` declarations default to `market()`
-- `execution` declarations are optional top-level venue bindings that keep execution routing separate from market-data `source` declarations
+- `execution` declarations are top-level venue bindings that keep execution routing separate from market-data `source` declarations
 - order constructors support the legacy positional form and the named-argument form
 - named order arguments may not be mixed with positional arguments in the same constructor call
 - `venue = <execution_alias>` binds that order role to a declared execution alias
 - numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series
 - `tif.<variant>` and `trigger_ref.<variant>` are typed enum literals checked at compile time
 - venue-specific compatibility checks run when the backtest starts, based on the selected execution target
+- execution-oriented CLI commands require at least one declared `execution` target
 
 ## Attached Exits
 

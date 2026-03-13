@@ -650,6 +650,8 @@ pub use walk_forward_sweep::{
 pub enum BacktestError {
     #[error("runtime failed during backtest: {0}")]
     Runtime(#[from] RuntimeError),
+    #[error("backtest requires at least one declared `execution` target")]
+    MissingExecutionDeclarations,
     #[error("execution source `{alias}` is not declared in the compiled program")]
     UnknownExecutionSource { alias: String },
     #[error("missing base feed for execution source `{alias}`")]

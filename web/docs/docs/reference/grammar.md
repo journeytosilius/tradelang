@@ -173,9 +173,10 @@ The grammar does not by itself make a program valid. The implementation addition
 - `max_positions`, `max_long_positions`, and `max_short_positions` require a compile-time non-negative whole-number scalar expression
 - `max_gross_exposure_pct` and `max_net_exposure_pct` require a compile-time non-negative finite numeric scalar expression
 - `portfolio_group` aliases must refer to declared `source` bindings and group names must be unique
-- aliases must be unique across declared `source` and `execution` bindings
+- matching `source` and `execution` aliases may mirror each other when the template and symbol are the same; other aliases must remain unique
 - order constructors accept either the legacy positional form or the named-argument form, but not both at once
 - `venue = <execution_alias>` requires a declared `execution` alias
+- execution-oriented CLI modes require at least one declared `execution` target
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
 - staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role

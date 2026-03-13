@@ -50,6 +50,13 @@ For runnable public examples and workflow guidance, use the linked docs pages ab
 
 When you inspect these strategies from the CLI, `run backtest`, `run walk-forward`, and `run optimize` now support `--diagnostics summary|full-trace`. Use `summary` for the normal compact diagnostics payload and `full-trace` when you want one typed per-bar decision trace record per execution bar.
 
+Execution-oriented commands now require at least one declared `execution`
+target in the script. The checked-in backtest and paper examples already
+declare those execution aliases explicitly. If a script declares exactly one
+`execution` alias, the CLI uses it automatically. If it declares multiple
+execution aliases, pass `--execution-source <alias>` or repeat that flag for
+portfolio mode.
+
 The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
 
 ```bash

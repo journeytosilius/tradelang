@@ -234,7 +234,7 @@ fn resolve_perp_contexts(
     for alias in execution_aliases {
         let source = compiled
             .program
-            .declared_sources
+            .declared_executions
             .iter()
             .find(|source| source.alias == *alias)
             .ok_or_else(|| ExecutionError::InvalidConfig {
@@ -343,12 +343,18 @@ pub(crate) fn resolve_execution_sources<'a>(
     compiled: &'a CompiledProgram,
     aliases: &[String],
 ) -> Result<Vec<&'a DeclaredMarketSource>, ExecutionError> {
+    if compiled.program.declared_executions.is_empty() {
+        return Err(ExecutionError::InvalidConfig {
+            message: "paper execution requires at least one declared `execution` target"
+                .to_string(),
+        });
+    }
     aliases
         .iter()
         .map(|alias| {
             compiled
                 .program
-                .execution_targets()
+                .declared_executions
                 .iter()
                 .find(|source| source.alias == *alias)
                 .ok_or_else(|| ExecutionError::InvalidConfig {

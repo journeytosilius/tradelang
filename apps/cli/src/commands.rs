@@ -716,10 +716,14 @@ pub(crate) fn resolve_execution_source_aliases(
     if !provided.is_empty() {
         return Ok(provided.to_vec());
     }
-    match compiled.program.execution_targets() {
+    match compiled.program.declared_executions.as_slice() {
         [execution] => Ok(vec![execution.alias.clone()]),
+        [] => Err(
+            "this mode requires at least one declared `execution` target; add `execution <alias> = exchange.market(\"SYMBOL\")` to the script"
+                .to_string(),
+        ),
         _ => Err(
-            "this mode requires --execution-source when the script declares multiple `source`s or `execution`s"
+            "this mode requires --execution-source when the script declares multiple `execution` targets"
                 .to_string(),
         ),
     }

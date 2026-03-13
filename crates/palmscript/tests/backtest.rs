@@ -2,14 +2,19 @@ use palmscript::exchange::binance::{
     UsdmRiskSnapshot as BinanceUsdmRiskSnapshot, UsdmRiskSource as BinanceUsdmRiskSource,
 };
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, BacktestError, Bar, DiagnosticsDetailMode,
-    Interval, MarkPriceBasis, OrderEndReason, OrderKind, OrderStatus, PerpBacktestConfig,
-    PerpBacktestContext, PerpMarginMode, RiskTier, SignalRole, SizeMode, SourceFeed,
-    SourceRuntimeConfig, TradeExitClassification, VenueRiskSnapshot, VmLimits,
+    compile as compile_script, run_backtest_with_sources, BacktestConfig, BacktestError, Bar,
+    CompileError, CompiledProgram, DiagnosticsDetailMode, Interval, MarkPriceBasis, OrderEndReason,
+    OrderKind, OrderStatus, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode, RiskTier,
+    SignalRole, SizeMode, SourceFeed, SourceRuntimeConfig, TradeExitClassification,
+    VenueRiskSnapshot, VmLimits,
 };
 
 #[path = "support/mod.rs"]
 mod support;
+
+fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
+    compile_script(&support::mirror_execution_decls(source))
+}
 
 fn bar(time: i64, open: f64, close: f64) -> Bar {
     Bar {

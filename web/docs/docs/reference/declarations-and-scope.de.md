@@ -278,6 +278,7 @@ Regeln:
 
 - PalmScript now reserves `execution` as a top-level declaration separate from `source`.
 - `execution exec = bybit.usdt_perps("BTCUSDT")` declares an execution target without creating new market series.
-- Aliases must stay unique across `source` and `execution` declarations.
+- Matching `source` and `execution` aliases may mirror each other when the template and symbol are the same.
 - Order constructors now accept named arguments, and `venue = exec` binds that order role to a declared execution alias.
 - Positional and named order arguments cannot be mixed in the same order constructor call.
+- Execution-oriented CLI modes now require at least one declared `execution` target.

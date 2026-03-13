@@ -52,7 +52,7 @@ source bb = bybit.usdt_perps("BTCUSDT")
 Rules:
 
 - the alias must be an identifier
-- the alias must be unique across all declared sources and executions
+- the alias must be unique across declared sources, unless a matching `execution` declaration intentionally mirrors the same alias, template, and symbol
 - the template must resolve to one of the supported source templates
 - the symbol argument must be a string literal
 
@@ -68,11 +68,12 @@ execution exec = bybit.usdt_perps("BTCUSDT")
 Rules:
 
 - the alias must be an identifier
-- the alias must be unique across all declared sources and executions
+- the alias must be unique across declared executions, unless it intentionally mirrors a declared source with the same alias, template, and symbol
 - the template must resolve to one of the supported exchange-backed templates
 - the symbol argument must be a string literal
 - `execution` declarations do not create market series bindings
 - orders may target a declared execution alias with `venue = <alias>`
+- execution-oriented CLI commands require at least one declared `execution` target
 - scripts still require at least one declared `source` for market data
 
 ## `use` Declarations

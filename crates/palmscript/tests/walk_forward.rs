@@ -1,12 +1,17 @@
 mod support;
 
 use palmscript::{
-    compile, run_walk_forward_sweep_with_source, run_walk_forward_with_sources, BacktestConfig,
-    BacktestError, DiagnosticsDetailMode, InputSweepDefinition, Interval, VmLimits,
-    WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepObjective,
+    compile as compile_script, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
+    BacktestConfig, BacktestError, CompileError, CompiledProgram, DiagnosticsDetailMode,
+    InputSweepDefinition, Interval, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
+    WalkForwardSweepObjective,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
+
+fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
+    compile_script(&support::mirror_execution_decls(source))
+}
 
 #[test]
 fn walk_forward_builds_rolling_out_of_sample_segments() {
@@ -122,13 +127,15 @@ exit short = true";
 
 #[test]
 fn walk_forward_sweep_ranks_input_candidates() {
-    let source = "interval 1m
+    let source = support::mirror_execution_decls(
+        "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0
 entry long = spot.close > spot.close[1] + threshold
 entry short = false
 exit long = spot.close < spot.close[1]
-exit short = true";
+exit short = true",
+    );
     let runtime = source_runtime_config(
         Interval::Min1,
         flat_bars(
@@ -140,7 +147,7 @@ exit short = true";
     );
 
     let result = run_walk_forward_sweep_with_source(
-        source,
+        &source,
         runtime,
         VmLimits::default(),
         WalkForwardSweepConfig {

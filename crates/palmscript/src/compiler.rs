@@ -388,9 +388,15 @@ impl<'a> Analyzer<'a> {
 
         let mut execution_aliases = BTreeSet::new();
         for execution in &ast.strategy_intervals.executions {
-            if source_aliases.contains(execution.alias.as_str())
-                || !execution_aliases.insert(execution.alias.as_str())
-            {
+            let conflicts_with_source = self
+                .analysis
+                .declared_sources
+                .iter()
+                .find(|source| source.alias == execution.alias)
+                .is_some_and(|source| {
+                    source.template != execution.template || source.symbol != execution.symbol
+                });
+            if conflicts_with_source || !execution_aliases.insert(execution.alias.as_str()) {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!("duplicate execution alias `{}`", execution.alias),

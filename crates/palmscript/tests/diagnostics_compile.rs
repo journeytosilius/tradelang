@@ -361,13 +361,14 @@ fn execution_aliases_must_be_unique_and_orders_must_reference_declared_execution
     let duplicate_execution = compile_diagnostics(
         "interval 1m
 source left = binance.spot(\"BTCUSDT\")
-execution left = bybit.usdt_perps(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
 entry long = left.close > left.close[1]
 exit long = false
 plot(left.close)",
     );
     assert!(duplicate_execution.iter().any(|diag| {
-        diag.0 == DiagnosticKind::Type && diag.1.contains("duplicate execution alias `left`")
+        diag.0 == DiagnosticKind::Type && diag.1.contains("duplicate execution alias `exec`")
     }));
 
     let unknown_execution = compile_diagnostics(

@@ -127,6 +127,7 @@ Arguments and flags:
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--runner`: optimize evaluation mode; defaults to `walk-forward`
 - `--execution-source <alias>`: execution alias selection; repeat it to activate portfolio mode
+- execution-oriented commands require at least one declared `execution` target in the script
 - `--train-bars <N>`: in-sample bars per walk-forward segment
 - `--test-bars <N>`: out-of-sample bars per walk-forward segment
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
@@ -150,6 +151,7 @@ Default safety behavior:
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
+- execution-oriented commands require at least one declared `execution` target in the script
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
 - the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 
@@ -171,6 +173,7 @@ Arguments and flags:
 
 - `<script.ps>`: path to the PalmScript source file
 - `--execution-source <alias>`: execution alias selection; repeat it to activate shared-equity portfolio paper mode
+- `run paper` requires at least one declared `execution` target in the script
 - `--initial-capital <N>`: paper account starting equity; default `10000`
 - `--fee-bps <N>`: fee model in basis points; default `5`
 - `--slippage-bps <N>`: slippage model in basis points; default `2`

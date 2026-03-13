@@ -54,7 +54,7 @@ Modes:
 - `--diagnostics summary` keeps the default compact diagnostics payload
 - `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
 
-When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
+Execution-oriented commands require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
 
 Execution-routed order example:
 

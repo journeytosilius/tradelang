@@ -41,6 +41,9 @@ pub(crate) fn resolve_execution_sources(
     compiled: &CompiledProgram,
     aliases: &[String],
 ) -> Result<Vec<ExecutionSource>, BacktestError> {
+    if compiled.program.declared_executions.is_empty() {
+        return Err(BacktestError::MissingExecutionDeclarations);
+    }
     aliases
         .iter()
         .map(|alias| resolve_execution_source(compiled, alias))
@@ -51,14 +54,30 @@ pub(crate) fn resolve_execution_source(
     compiled: &CompiledProgram,
     alias: &str,
 ) -> Result<ExecutionSource, BacktestError> {
+    if compiled.program.declared_executions.is_empty() {
+        return Err(BacktestError::MissingExecutionDeclarations);
+    }
     compiled
         .program
-        .execution_targets()
+        .declared_executions
         .iter()
         .find(|source| source.alias == alias)
-        .map(|source| ExecutionSource {
-            source_id: source.id,
-            template: source.template,
+        .map(|source| {
+            let feed_source_id = compiled
+                .program
+                .declared_sources
+                .iter()
+                .find(|candidate| {
+                    candidate.alias == source.alias
+                        || (candidate.template == source.template
+                            && candidate.symbol == source.symbol)
+                })
+                .map(|candidate| candidate.id)
+                .unwrap_or(source.id);
+            ExecutionSource {
+                source_id: feed_source_id,
+                template: source.template,
+            }
         })
         .ok_or_else(|| BacktestError::UnknownExecutionSource {
             alias: alias.to_string(),

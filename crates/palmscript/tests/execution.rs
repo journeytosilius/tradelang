@@ -60,6 +60,7 @@ fn mock_binance_last_price(server: &mut Server) {
 fn source() -> &'static str {
     "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
 entry long = spot.close > spot.close[1]
 entry short = false
 exit long = false

@@ -407,15 +407,11 @@ pub struct Program {
 
 impl Program {
     pub fn execution_targets(&self) -> &[DeclaredExecutionTarget] {
-        if self.declared_executions.is_empty() {
-            &self.declared_sources
-        } else {
-            &self.declared_executions
-        }
+        &self.declared_executions
     }
 
     pub fn find_execution_target(&self, alias: &str) -> Option<&DeclaredExecutionTarget> {
-        self.execution_targets()
+        self.declared_executions
             .iter()
             .find(|source| source.alias == alias)
     }

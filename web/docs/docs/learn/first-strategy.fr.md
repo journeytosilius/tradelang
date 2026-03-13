@@ -7,6 +7,7 @@ long only.
 ```palmscript
 interval 1m
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 
 let fast = ema(spot.close, 5)
 let slow = sma(spot.close, 10)
@@ -22,6 +23,7 @@ order entry long = market()
 
 - `interval 1m` fixe l'horloge d'execution de base
 - `source spot = ...` relie un marche adosse a un exchange
+- `execution spot = ...` relie la cible de venue utilisee par les commandes backtest, walk-forward, optimize et paper
 - `spot.close` est une serie de base qualifiee par source
 - `let` lie des expressions reutilisables
 - `export` publie une serie de sortie nommee
@@ -42,6 +44,7 @@ partir des signaux de croisement.
 ```palmscript
 interval 1d
 source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
 use spot 1w
 
 let weekly_basis = ema(spot.1w.close, 8)

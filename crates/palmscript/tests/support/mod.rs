@@ -40,6 +40,27 @@ pub const HOUR_MS: i64 = 60 * MINUTE_MS;
 pub const DAY_MS: i64 = 24 * HOUR_MS;
 pub const WEEK_MS: i64 = 7 * DAY_MS;
 
+pub fn mirror_execution_decls(source: &str) -> String {
+    if source
+        .lines()
+        .any(|line| line.trim_start().starts_with("execution "))
+    {
+        return source.to_string();
+    }
+
+    let mut out = Vec::new();
+    for line in source.lines() {
+        out.push(line.to_string());
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("source ") {
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            out.push(format!("{indent}execution {rest}"));
+        }
+    }
+    out.join("\n")
+}
+
 pub fn with_single_source_interval(source: &str) -> String {
     with_single_source_intervals("1m", &[], source)
 }

@@ -1,6 +1,7 @@
 interval 1m
 
 source bb = bybit.usdt_perps("BTCUSDT")
+execution bb = bybit.usdt_perps("BTCUSDT")
 use bb 1h
 
 trigger long_entry = bb.close > bb.close[1] and bb.close > bb.1h.close

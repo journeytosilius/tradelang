@@ -1,6 +1,7 @@
 interval 1m
 
 source gt = gate.usdt_perps("BTC_USDT")
+execution gt = gate.usdt_perps("BTC_USDT")
 use gt 4h
 
 trigger long_entry = gt.close > gt.close[1] and gt.close > gt.4h.close
