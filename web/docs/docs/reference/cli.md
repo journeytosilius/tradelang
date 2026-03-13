@@ -61,7 +61,7 @@ Requirements:
 
 ```bash
 palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
-  [--execution-source <alias>] \
+  [--execution-source <alias>]... \
   [--initial-capital <N>] \
   [--fee-bps <N>] \
   [--slippage-bps <N>] \
@@ -72,12 +72,14 @@ palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 
 ## `palmscript run walk-forward`
 
 ```bash
 palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
   --train-bars <N> --test-bars <N> [--step-bars <N>] \
+  [--execution-source <alias>]... \
   [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
@@ -85,12 +87,14 @@ palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
 
 ## `palmscript run optimize`
 
 ```bash
 palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--runner walk-forward|backtest] \
+  [--execution-source <alias>]... \
   [--train-bars <N>] \
   [--test-bars <N>] \
   [--step-bars <N>] \
@@ -116,6 +120,7 @@ Arguments and flags:
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--runner`: optimize evaluation mode; defaults to `walk-forward`
+- `--execution-source <alias>`: execution alias selection; repeat it to activate portfolio mode
 - `--train-bars <N>`: in-sample bars per walk-forward segment
 - `--test-bars <N>`: out-of-sample bars per walk-forward segment
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
@@ -138,6 +143,8 @@ Default safety behavior:
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
+- repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
+- portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
 - the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 
 ## `palmscript dump-bytecode`

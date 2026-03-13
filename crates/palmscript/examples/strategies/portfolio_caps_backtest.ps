@@ -1,0 +1,35 @@
+interval 1m
+
+source left = binance.spot("BTCUSDT")
+source right = gate.spot("BTC_USDT")
+
+portfolio_group "majors" = [left, right]
+max_positions = 2
+max_long_positions = 2
+max_short_positions = 0
+max_gross_exposure_pct = 0.8
+max_net_exposure_pct = 0.8
+
+input fast_len = 8 optimize(int, 5, 21, 1)
+input slow_len = 21 optimize(int, 13, 55, 1)
+input entry_size = 0.35 optimize(float, 0.2, 0.45, 0.05)
+
+let left_fast = ema(left.close, fast_len)
+let left_slow = ema(left.close, slow_len)
+let right_fast = ema(right.close, fast_len)
+let right_slow = ema(right.close, slow_len)
+let spread = left_fast - right_fast
+let momentum = left_fast > left_slow and right_fast > right_slow
+
+entry long = momentum and left.close > left.close[1]
+entry short = false
+exit long = spread < spread[1]
+exit short = false
+
+order entry long = market()
+size entry long = entry_size
+
+export spread_value = spread
+export momentum_state = momentum
+
+plot(spread)

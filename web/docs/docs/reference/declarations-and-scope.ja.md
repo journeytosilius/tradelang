@@ -228,3 +228,10 @@ input weekly_bias = 21 optimize(choice, 13, 21, 34)
 - `optimize(float, low, high[, step])` は、包括範囲内の有限なデフォルト値を要求します
 - `optimize(choice, v1, v2, ...)` は、デフォルト値が列挙された数値候補のどれかであることを要求します
 - このメタデータは最適化探索空間を記述するだけで、コンパイル後の `input` 値自体は変えません
+
+## Latest Portfolio Additions
+
+- PalmScript now reserves `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group`.
+- These declarations are top-level only and compile-time only.
+- Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
+- Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.

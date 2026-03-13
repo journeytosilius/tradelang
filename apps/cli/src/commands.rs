@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 use std::thread;
@@ -26,6 +27,13 @@ use crate::format::{
     render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
     render_walk_forward_sweep_text, render_walk_forward_text,
 };
+
+type ResolvedPerpContexts = (
+    Option<PerpBacktestConfig>,
+    Option<palmscript::PerpBacktestContext>,
+    BTreeMap<String, palmscript::PerpBacktestContext>,
+);
+
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Docs(args) => print_docs(args),
@@ -89,13 +97,23 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
     if compiled.program.declared_sources.is_empty() {
         return Err("backtest mode requires at least one `source` declaration".to_string());
     }
-    let execution_source_alias =
-        resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
+    let execution_source_aliases =
+        resolve_execution_source_aliases(&compiled, &args.execution_source)?;
+    let execution_source_alias = execution_source_aliases[0].clone();
     let endpoints = ExchangeEndpoints::from_env();
     let runtime = fetch_source_runtime_config(&compiled, args.from, args.to, &endpoints)
         .map_err(|err| format!("backtest mode error: {err}"))?;
-    let (perp, perp_context) =
-        resolve_perp_backtest_context(&compiled, &execution_source_alias, &args, &endpoints)?;
+    let (perp, perp_context, portfolio_perp_contexts) = resolve_backtest_perp_contexts(
+        &compiled,
+        &execution_source_aliases,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
+        &endpoints,
+    )?;
     let result = run_backtest_with_sources(
         &compiled,
         runtime,
@@ -105,12 +123,18 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
         },
         BacktestConfig {
             execution_source_alias,
+            portfolio_execution_aliases: if execution_source_aliases.len() > 1 {
+                execution_source_aliases.clone()
+            } else {
+                Vec::new()
+            },
             initial_capital: args.initial_capital,
             fee_bps: args.fee_bps,
             slippage_bps: args.slippage_bps,
             diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             perp,
             perp_context,
+            portfolio_perp_contexts,
         },
     )
     .map_err(|err| format!("backtest mode error: {err}"))?;
@@ -131,13 +155,23 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
     if compiled.program.declared_sources.is_empty() {
         return Err("walk-forward mode requires at least one `source` declaration".to_string());
     }
-    let execution_source_alias =
-        resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
+    let execution_source_aliases =
+        resolve_execution_source_aliases(&compiled, &args.execution_source)?;
+    let execution_source_alias = execution_source_aliases[0].clone();
     let endpoints = ExchangeEndpoints::from_env();
     let runtime = fetch_source_runtime_config(&compiled, args.from, args.to, &endpoints)
         .map_err(|err| format!("walk-forward mode error: {err}"))?;
-    let (perp, perp_context) =
-        resolve_walk_forward_perp_context(&compiled, &execution_source_alias, &args, &endpoints)?;
+    let (perp, perp_context, portfolio_perp_contexts) = resolve_backtest_perp_contexts(
+        &compiled,
+        &execution_source_aliases,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
+        &endpoints,
+    )?;
     let result = run_walk_forward_with_sources(
         &compiled,
         runtime,
@@ -148,12 +182,18 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
         WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias,
+                portfolio_execution_aliases: if execution_source_aliases.len() > 1 {
+                    execution_source_aliases.clone()
+                } else {
+                    Vec::new()
+                },
                 initial_capital: args.initial_capital,
                 fee_bps: args.fee_bps,
                 slippage_bps: args.slippage_bps,
                 diagnostics_detail: map_diagnostics_detail(args.diagnostics),
                 perp,
                 perp_context,
+                portfolio_perp_contexts,
             },
             diagnostics_detail: map_diagnostics_detail(args.diagnostics),
             train_bars: args.train_bars,
@@ -181,15 +221,21 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
             "walk-forward sweep mode requires at least one `source` declaration".to_string(),
         );
     }
-    let execution_source_alias =
-        resolve_execution_source_alias(&compiled, args.execution_source.clone())?;
+    let execution_source_aliases =
+        resolve_execution_source_aliases(&compiled, &args.execution_source)?;
+    let execution_source_alias = execution_source_aliases[0].clone();
     let endpoints = ExchangeEndpoints::from_env();
     let runtime = fetch_source_runtime_config(&compiled, args.from, args.to, &endpoints)
         .map_err(|err| format!("walk-forward sweep mode error: {err}"))?;
-    let (perp, perp_context) = resolve_walk_forward_sweep_perp_context(
+    let (perp, perp_context, portfolio_perp_contexts) = resolve_backtest_perp_contexts(
         &compiled,
-        &execution_source_alias,
-        &args,
+        &execution_source_aliases,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
         &endpoints,
     )?;
     let result = run_walk_forward_sweep_with_source(
@@ -203,12 +249,18 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
             walk_forward: WalkForwardConfig {
                 backtest: BacktestConfig {
                     execution_source_alias,
+                    portfolio_execution_aliases: if execution_source_aliases.len() > 1 {
+                        execution_source_aliases.clone()
+                    } else {
+                        Vec::new()
+                    },
                     initial_capital: args.initial_capital,
                     fee_bps: args.fee_bps,
                     slippage_bps: args.slippage_bps,
                     diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                     perp,
                     perp_context,
+                    portfolio_perp_contexts,
                 },
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: args.train_bars,
@@ -249,21 +301,37 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
     }
 
     let params = resolve_optimize_params(&args, preset.as_ref(), &base_compiled)?;
-    let execution_source_alias =
-        resolve_execution_source_alias(&base_compiled, args.execution_source.clone())?;
+    let execution_source_aliases =
+        resolve_execution_source_aliases(&base_compiled, &args.execution_source)?;
+    let execution_source_alias = execution_source_aliases[0].clone();
     let endpoints = ExchangeEndpoints::from_env();
     let runtime = fetch_source_runtime_config(&base_compiled, args.from, args.to, &endpoints)
         .map_err(|err| format!("optimize mode error: {err}"))?;
-    let (perp, perp_context) =
-        resolve_optimize_perp_context(&base_compiled, &execution_source_alias, &args, &endpoints)?;
+    let (perp, perp_context, portfolio_perp_contexts) = resolve_backtest_perp_contexts(
+        &base_compiled,
+        &execution_source_aliases,
+        PerpCliOptions {
+            from: args.from,
+            to: args.to,
+            leverage: args.leverage,
+            margin_mode: args.margin_mode,
+        },
+        &endpoints,
+    )?;
     let backtest = BacktestConfig {
         execution_source_alias,
+        portfolio_execution_aliases: if execution_source_aliases.len() > 1 {
+            execution_source_aliases.clone()
+        } else {
+            Vec::new()
+        },
         initial_capital: args.initial_capital,
         fee_bps: args.fee_bps,
         slippage_bps: args.slippage_bps,
         diagnostics_detail: map_diagnostics_detail(args.diagnostics),
         perp,
         perp_context,
+        portfolio_perp_contexts,
     };
     let walk_forward = match map_optimize_runner(args.runner) {
         OptimizeRunner::WalkForward => Some(WalkForwardConfig {
@@ -389,15 +457,15 @@ pub(crate) fn load_preset(
     Ok(Some(preset))
 }
 
-pub(crate) fn resolve_execution_source_alias(
+pub(crate) fn resolve_execution_source_aliases(
     compiled: &CompiledProgram,
-    provided: Option<String>,
-) -> Result<String, String> {
-    if let Some(alias) = provided {
-        return Ok(alias);
+    provided: &[String],
+) -> Result<Vec<String>, String> {
+    if !provided.is_empty() {
+        return Ok(provided.to_vec());
     }
     match compiled.program.declared_sources.as_slice() {
-        [source] => Ok(source.alias.clone()),
+        [source] => Ok(vec![source.alias.clone()]),
         _ => Err(
             "this mode requires --execution-source when the script declares multiple `source`s"
                 .to_string(),
@@ -405,132 +473,42 @@ pub(crate) fn resolve_execution_source_alias(
     }
 }
 
-fn resolve_perp_backtest_context(
+fn resolve_backtest_perp_contexts(
     compiled: &CompiledProgram,
-    execution_source_alias: &str,
-    args: &BacktestRunArgs,
+    execution_source_aliases: &[String],
+    options: PerpCliOptions,
     endpoints: &ExchangeEndpoints,
-) -> Result<
-    (
-        Option<PerpBacktestConfig>,
-        Option<palmscript::PerpBacktestContext>,
-    ),
-    String,
-> {
-    let source = compiled
-        .program
-        .declared_sources
-        .iter()
-        .find(|source| source.alias == execution_source_alias)
-        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
-    resolve_perp_context(
-        source.template,
-        source,
-        compiled.program.base_interval,
-        PerpCliOptions {
-            from: args.from,
-            to: args.to,
-            leverage: args.leverage,
-            margin_mode: args.margin_mode,
-        },
-        endpoints,
-    )
-}
+) -> Result<ResolvedPerpContexts, String> {
+    let mut shared_perp = None;
+    let mut single_context = None;
+    let mut portfolio_perp_contexts = BTreeMap::new();
 
-fn resolve_walk_forward_perp_context(
-    compiled: &CompiledProgram,
-    execution_source_alias: &str,
-    args: &WalkForwardRunArgs,
-    endpoints: &ExchangeEndpoints,
-) -> Result<
-    (
-        Option<PerpBacktestConfig>,
-        Option<palmscript::PerpBacktestContext>,
-    ),
-    String,
-> {
-    let source = compiled
-        .program
-        .declared_sources
-        .iter()
-        .find(|source| source.alias == execution_source_alias)
-        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
-    resolve_perp_context(
-        source.template,
-        source,
-        compiled.program.base_interval,
-        PerpCliOptions {
-            from: args.from,
-            to: args.to,
-            leverage: args.leverage,
-            margin_mode: args.margin_mode,
-        },
-        endpoints,
-    )
-}
+    for alias in execution_source_aliases {
+        let source = compiled
+            .program
+            .declared_sources
+            .iter()
+            .find(|source| source.alias == *alias)
+            .ok_or_else(|| format!("unknown execution source `{alias}`"))?;
+        let (perp, context) = resolve_perp_context(
+            source.template,
+            source,
+            compiled.program.base_interval,
+            options,
+            endpoints,
+        )?;
+        if shared_perp.is_none() {
+            shared_perp = perp.clone();
+        }
+        if let Some(context) = context {
+            if execution_source_aliases.len() == 1 {
+                single_context = Some(context.clone());
+            }
+            portfolio_perp_contexts.insert(alias.clone(), context);
+        }
+    }
 
-fn resolve_walk_forward_sweep_perp_context(
-    compiled: &CompiledProgram,
-    execution_source_alias: &str,
-    args: &WalkForwardSweepRunArgs,
-    endpoints: &ExchangeEndpoints,
-) -> Result<
-    (
-        Option<PerpBacktestConfig>,
-        Option<palmscript::PerpBacktestContext>,
-    ),
-    String,
-> {
-    let source = compiled
-        .program
-        .declared_sources
-        .iter()
-        .find(|source| source.alias == execution_source_alias)
-        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
-    resolve_perp_context(
-        source.template,
-        source,
-        compiled.program.base_interval,
-        PerpCliOptions {
-            from: args.from,
-            to: args.to,
-            leverage: args.leverage,
-            margin_mode: args.margin_mode,
-        },
-        endpoints,
-    )
-}
-
-fn resolve_optimize_perp_context(
-    compiled: &CompiledProgram,
-    execution_source_alias: &str,
-    args: &OptimizeRunArgs,
-    endpoints: &ExchangeEndpoints,
-) -> Result<
-    (
-        Option<PerpBacktestConfig>,
-        Option<palmscript::PerpBacktestContext>,
-    ),
-    String,
-> {
-    let source = compiled
-        .program
-        .declared_sources
-        .iter()
-        .find(|source| source.alias == execution_source_alias)
-        .ok_or_else(|| format!("unknown execution source `{execution_source_alias}`"))?;
-    resolve_perp_context(
-        source.template,
-        source,
-        compiled.program.base_interval,
-        PerpCliOptions {
-            from: args.from,
-            to: args.to,
-            leverage: args.leverage,
-            margin_mode: args.margin_mode,
-        },
-        endpoints,
-    )
+    Ok((shared_perp, single_context, portfolio_perp_contexts))
 }
 
 fn parse_input_sweep_definitions(raw_sets: &[String]) -> Result<Vec<InputSweepDefinition>, String> {

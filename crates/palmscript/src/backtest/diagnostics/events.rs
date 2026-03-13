@@ -15,6 +15,7 @@ pub(crate) fn build_order_diagnostics(
         .iter()
         .zip(contexts)
         .map(|(order, context)| OrderDiagnostic {
+            execution_alias: order.execution_alias.clone(),
             order_id: order.id,
             role: order.role,
             kind: order.kind,

@@ -13,6 +13,8 @@ mod venue;
 mod walk_forward;
 mod walk_forward_sweep;
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,6 +33,8 @@ const EPSILON: f64 = 1e-9;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BacktestConfig {
     pub execution_source_alias: String,
+    #[serde(default)]
+    pub portfolio_execution_aliases: Vec<String>,
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,
@@ -38,6 +42,8 @@ pub struct BacktestConfig {
     pub diagnostics_detail: DiagnosticsDetailMode,
     pub perp: Option<PerpBacktestConfig>,
     pub perp_context: Option<PerpBacktestContext>,
+    #[serde(default)]
+    pub portfolio_perp_contexts: BTreeMap<String, PerpBacktestContext>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,6 +88,7 @@ pub enum FillAction {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fill {
+    pub execution_alias: String,
     pub bar_index: usize,
     pub time: f64,
     pub action: FillAction,
@@ -94,6 +101,7 @@ pub struct Fill {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Trade {
+    pub execution_alias: String,
     pub side: PositionSide,
     pub quantity: f64,
     pub entry: Fill,
@@ -103,6 +111,7 @@ pub struct Trade {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PositionSnapshot {
+    pub execution_alias: String,
     pub side: PositionSide,
     pub quantity: f64,
     pub entry_bar_index: usize,
@@ -127,6 +136,10 @@ pub struct EquityPoint {
     pub quantity: f64,
     pub mark_price: f64,
     pub gross_exposure: f64,
+    pub net_exposure: f64,
+    pub open_position_count: usize,
+    pub long_position_count: usize,
+    pub short_position_count: usize,
     pub free_collateral: Option<f64>,
     pub isolated_margin: Option<f64>,
     pub maintenance_margin: Option<f64>,
@@ -146,6 +159,8 @@ pub struct BacktestSummary {
     pub win_rate: f64,
     pub max_drawdown: f64,
     pub max_gross_exposure: f64,
+    pub max_net_exposure: f64,
+    pub peak_open_position_count: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +188,7 @@ pub enum OrderEndReason {
     InvalidRiskPct,
     InvalidRiskDistance,
     InsufficientCollateral,
+    PortfolioControlRejected,
     IocUnfilled,
     FokUnfilled,
     PostOnlyWouldCross,
@@ -181,6 +197,7 @@ pub enum OrderEndReason {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderRecord {
     pub id: usize,
+    pub execution_alias: String,
     pub role: SignalRole,
     pub kind: OrderKind,
     pub action: FillAction,
@@ -221,6 +238,24 @@ pub struct FeatureSnapshot {
     pub values: Vec<FeatureValue>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PortfolioControlKind {
+    MaxPositions,
+    MaxLongPositions,
+    MaxShortPositions,
+    MaxGrossExposurePct,
+    MaxNetExposurePct,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortfolioControlBlockSummary {
+    pub kind: PortfolioControlKind,
+    pub alias: String,
+    pub group: Option<String>,
+    pub count: usize,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecisionReason {
@@ -240,6 +275,11 @@ pub enum DecisionReason {
     MissingOrderField,
     VenueRuleRejected,
     ForcedMaxBarsExit,
+    PortfolioMaxPositionsExceeded,
+    PortfolioMaxLongPositionsExceeded,
+    PortfolioMaxShortPositionsExceeded,
+    PortfolioMaxGrossExposureExceeded,
+    PortfolioMaxNetExposureExceeded,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -258,6 +298,7 @@ pub struct OrderDecisionTrace {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PerBarDecisionTrace {
+    pub execution_alias: String,
     pub bar_index: usize,
     pub time: f64,
     pub position_snapshot: Option<PositionSnapshot>,
@@ -351,6 +392,7 @@ pub struct ForwardReturnMetric {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OpportunityEvent {
+    pub execution_alias: String,
     pub kind: OpportunityEventKind,
     pub name: String,
     pub role: Option<SignalRole>,
@@ -374,6 +416,7 @@ pub enum TradeExitClassification {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderDiagnostic {
+    pub execution_alias: String,
     pub order_id: usize,
     pub role: SignalRole,
     pub kind: OrderKind,
@@ -390,6 +433,7 @@ pub struct OrderDiagnostic {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TradeDiagnostic {
+    pub execution_alias: String,
     pub trade_id: usize,
     pub side: PositionSide,
     pub entry_order_id: usize,
@@ -512,6 +556,11 @@ pub enum ImprovementHintKind {
     CooldownBlocksSignals,
     HighDrawdownDuration,
     SignalQualityWeak,
+    PortfolioCapsTooTight,
+    ExposureCapBlocksMajorityOfEntries,
+    PositionCountCapBlocksMajorityOfEntries,
+    LongSideCapacitySaturated,
+    ShortSideCapacitySaturated,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -555,6 +604,10 @@ pub struct BacktestDiagnostics {
     pub source_alignment: crate::runtime::SourceAlignmentDiagnostics,
     #[serde(default)]
     pub hints: Vec<ImprovementHint>,
+    #[serde(default)]
+    pub portfolio_mode: bool,
+    #[serde(default)]
+    pub blocked_portfolio_entries: Vec<PortfolioControlBlockSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -567,6 +620,8 @@ pub struct BacktestResult {
     pub equity_curve: Vec<EquityPoint>,
     pub summary: BacktestSummary,
     pub open_position: Option<PositionSnapshot>,
+    #[serde(default)]
+    pub open_positions: Vec<PositionSnapshot>,
     pub perp: Option<PerpBacktestMetadata>,
 }
 
@@ -630,6 +685,10 @@ pub enum BacktestError {
         kind: OrderKind,
         reason: String,
     },
+    #[error("portfolio mode requires one or more execution sources")]
+    MissingPortfolioExecutionSources,
+    #[error("portfolio mode execution source `{alias}` is duplicated")]
+    DuplicatePortfolioExecutionSource { alias: String },
     #[error("walk-forward train_bars must be > 0, found {value}")]
     InvalidWalkForwardTrainBars { value: usize },
     #[error("walk-forward test_bars must be > 0, found {value}")]
@@ -647,6 +706,9 @@ pub fn run_backtest_with_sources(
     mut config: BacktestConfig,
 ) -> Result<BacktestResult, BacktestError> {
     validate_config(&config)?;
+    if !config.portfolio_execution_aliases.is_empty() {
+        return run_portfolio_backtest_with_sources(compiled, runtime, vm_limits, config);
+    }
     let execution = bridge::resolve_execution_source(compiled, &config.execution_source_alias)?;
     match execution.template {
         crate::interval::SourceTemplate::BinanceSpot
@@ -690,6 +752,50 @@ pub fn run_backtest_with_sources(
     engine::simulate_backtest(stepper, execution_bars, &config, prepared)
 }
 
+fn run_portfolio_backtest_with_sources(
+    compiled: &CompiledProgram,
+    runtime: SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    mut config: BacktestConfig,
+) -> Result<BacktestResult, BacktestError> {
+    let aliases = resolved_execution_aliases(&config)?;
+    let executions = bridge::resolve_execution_sources(compiled, &aliases)?;
+    let mut execution_defs = Vec::with_capacity(executions.len());
+    for (alias, execution) in aliases.iter().zip(executions.iter()) {
+        match execution.template {
+            crate::interval::SourceTemplate::BinanceSpot
+            | crate::interval::SourceTemplate::BybitSpot
+            | crate::interval::SourceTemplate::GateSpot => {}
+            crate::interval::SourceTemplate::BinanceUsdm
+            | crate::interval::SourceTemplate::BybitUsdtPerps
+            | crate::interval::SourceTemplate::GateUsdtPerps => {
+                if config.perp.is_none() {
+                    config.perp = Some(PerpBacktestConfig {
+                        leverage: 1.0,
+                        margin_mode: PerpMarginMode::Isolated,
+                    });
+                }
+            }
+        }
+        execution_defs.push((alias.clone(), execution.template));
+    }
+    let prepared = bridge::prepare_backtest_for_aliases(compiled, &execution_defs)?;
+    let stepper_runtime = runtime.clone();
+    let runtime_steppers = aliases
+        .iter()
+        .map(|_| RuntimeStepper::try_new(compiled, stepper_runtime.clone(), vm_limits))
+        .collect::<Result<Vec<_>, _>>()?;
+    let execution_bars = aliases
+        .iter()
+        .zip(executions.iter())
+        .map(|(alias, execution)| {
+            execution_bars(&runtime, execution.source_id, alias)
+                .map(|bars| (alias.clone(), execution.source_id, execution.template, bars))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    engine::simulate_portfolio_backtest(runtime_steppers, execution_bars, &config, prepared)
+}
+
 fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
     if !config.initial_capital.is_finite() || config.initial_capital <= 0.0 {
         return Err(BacktestError::InvalidInitialCapital {
@@ -718,7 +824,27 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
             });
         }
     }
+    if !config.portfolio_execution_aliases.is_empty() {
+        let mut seen = std::collections::BTreeSet::new();
+        for alias in &config.portfolio_execution_aliases {
+            if !seen.insert(alias.clone()) {
+                return Err(BacktestError::DuplicatePortfolioExecutionSource {
+                    alias: alias.clone(),
+                });
+            }
+        }
+    }
     Ok(())
+}
+
+fn resolved_execution_aliases(config: &BacktestConfig) -> Result<Vec<String>, BacktestError> {
+    if !config.portfolio_execution_aliases.is_empty() {
+        return Ok(config.portfolio_execution_aliases.clone());
+    }
+    if config.execution_source_alias.is_empty() {
+        return Err(BacktestError::MissingPortfolioExecutionSources);
+    }
+    Ok(vec![config.execution_source_alias.clone()])
 }
 
 fn execution_bars(

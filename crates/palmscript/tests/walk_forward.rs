@@ -35,12 +35,14 @@ plot(spot.close)";
         WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 1_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             train_bars: 2,
@@ -96,12 +98,14 @@ exit short = true";
         WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 1_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             train_bars: 0,
@@ -141,12 +145,14 @@ exit short = true";
             walk_forward: WalkForwardConfig {
                 backtest: BacktestConfig {
                     execution_source_alias: "spot".to_string(),
+                    portfolio_execution_aliases: Vec::new(),
                     initial_capital: 1_000.0,
                     fee_bps: 0.0,
                     slippage_bps: 0.0,
                     diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                     perp: None,
                     perp_context: None,
+                    portfolio_perp_contexts: std::collections::BTreeMap::new(),
                 },
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 train_bars: 2,

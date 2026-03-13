@@ -4,7 +4,6 @@ PalmScript がオープンソース化されたため、このページは再び
 
 ## English Canonical Content
 
-
 # CLI Command Reference
 
 This page is the compact public command reference for the `palmscript` CLI. For workflows and examples, see [CLI](../tooling/cli.md).
@@ -64,11 +63,44 @@ Requirements:
 - the script must declare at least one `source`
 - `--from` must be strictly less than `--to`
 
+## `palmscript run backtest`
+
+```bash
+palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
+  [--execution-source <alias>]... \
+  [--initial-capital <N>] \
+  [--fee-bps <N>] \
+  [--slippage-bps <N>] \
+  [--diagnostics summary|full-trace] \
+  [--format json|text]
+```
+
+Additional diagnostics flag:
+
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+
+## `palmscript run walk-forward`
+
+```bash
+palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
+  --train-bars <N> --test-bars <N> [--step-bars <N>] \
+  [--execution-source <alias>]... \
+  [--diagnostics summary|full-trace] \
+  [--format json|text]
+```
+
+Additional diagnostics flag:
+
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+
 ## `palmscript run optimize`
 
 ```bash
 palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--runner walk-forward|backtest] \
+  [--execution-source <alias>]... \
   [--train-bars <N>] \
   [--test-bars <N>] \
   [--step-bars <N>] \
@@ -84,6 +116,7 @@ palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--workers <N>] \
   [--top <N>] \
   [--preset-out <path>] \
+  [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
 
@@ -93,6 +126,7 @@ Arguments and flags:
 - `--from <unix_ms>`: inclusive lower time bound in Unix milliseconds UTC
 - `--to <unix_ms>`: exclusive upper time bound in Unix milliseconds UTC
 - `--runner`: optimize evaluation mode; defaults to `walk-forward`
+- `--execution-source <alias>`: execution alias selection; repeat it to activate portfolio mode
 - `--train-bars <N>`: in-sample bars per walk-forward segment
 - `--test-bars <N>`: out-of-sample bars per walk-forward segment
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
@@ -106,6 +140,7 @@ Arguments and flags:
 - `--workers <N>`: bounded parallel worker count
 - `--top <N>`: number of top candidates to retain
 - `--preset-out <path>`: write the best preset and top candidates to disk
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
 - `--format json|text`: output rendering format; default `json`
 
 Default safety behavior:
@@ -114,6 +149,9 @@ Default safety behavior:
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
+- repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
+- portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
+- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 
 ## `palmscript dump-bytecode`
 
@@ -125,13 +163,3 @@ Arguments and flags:
 
 - `<script.ps>`: path to the PalmScript source file
 - `--format text|json`: bytecode output format, default `text`
-
-## Latest Diagnostics Additions
-
-PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
-
-- `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
-- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
-- full-trace mode adds one typed per-bar decision trace per execution bar
-- optimize output now includes top-candidate holdout checks plus parameter stability summaries
-

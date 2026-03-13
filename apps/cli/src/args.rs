@@ -63,8 +63,8 @@ pub struct BacktestRunArgs {
     pub from: i64,
     #[arg(long)]
     pub to: i64,
-    #[arg(long)]
-    pub execution_source: Option<String>,
+    #[arg(long = "execution-source")]
+    pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
@@ -94,8 +94,8 @@ pub struct WalkForwardRunArgs {
     pub from: i64,
     #[arg(long)]
     pub to: i64,
-    #[arg(long)]
-    pub execution_source: Option<String>,
+    #[arg(long = "execution-source")]
+    pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
@@ -131,8 +131,8 @@ pub struct WalkForwardSweepRunArgs {
     pub from: i64,
     #[arg(long)]
     pub to: i64,
-    #[arg(long)]
-    pub execution_source: Option<String>,
+    #[arg(long = "execution-source")]
+    pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]
@@ -172,8 +172,8 @@ pub struct OptimizeRunArgs {
     pub from: i64,
     #[arg(long)]
     pub to: i64,
-    #[arg(long)]
-    pub execution_source: Option<String>,
+    #[arg(long = "execution-source")]
+    pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long, default_value_t = 5.0)]

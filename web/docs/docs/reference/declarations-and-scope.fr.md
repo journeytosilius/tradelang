@@ -270,3 +270,10 @@ Regles :
 - `optimize(float, low, high[, step])` exige une valeur par defaut finie dans la plage inclusive
 - `optimize(choice, v1, v2, ...)` exige que la valeur par defaut soit l une des valeurs numeriques listees
 - ces metadonnees decrivent seulement l espace de recherche de l optimiseur ; elles ne changent pas la valeur compilee du `input`
+
+## Latest Portfolio Additions
+
+- PalmScript now reserves `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group`.
+- These declarations are top-level only and compile-time only.
+- Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
+- Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.

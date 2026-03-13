@@ -17,6 +17,12 @@ The following forms must appear only at the top level of a script:
 - `trigger`
 - `cooldown`
 - `max_bars_in_trade`
+- `max_positions`
+- `max_long_positions`
+- `max_short_positions`
+- `max_gross_exposure_pct`
+- `max_net_exposure_pct`
+- `portfolio_group`
 - `entry`
 - `exit`
 - `protect`
@@ -145,6 +151,7 @@ Rules:
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
+portfolio_group "majors" = [spot, hedge]
 trigger long_entry = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
@@ -159,6 +166,11 @@ size entry3 long = risk_pct(0.01, stop_price)
 size target1 long = 0.5
 cooldown long = 12
 max_bars_in_trade short = 48
+max_positions = 2
+max_long_positions = 2
+max_short_positions = 0
+max_gross_exposure_pct = 0.8
+max_net_exposure_pct = 0.8
 ```
 
 Rules:
@@ -173,7 +185,18 @@ Rules:
 - `exit long` and `exit short` remain single discretionary full-position exits
 - `cooldown long|short = <bars>` blocks new same-side staged entries for the next `<bars>` execution bars after a full close on that side
 - `max_bars_in_trade long|short = <bars>` forces a same-side market exit at the next execution open once the open trade has been held for `<bars>` execution bars
+- `max_positions = <N>` caps the number of simultaneously open execution-alias positions when portfolio mode is active
+- `max_long_positions = <N>` caps open long alias positions when portfolio mode is active
+- `max_short_positions = <N>` caps open short alias positions when portfolio mode is active
+- `max_gross_exposure_pct = <N>` caps the sum of absolute open notionals divided by current portfolio equity
+- `max_net_exposure_pct = <N>` caps the signed open notional divided by current portfolio equity
+- `portfolio_group "name" = [alias1, alias2, ...]` declares a named alias group for diagnostics and future group-scoped controls
 - both declarative risk controls are compile-time only in v1 and require a non-negative whole-number scalar expression
+- portfolio controls are compile-time only in v1
+- count controls require a non-negative whole-number scalar expression
+- exposure controls require a non-negative finite numeric scalar expression
+- portfolio groups require unique group names, at least one alias, and aliases that were declared by `source`
+- portfolio controls do not resize orders or force exits; they only block new entries that would exceed the configured caps
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role
 - `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
 - `size entry1..3 long|short` optionally size a staged entry fill with either `capital_fraction(x)` / legacy bare numeric fraction semantics, or `risk_pct(pct, stop_price)` for risk-based entry sizing

@@ -4,8 +4,8 @@ use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
 use crate::backtest::{BacktestError, OrderKind};
 use crate::bytecode::{
-    LastExitFieldDecl, OrderDecl, OutputKind, PositionEventFieldDecl, PositionFieldDecl,
-    RiskControlDecl, SignalRole,
+    LastExitFieldDecl, OrderDecl, OutputKind, PortfolioControlDecl, PortfolioGroupDecl,
+    PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, SignalRole,
 };
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
@@ -24,6 +24,8 @@ pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
     pub risk_controls: Vec<RiskControlDecl>,
+    pub portfolio_controls: Vec<PortfolioControlDecl>,
+    pub portfolio_groups: Vec<PortfolioGroupDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub last_exit_fields: Vec<LastExitFieldDecl>,
@@ -33,6 +35,16 @@ pub(crate) struct PreparedBacktest {
 pub(crate) struct ExecutionSource {
     pub source_id: u16,
     pub template: SourceTemplate,
+}
+
+pub(crate) fn resolve_execution_sources(
+    compiled: &CompiledProgram,
+    aliases: &[String],
+) -> Result<Vec<ExecutionSource>, BacktestError> {
+    aliases
+        .iter()
+        .map(|alias| resolve_execution_source(compiled, alias))
+        .collect()
 }
 
 pub(crate) fn resolve_execution_source(
@@ -58,9 +70,15 @@ pub(crate) fn prepare_backtest(
     execution_alias: &str,
     template: SourceTemplate,
 ) -> Result<PreparedBacktest, BacktestError> {
+    prepare_backtest_for_aliases(compiled, &[(execution_alias.to_string(), template)])
+}
+
+pub(crate) fn prepare_backtest_for_aliases(
+    compiled: &CompiledProgram,
+    executions: &[(String, SourceTemplate)],
+) -> Result<PreparedBacktest, BacktestError> {
     let signal_roles = resolve_signals(compiled)?;
     let mut order_templates = explicit_orders_by_role(compiled);
-    let venue = VenueOrderProfile::from_template(template);
 
     for role in signal_roles.values().copied() {
         order_templates
@@ -68,14 +86,19 @@ pub(crate) fn prepare_backtest(
             .or_insert_with(|| default_market_order(role));
     }
 
-    for order in order_templates.values() {
-        validate_order_for_template(venue, execution_alias, order)?;
+    for (execution_alias, template) in executions {
+        let venue = VenueOrderProfile::from_template(*template);
+        for order in order_templates.values() {
+            validate_order_for_template(venue, execution_alias, order)?;
+        }
     }
 
     Ok(PreparedBacktest {
         signal_roles,
         order_templates,
         risk_controls: compiled.program.risk_controls.clone(),
+        portfolio_controls: compiled.program.portfolio_controls.clone(),
+        portfolio_groups: compiled.program.portfolio_groups.clone(),
         position_fields: compiled.program.position_fields.clone(),
         position_event_fields: compiled.program.position_event_fields.clone(),
         last_exit_fields: compiled.program.last_exit_fields.clone(),

@@ -6,8 +6,8 @@
 use crate::ast::{
     Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam,
     InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
-    RiskControlKind, SignalRole, SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals,
-    UnaryOp,
+    PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalRole, SourceDecl,
+    SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -172,6 +172,66 @@ impl<'a> Parser<'a> {
                 return None;
             }
             return self.parse_risk_control_stmt(RiskControlKind::MaxBarsInTrade);
+        }
+        if self.matches_keyword(&TokenKind::PortfolioGroup) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_group_stmt();
+        }
+        if self.matches_keyword(&TokenKind::MaxPositions) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_control_stmt(PortfolioControlKind::MaxPositions);
+        }
+        if self.matches_keyword(&TokenKind::MaxLongPositions) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_control_stmt(PortfolioControlKind::MaxLongPositions);
+        }
+        if self.matches_keyword(&TokenKind::MaxShortPositions) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_control_stmt(PortfolioControlKind::MaxShortPositions);
+        }
+        if self.matches_keyword(&TokenKind::MaxGrossExposurePct) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_control_stmt(PortfolioControlKind::MaxGrossExposurePct);
+        }
+        if self.matches_keyword(&TokenKind::MaxNetExposurePct) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "portfolio declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_portfolio_control_stmt(PortfolioControlKind::MaxNetExposurePct);
         }
         if self.matches_keyword(&TokenKind::Entry) {
             if self.block_depth > 0 {
@@ -655,6 +715,77 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span: start.merge(expr.span),
             kind: StmtKind::RiskControl { kind, side, expr },
+        })
+    }
+
+    fn parse_portfolio_control_stmt(&mut self, kind: PortfolioControlKind) -> Option<Stmt> {
+        let start = self.previous().span;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after portfolio control name",
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::PortfolioControl { kind, expr },
+        })
+    }
+
+    fn parse_portfolio_group_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let name = match self.peek_kind() {
+            TokenKind::String(value) => {
+                let value = value.clone();
+                self.advance();
+                value
+            }
+            _ => {
+                self.push_diagnostic(
+                    "expected string name after `portfolio_group`",
+                    self.tokens
+                        .get(self.cursor)
+                        .map(|token| token.span)
+                        .unwrap_or_else(|| self.previous().span),
+                );
+                return None;
+            }
+        };
+        let name_span = self.previous().span;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after portfolio group name",
+        )?;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::LeftBracket),
+            "expected `[` after portfolio group assignment",
+        )?;
+        let mut aliases = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RightBracket) {
+            loop {
+                let (alias, span) =
+                    self.expect_ident("expected source alias in portfolio group")?;
+                aliases.push(BindingName { name: alias, span });
+                if !matches!(self.peek_kind(), TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        self.expect_kind(
+            |token| matches!(token, TokenKind::RightBracket),
+            "expected `]` after portfolio group aliases",
+        )?;
+        let group = PortfolioGroupDecl {
+            name,
+            name_span,
+            aliases,
+            span: start.merge(self.previous().span),
+        };
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: group.span,
+            kind: StmtKind::PortfolioGroup { group },
         })
     }
 

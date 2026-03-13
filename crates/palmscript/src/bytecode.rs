@@ -349,6 +349,27 @@ pub struct RiskControlDecl {
     pub bars: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PortfolioControlKind {
+    MaxPositions,
+    MaxLongPositions,
+    MaxShortPositions,
+    MaxGrossExposurePct,
+    MaxNetExposurePct,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortfolioControlDecl {
+    pub kind: PortfolioControlKind,
+    pub value: f64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PortfolioGroupDecl {
+    pub name: String,
+    pub aliases: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalInfo {
     pub name: Option<String>,
@@ -373,6 +394,8 @@ pub struct Program {
     pub last_exit_fields: Vec<LastExitFieldDecl>,
     pub orders: Vec<OrderDecl>,
     pub risk_controls: Vec<RiskControlDecl>,
+    pub portfolio_controls: Vec<PortfolioControlDecl>,
+    pub portfolio_groups: Vec<PortfolioGroupDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,
     pub source_intervals: Vec<SourceIntervalRef>,

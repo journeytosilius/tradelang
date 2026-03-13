@@ -322,6 +322,41 @@ fn declarative_risk_controls_reject_duplicate_side_declarations() {
 }
 
 #[test]
+fn portfolio_controls_require_compile_time_numeric_scalars() {
+    let diagnostics = compile_diagnostics(&with_interval("max_positions = close\nplot(close)"));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("`max_positions` requires a compile-time numeric scalar expression")
+    }));
+}
+
+#[test]
+fn portfolio_controls_reject_negative_or_fractional_counts() {
+    let diagnostics = compile_diagnostics(&with_interval("max_long_positions = 1.5\nplot(close)"));
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("`max_long_positions` requires a non-negative whole number")
+    }));
+}
+
+#[test]
+fn portfolio_group_rejects_unknown_aliases() {
+    let diagnostics = compile_diagnostics(
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nportfolio_group \"majors\" = [left, missing]\nplot(left.close)",
+    );
+    assert!(diagnostics.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("portfolio group `majors` references unknown source alias `missing`")
+    }));
+}
+
+#[test]
 fn compile_accepts_new_exchange_backed_source_templates() {
     let cases = [
         "interval 1m\nsource a = bybit.spot(\"BTCUSDT\")\nplot(a.close)",

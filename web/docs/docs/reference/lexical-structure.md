@@ -19,6 +19,12 @@ The following tokens are reserved keywords:
 - `trigger`
 - `cooldown`
 - `max_bars_in_trade`
+- `max_positions`
+- `max_long_positions`
+- `max_short_positions`
+- `max_gross_exposure_pct`
+- `max_net_exposure_pct`
+- `portfolio_group`
 - `entry`
 - `exit`
 - `protect`

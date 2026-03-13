@@ -179,6 +179,23 @@ pub enum RiskControlKind {
     MaxBarsInTrade,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PortfolioControlKind {
+    MaxPositions,
+    MaxLongPositions,
+    MaxShortPositions,
+    MaxGrossExposurePct,
+    MaxNetExposurePct,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PortfolioGroupDecl {
+    pub name: String,
+    pub name_span: Span,
+    pub aliases: Vec<BindingName>,
+    pub span: Span,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
@@ -232,6 +249,13 @@ pub enum StmtKind {
         kind: RiskControlKind,
         side: PositionSide,
         expr: Expr,
+    },
+    PortfolioControl {
+        kind: PortfolioControlKind,
+        expr: Expr,
+    },
+    PortfolioGroup {
+        group: PortfolioGroupDecl,
     },
     If {
         condition: Expr,

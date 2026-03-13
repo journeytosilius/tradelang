@@ -9,6 +9,7 @@ Common building blocks:
 - optional supplemental `use <alias> <interval>` declarations
 - top-level functions
 - `let`, `const`, `input`, tuple destructuring, `export`, `regime`, `trigger`, `entry` / `exit`, and `order`
+- compile-time portfolio declarations such as `max_positions = 2` and `portfolio_group "majors" = [left, right]`
 - optional `input ... optimize(...)` metadata for optimizer search-space inference
 - declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`
 - `if / else if / else`
@@ -39,6 +40,8 @@ plot(bn.close - bb.close)
 - `plot`, `export`, `regime`, `trigger`, and strategy declarations emit results after each execution step
 - optimizer-aware `input` declarations can carry bounded integer, float, or choice search metadata without changing runtime semantics
 - `cooldown` and `max_bars_in_trade` are compile-time bar-count declarations that make re-entry and time-based exits explicit in the script
+- portfolio declarations are compile-time only and become active when backtest-oriented CLI commands receive multiple `--execution-source` aliases
+- portfolio mode shares one equity ledger across the selected execution aliases and blocks only the new entries that would exceed the configured position-count or exposure caps
 
 ## Where To Go For Exact Rules
 

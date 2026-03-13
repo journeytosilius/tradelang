@@ -33,6 +33,8 @@ stmt                   ::= let_stmt
                          | regime_stmt
                          | trigger_stmt
                          | risk_control_stmt
+                         | portfolio_control_stmt
+                         | portfolio_group_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_stmt
@@ -52,6 +54,12 @@ regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 risk_control_stmt      ::= "cooldown" signal_side "=" expr
                          | "max_bars_in_trade" signal_side "=" expr
+portfolio_control_stmt ::= "max_positions" "=" expr
+                         | "max_long_positions" "=" expr
+                         | "max_short_positions" "=" expr
+                         | "max_gross_exposure_pct" "=" expr
+                         | "max_net_exposure_pct" "=" expr
+portfolio_group_stmt   ::= "portfolio_group" string_literal "=" "[" ident ("," ident)* "]"
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -140,7 +148,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -156,6 +164,9 @@ The grammar does not by itself make a program valid. The implementation addition
 - `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
 - `entry long` and `target long|short` remain compatibility aliases for stage 1
 - `cooldown long|short` and `max_bars_in_trade long|short` require a compile-time non-negative whole-number scalar expression
+- `max_positions`, `max_long_positions`, and `max_short_positions` require a compile-time non-negative whole-number scalar expression
+- `max_gross_exposure_pct` and `max_net_exposure_pct` require a compile-time non-negative finite numeric scalar expression
+- `portfolio_group` aliases must refer to declared `source` bindings and group names must be unique
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
 - staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role

@@ -37,12 +37,14 @@ fn optimize_runtime() -> palmscript::SourceRuntimeConfig {
 fn optimize_backtest_config() -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: "spot".to_string(),
+        portfolio_execution_aliases: Vec::new(),
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
+        portfolio_perp_contexts: BTreeMap::new(),
     }
 }
 

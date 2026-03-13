@@ -11,28 +11,30 @@ use crate::backtest::orders::{
     refresh_position_risk, request_applicable, resolve_entry_sizing, role_index,
     unrealized_pnl_for_position, update_open_trade_excursions, AccountingMode, ActiveOrder,
     CapturedOrderRequest, CloseExecution, EntryProgressState, EntrySizingSpec,
-    FillExecutionContext, OpenTrade, PositionState, TradeEntryContext, WorkingState, ROLE_COUNT,
-    ROLE_PRIORITY,
+    FillExecutionContext, OpenTrade, PositionFillContext, PositionState, TradeEntryContext,
+    WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
 use crate::backtest::{
-    BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult, BacktestSummary,
-    DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
+    BacktestCaptureSummary, BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult,
+    BacktestSummary, DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
     OpportunityEventKind, OrderDecisionTrace, OrderEndReason, OrderRecord, OrderStatus,
-    PerBarDecisionTrace, PerpBacktestMetadata, PositionSnapshot, SignalDecisionTrace, Trade,
-    TradeDiagnostic, TradeExitClassification,
+    PerBarDecisionTrace, PerpBacktestMetadata, PortfolioControlBlockSummary,
+    PortfolioControlKind as BacktestPortfolioControlKind, PositionSnapshot, SignalDecisionTrace,
+    Trade, TradeDiagnostic, TradeExitClassification,
 };
 use crate::bytecode::{
-    LastExitFieldDecl, PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, RiskControlKind,
-    SignalRole,
+    LastExitFieldDecl, PortfolioControlDecl, PortfolioControlKind as ProgramPortfolioControlKind,
+    PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, RiskControlKind, SignalRole,
 };
 use crate::exchange::{RiskTier, VenueRiskSnapshot};
 use crate::order::OrderKind;
-use crate::output::StepOutput;
+use crate::output::{Outputs, StepOutput};
 use crate::position::{
     ExitKind, LastExitField, LastExitScope, PositionEventField, PositionField, PositionSide,
 };
 use crate::runtime::{Bar, RuntimeStep, RuntimeStepper};
 use crate::types::Value;
+use std::collections::BTreeMap;
 
 pub(crate) struct OrderRecordUpdate {
     pub trigger_time: Option<f64>,
@@ -107,12 +109,37 @@ struct StepDecisionTrace {
     order_decisions: Vec<OrderDecisionTrace>,
 }
 
+struct PortfolioAliasState {
+    alias: String,
+    stepper: RuntimeStepper,
+    execution_bars: Vec<Bar>,
+    aligned_mark_bars: Vec<Bar>,
+    execution_cursor: usize,
+    accounting: AccountingMode,
+    position: Option<PositionState>,
+    open_trade: Option<OpenTrade>,
+    active_orders: [Option<ActiveOrder>; ROLE_COUNT],
+    pending_requests: [Option<CapturedOrderRequest>; ROLE_COUNT],
+    pending_snapshots: [Option<FeatureSnapshot>; ROLE_COUNT],
+    pending_signal_names: [Option<String>; ROLE_COUNT],
+    pending_conflict_time: Option<f64>,
+    last_mark_price: Option<f64>,
+    last_snapshot: Option<FeatureSnapshot>,
+    last_exit: Option<LastExitSnapshot>,
+    last_long_exit: Option<LastExitSnapshot>,
+    last_short_exit: Option<LastExitSnapshot>,
+    target_consumption: TargetConsumptionState,
+    entry_progress: EntryProgressState,
+    diagnostics: DiagnosticsAccumulator,
+}
+
 pub(crate) fn simulate_backtest(
     mut stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
     config: &BacktestConfig,
     prepared: PreparedBacktest,
 ) -> Result<BacktestResult, BacktestError> {
+    let execution_alias = config.execution_source_alias.as_str();
     let fee_rate = config.fee_bps / crate::backtest::BPS_SCALE;
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
     let accounting = accounting_mode(config);
@@ -164,6 +191,7 @@ pub(crate) fn simulate_backtest(
             }
 
             if let Some(timeout_outcome) = maybe_force_time_exit(
+                execution_alias,
                 &prepared.risk_controls,
                 execution_cursor,
                 bar.time,
@@ -222,9 +250,10 @@ pub(crate) fn simulate_backtest(
                 last_long_exit.as_ref(),
                 last_short_exit.as_ref(),
                 last_snapshot.clone(),
-                current_position_snapshot(position.as_ref(), bar.open, bar.time),
+                current_position_snapshot(position.as_ref(), execution_alias, bar.open, bar.time),
                 execution_cursor,
                 bar.time,
+                execution_alias,
                 decision_trace.as_mut(),
             );
             pending_conflict_time = None;
@@ -322,6 +351,7 @@ pub(crate) fn simulate_backtest(
                         };
 
                         let close_outcome = maybe_close_position_for_role(
+                            execution_alias,
                             role,
                             active.record_index,
                             active.request.kind,
@@ -445,7 +475,12 @@ pub(crate) fn simulate_backtest(
                                     (position.as_mut(), open_trade.as_mut())
                                 {
                                     let (entry_fill, entry_sizing) = match add_to_position(
-                                        execution_context,
+                                        PositionFillContext {
+                                            execution_alias,
+                                            execution: execution_context,
+                                            accounting: &accounting,
+                                            fee_rate,
+                                        },
                                         position_state,
                                         open_trade_state,
                                         EntrySizingSpec {
@@ -453,8 +488,6 @@ pub(crate) fn simulate_backtest(
                                             size_value: active.request.size_value,
                                             stop_price: active.request.size_stop_price,
                                         },
-                                        &accounting,
-                                        fee_rate,
                                         &mut cash,
                                     ) {
                                         Ok(result) => result,
@@ -514,7 +547,12 @@ pub(crate) fn simulate_backtest(
                             } else {
                                 let (next_position, mut next_trade, entry_fill, entry_sizing) =
                                     match open_position(
-                                        execution_context,
+                                        PositionFillContext {
+                                            execution_alias,
+                                            execution: execution_context,
+                                            accounting: &accounting,
+                                            fee_rate,
+                                        },
                                         next_side,
                                         TradeEntryContext {
                                             order_id: active.record_index,
@@ -527,8 +565,6 @@ pub(crate) fn simulate_backtest(
                                             size_value: active.request.size_value,
                                             stop_price: active.request.size_stop_price,
                                         },
-                                        &accounting,
-                                        fee_rate,
                                         &mut cash,
                                     ) {
                                         Ok(result) => result,
@@ -629,6 +665,7 @@ pub(crate) fn simulate_backtest(
                         mark_bar.low,
                     ) {
                         let liquidation_outcome = force_liquidation(
+                            execution_alias,
                             position_state.side,
                             execution_cursor,
                             bar.time,
@@ -691,8 +728,9 @@ pub(crate) fn simulate_backtest(
             .map_or(execution_cursor, |feature_snapshot| {
                 feature_snapshot.bar_index
             });
-        let decision_position_snapshot = current_execution
-            .and_then(|bar| current_position_snapshot(position.as_ref(), bar.close, bar.time));
+        let decision_position_snapshot = current_execution.and_then(|bar| {
+            current_position_snapshot(position.as_ref(), execution_alias, bar.close, bar.time)
+        });
 
         if let Some(bar) = current_execution {
             if position_events.long_entry_fill || position_events.short_entry_fill {
@@ -700,7 +738,8 @@ pub(crate) fn simulate_backtest(
                     open_trade.entry_snapshot = snapshot.clone();
                 }
             }
-            let fill_position = current_position_snapshot(position.as_ref(), bar.close, bar.time);
+            let fill_position =
+                current_position_snapshot(position.as_ref(), execution_alias, bar.close, bar.time);
             for record_index in filled_record_indices {
                 order_contexts[record_index].fill_snapshot = snapshot.clone();
                 order_contexts[record_index].fill_position = fill_position.clone();
@@ -719,6 +758,7 @@ pub(crate) fn simulate_backtest(
             let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
             let mark_price = current_mark.map(|mark| mark.close).unwrap_or(bar.close);
             let gross_exposure = quantity.abs() * mark_price;
+            let net_exposure = quantity * mark_price;
             max_gross_exposure = max_gross_exposure.max(gross_exposure);
             let equity = match &accounting {
                 AccountingMode::Spot => cash + quantity * mark_price,
@@ -740,6 +780,18 @@ pub(crate) fn simulate_backtest(
                 quantity,
                 mark_price,
                 gross_exposure,
+                net_exposure,
+                open_position_count: usize::from(position.is_some()),
+                long_position_count: usize::from(
+                    position
+                        .as_ref()
+                        .is_some_and(|state| state.side == PositionSide::Long),
+                ),
+                short_position_count: usize::from(
+                    position
+                        .as_ref()
+                        .is_some_and(|state| state.side == PositionSide::Short),
+                ),
                 free_collateral: accounting.is_perp().then_some(cash),
                 isolated_margin: position.as_ref().map(|state| state.isolated_margin),
                 maintenance_margin: position.as_ref().map(|state| state.maintenance_margin),
@@ -749,6 +801,7 @@ pub(crate) fn simulate_backtest(
             if let Some(trace) = decision_trace.as_mut() {
                 ensure_no_signal_traces(trace, &prepared);
                 per_bar_trace.push(PerBarDecisionTrace {
+                    execution_alias: execution_alias.to_string(),
                     bar_index: execution_cursor,
                     time: bar.time,
                     position_snapshot: fill_position.clone(),
@@ -782,6 +835,7 @@ pub(crate) fn simulate_backtest(
             decision_position_snapshot.as_ref(),
             snapshot.as_ref(),
             step_bar_index,
+            execution_alias,
             decision_trace.as_mut(),
         );
         enqueue_attached_requests(
@@ -798,6 +852,7 @@ pub(crate) fn simulate_backtest(
             decision_position_snapshot.as_ref(),
             snapshot.as_ref(),
             step_bar_index,
+            execution_alias,
             decision_trace.as_mut(),
         );
         last_snapshot = snapshot;
@@ -828,6 +883,7 @@ pub(crate) fn simulate_backtest(
 
     let open_position = match (position, equity_curve.last()) {
         (Some(position), Some(last_point)) => Some(PositionSnapshot {
+            execution_alias: execution_alias.to_string(),
             side: position.side,
             quantity: position.quantity.abs(),
             entry_bar_index: position.entry_bar_index,
@@ -866,6 +922,15 @@ pub(crate) fn simulate_backtest(
             win_rate,
             max_drawdown,
             max_gross_exposure,
+            max_net_exposure: equity_curve
+                .iter()
+                .map(|point| point.net_exposure.abs())
+                .fold(0.0, f64::max),
+            peak_open_position_count: equity_curve
+                .iter()
+                .map(|point| point.open_position_count)
+                .max()
+                .unwrap_or(0),
         },
         &diagnostics_summary,
         &cohorts,
@@ -883,6 +948,15 @@ pub(crate) fn simulate_backtest(
         win_rate,
         max_drawdown,
         max_gross_exposure,
+        max_net_exposure: equity_curve
+            .iter()
+            .map(|point| point.net_exposure.abs())
+            .fold(0.0, f64::max),
+        peak_open_position_count: equity_curve
+            .iter()
+            .map(|point| point.open_position_count)
+            .max()
+            .unwrap_or(0),
     };
 
     Ok(BacktestResult {
@@ -902,9 +976,12 @@ pub(crate) fn simulate_backtest(
             drawdown,
             source_alignment,
             hints,
+            portfolio_mode: false,
+            blocked_portfolio_entries: Vec::new(),
         },
         equity_curve,
         summary,
+        open_positions: open_position.clone().into_iter().collect(),
         open_position,
         perp: config
             .perp
@@ -916,6 +993,992 @@ pub(crate) fn simulate_backtest(
                 mark_price_basis: context.mark_price_basis,
                 risk_snapshot: context.risk_snapshot.clone(),
             }),
+    })
+}
+
+pub(crate) fn simulate_portfolio_backtest(
+    steppers: Vec<RuntimeStepper>,
+    executions: Vec<(String, u16, crate::interval::SourceTemplate, Vec<Bar>)>,
+    config: &BacktestConfig,
+    prepared: PreparedBacktest,
+) -> Result<BacktestResult, BacktestError> {
+    let fee_rate = config.fee_bps / crate::backtest::BPS_SCALE;
+    let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
+    let mut alias_states = Vec::with_capacity(executions.len());
+    for ((alias, _, template, execution_bars), stepper) in executions.into_iter().zip(steppers) {
+        let accounting = accounting_mode_for_alias(config, &alias, template);
+        alias_states.push(PortfolioAliasState {
+            aligned_mark_bars: aligned_mark_bars_for_alias(
+                config,
+                &alias,
+                template,
+                &execution_bars,
+            )?,
+            alias,
+            stepper,
+            execution_bars,
+            execution_cursor: 0,
+            accounting,
+            position: None,
+            open_trade: None,
+            active_orders: std::array::from_fn(|_| None),
+            pending_requests: empty_request_slots(),
+            pending_snapshots: std::array::from_fn(|_| None),
+            pending_signal_names: std::array::from_fn(|_| None),
+            pending_conflict_time: None,
+            last_mark_price: None,
+            last_snapshot: None,
+            last_exit: None,
+            last_long_exit: None,
+            last_short_exit: None,
+            target_consumption: TargetConsumptionState::default(),
+            entry_progress: EntryProgressState::default(),
+            diagnostics: DiagnosticsAccumulator::new(&prepared.exports),
+        });
+    }
+
+    let mut cash = config.initial_capital;
+    let mut fills = Vec::<Fill>::new();
+    let mut trades = Vec::<Trade>::new();
+    let mut trade_diagnostics = Vec::<TradeDiagnostic>::new();
+    let mut orders = Vec::<OrderRecord>::new();
+    let mut order_contexts = Vec::<OrderDiagnosticContext>::new();
+    let mut equity_curve = Vec::new();
+    let mut peak_equity = config.initial_capital;
+    let mut max_drawdown = 0.0_f64;
+    let mut max_gross_exposure = 0.0_f64;
+    let mut max_net_exposure = 0.0_f64;
+    let mut peak_open_position_count = 0usize;
+    let mut total_realized_pnl = 0.0_f64;
+    let mut all_traces = Vec::<PerBarDecisionTrace>::new();
+    let mut blocked_counts = BTreeMap::<
+        (
+            crate::backtest::PortfolioControlKind,
+            String,
+            Option<String>,
+        ),
+        usize,
+    >::new();
+
+    while let Some(open_time) = alias_states
+        .first()
+        .and_then(|state| state.stepper.peek_open_time())
+    {
+        let mut state_index = 0usize;
+        while state_index < alias_states.len() {
+            let (before_current, rest) = alias_states.split_at_mut(state_index);
+            let (state, after_current) = rest
+                .split_first_mut()
+                .expect("portfolio alias state should exist");
+            let next_execution = state.execution_bars.get(state.execution_cursor).copied();
+            let current_execution =
+                next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
+            let current_mark = current_execution
+                .and_then(|_| state.aligned_mark_bars.get(state.execution_cursor).copied());
+            let mut position_events = PositionEventStep::default();
+            let mut filled_record_indices = Vec::new();
+            let mut decision_trace =
+                matches!(config.diagnostics_detail, DiagnosticsDetailMode::FullTrace)
+                    .then(StepDecisionTrace::default);
+
+            if let Some(bar) = current_execution {
+                if let Some(open_trade) = state.open_trade.as_mut() {
+                    update_open_trade_excursions(open_trade, bar.high, bar.low);
+                }
+
+                if let Some(timeout_outcome) = maybe_force_time_exit(
+                    &state.alias,
+                    &prepared.risk_controls,
+                    state.execution_cursor,
+                    bar.time,
+                    bar.open,
+                    &state.accounting,
+                    fee_rate,
+                    &mut cash,
+                    &mut state.position,
+                    &mut state.open_trade,
+                    &mut fills,
+                    &mut trades,
+                    &mut trade_diagnostics,
+                    &mut total_realized_pnl,
+                    state.last_snapshot.clone(),
+                    decision_trace.as_mut(),
+                ) {
+                    if let Some(snapshot) = timeout_outcome.snapshot {
+                        set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                        update_last_exit_snapshots(
+                            &mut state.last_exit,
+                            &mut state.last_long_exit,
+                            &mut state.last_short_exit,
+                            snapshot,
+                        );
+                    }
+                    if let Some(side) = timeout_outcome.fully_closed_side {
+                        reset_target_consumption(&mut state.target_consumption, side);
+                        reset_entry_progress(&mut state.entry_progress, side);
+                        cancel_orders_for_closed_side(
+                            &mut state.active_orders,
+                            side,
+                            exit_signal_role(side),
+                            &mut orders,
+                        );
+                    }
+                }
+
+                if pending_entry_requests_conflict(
+                    &state.pending_requests,
+                    state.position.as_ref(),
+                    state.entry_progress,
+                ) {
+                    return Err(BacktestError::ConflictingSignals {
+                        time: state.pending_conflict_time.unwrap_or(bar.time),
+                    });
+                }
+
+                place_pending_requests(
+                    &mut state.pending_requests,
+                    &mut state.pending_snapshots,
+                    &mut state.pending_signal_names,
+                    &mut state.active_orders,
+                    &mut orders,
+                    &mut order_contexts,
+                    &mut state.diagnostics,
+                    state.position.as_ref(),
+                    state.entry_progress,
+                    &prepared.risk_controls,
+                    state.last_long_exit.as_ref(),
+                    state.last_short_exit.as_ref(),
+                    state.last_snapshot.clone(),
+                    current_position_snapshot(
+                        state.position.as_ref(),
+                        &state.alias,
+                        bar.open,
+                        bar.time,
+                    ),
+                    state.execution_cursor,
+                    bar.time,
+                    &state.alias,
+                    decision_trace.as_mut(),
+                );
+                state.pending_conflict_time = None;
+
+                let mut filled_this_bar = false;
+                for role in ROLE_PRIORITY {
+                    if filled_this_bar {
+                        break;
+                    }
+                    let slot = role_index(role);
+                    let Some(mut active) = state.active_orders[slot].take() else {
+                        continue;
+                    };
+
+                    let evaluation =
+                        evaluate_active_order(&active, bar.time, bar.open, bar.high, bar.low);
+                    active.first_eval_done = true;
+
+                    match evaluation {
+                        crate::backtest::orders::Evaluation::None => {
+                            record_order_decision(
+                                decision_trace.as_mut(),
+                                Some(orders[active.record_index].id),
+                                Some(role),
+                                match active.state {
+                                    WorkingState::Ready => DecisionReason::AwaitingTrigger,
+                                    WorkingState::RestingLimit { .. } => {
+                                        DecisionReason::AwaitingFill
+                                    }
+                                },
+                            );
+                            state.active_orders[slot] = Some(active);
+                        }
+                        crate::backtest::orders::Evaluation::Expire => {
+                            record_order_decision(
+                                decision_trace.as_mut(),
+                                Some(orders[active.record_index].id),
+                                Some(role),
+                                DecisionReason::TifExpired,
+                            );
+                            update_order_record(
+                                &mut orders[active.record_index],
+                                OrderRecordUpdate {
+                                    trigger_time: None,
+                                    fill_bar_index: None,
+                                    fill_time: None,
+                                    raw_price: None,
+                                    fill_price: None,
+                                    effective_risk_per_unit: None,
+                                    capital_limited: None,
+                                    status: OrderStatus::Expired,
+                                    end_reason: None,
+                                },
+                            );
+                        }
+                        crate::backtest::orders::Evaluation::Cancel(reason) => {
+                            record_order_decision(
+                                decision_trace.as_mut(),
+                                Some(orders[active.record_index].id),
+                                Some(role),
+                                decision_reason_for_order_end(reason),
+                            );
+                            update_order_record(
+                                &mut orders[active.record_index],
+                                OrderRecordUpdate {
+                                    trigger_time: None,
+                                    fill_bar_index: None,
+                                    fill_time: None,
+                                    raw_price: None,
+                                    fill_price: None,
+                                    effective_risk_per_unit: None,
+                                    capital_limited: None,
+                                    status: OrderStatus::Cancelled,
+                                    end_reason: Some(reason),
+                                },
+                            );
+                        }
+                        crate::backtest::orders::Evaluation::MoveToRestingLimit {
+                            active_after_time,
+                            trigger_time,
+                        } => {
+                            record_order_decision(
+                                decision_trace.as_mut(),
+                                Some(orders[active.record_index].id),
+                                Some(role),
+                                DecisionReason::AwaitingFill,
+                            );
+                            orders[active.record_index].trigger_time = Some(trigger_time);
+                            active.state = WorkingState::RestingLimit { active_after_time };
+                            state.active_orders[slot] = Some(active);
+                        }
+                        crate::backtest::orders::Evaluation::Fill(execution) => {
+                            let action = fill_action_for_role(role);
+                            let execution_price =
+                                if matches!(active.request.kind, OrderKind::Market) {
+                                    adjusted_price(execution.raw_price, action, slippage_rate)
+                                } else {
+                                    execution.price
+                                };
+
+                            let close_outcome = maybe_close_position_for_role(
+                                &state.alias,
+                                role,
+                                active.record_index,
+                                active.request.kind,
+                                if matches!(
+                                    active.request.size_mode,
+                                    Some(crate::order::SizeMode::RiskPct)
+                                ) {
+                                    None
+                                } else {
+                                    active.request.size_value
+                                },
+                                state.last_snapshot.clone(),
+                                state.execution_cursor,
+                                bar.time,
+                                execution.raw_price,
+                                execution_price,
+                                &state.accounting,
+                                fee_rate,
+                                &mut cash,
+                                &mut state.position,
+                                &mut state.open_trade,
+                                &mut fills,
+                                &mut trades,
+                                &mut trade_diagnostics,
+                                &mut total_realized_pnl,
+                            );
+
+                            if let Some(snapshot) = close_outcome.snapshot {
+                                set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                                update_last_exit_snapshots(
+                                    &mut state.last_exit,
+                                    &mut state.last_long_exit,
+                                    &mut state.last_short_exit,
+                                    snapshot,
+                                );
+                            }
+                            if let Some(side) = close_outcome.consumed_target_side {
+                                mark_target_consumed(&mut state.target_consumption, side);
+                            }
+                            if let Some(side) = close_outcome.fully_closed_side {
+                                reset_target_consumption(&mut state.target_consumption, side);
+                                reset_entry_progress(&mut state.entry_progress, side);
+                                cancel_orders_for_closed_side(
+                                    &mut state.active_orders,
+                                    side,
+                                    exit_signal_role(side),
+                                    &mut orders,
+                                );
+                            }
+
+                            if let Some(next_side) = position_side_for_entry(role) {
+                                let block_reason = portfolio_entry_block_reason(
+                                    &prepared,
+                                    PortfolioStateWindow {
+                                        before_current,
+                                        current_state: state,
+                                        after_current,
+                                    },
+                                    next_side,
+                                    PortfolioEntrySizingContext {
+                                        execution_price,
+                                        cash,
+                                        fee_rate,
+                                        size_mode: active.request.size_mode,
+                                        size_value: active.request.size_value,
+                                        stop_price: active.request.size_stop_price,
+                                    },
+                                );
+                                if let Some((reason, kind)) = block_reason {
+                                    record_signal_decision(
+                                        decision_trace.as_mut(),
+                                        role.canonical_name(),
+                                        Some(role),
+                                        reason,
+                                    );
+                                    increment_portfolio_block_counts(
+                                        &mut blocked_counts,
+                                        &prepared,
+                                        kind,
+                                        &state.alias,
+                                    );
+                                    update_order_record(
+                                        &mut orders[active.record_index],
+                                        OrderRecordUpdate {
+                                            trigger_time: execution.trigger_time,
+                                            fill_bar_index: None,
+                                            fill_time: None,
+                                            raw_price: None,
+                                            fill_price: None,
+                                            effective_risk_per_unit: None,
+                                            capital_limited: None,
+                                            status: OrderStatus::Rejected,
+                                            end_reason: Some(
+                                                OrderEndReason::PortfolioControlRejected,
+                                            ),
+                                        },
+                                    );
+                                    continue;
+                                }
+                                let preview_sizing = match resolve_entry_sizing(
+                                    cash,
+                                    EntrySizingSpec {
+                                        size_mode: active.request.size_mode,
+                                        size_value: active.request.size_value,
+                                        stop_price: active.request.size_stop_price,
+                                    },
+                                    next_side,
+                                    &state.accounting,
+                                    execution_price,
+                                    fee_rate,
+                                ) {
+                                    Ok(result) => result,
+                                    Err(reason) => {
+                                        update_order_record(
+                                            &mut orders[active.record_index],
+                                            OrderRecordUpdate {
+                                                trigger_time: execution.trigger_time,
+                                                fill_bar_index: None,
+                                                fill_time: None,
+                                                raw_price: None,
+                                                fill_price: None,
+                                                effective_risk_per_unit: None,
+                                                capital_limited: None,
+                                                status: OrderStatus::Cancelled,
+                                                end_reason: Some(reason),
+                                            },
+                                        );
+                                        continue;
+                                    }
+                                };
+                                if preview_sizing.quantity <= crate::backtest::EPSILON {
+                                    update_order_record(
+                                        &mut orders[active.record_index],
+                                        OrderRecordUpdate {
+                                            trigger_time: execution.trigger_time,
+                                            fill_bar_index: None,
+                                            fill_time: None,
+                                            raw_price: None,
+                                            fill_price: None,
+                                            effective_risk_per_unit: None,
+                                            capital_limited: None,
+                                            status: OrderStatus::Cancelled,
+                                            end_reason: Some(
+                                                OrderEndReason::InsufficientCollateral,
+                                            ),
+                                        },
+                                    );
+                                    continue;
+                                }
+
+                                let execution_context = FillExecutionContext {
+                                    bar_index: state.execution_cursor,
+                                    time: bar.time,
+                                    raw_price: execution.raw_price,
+                                    execution_price,
+                                };
+                                if state
+                                    .position
+                                    .as_ref()
+                                    .is_some_and(|pos| pos.side == next_side)
+                                {
+                                    if let (Some(position_state), Some(open_trade_state)) =
+                                        (state.position.as_mut(), state.open_trade.as_mut())
+                                    {
+                                        let (entry_fill, entry_sizing) = match add_to_position(
+                                            PositionFillContext {
+                                                execution_alias: &state.alias,
+                                                execution: execution_context,
+                                                accounting: &state.accounting,
+                                                fee_rate,
+                                            },
+                                            position_state,
+                                            open_trade_state,
+                                            EntrySizingSpec {
+                                                size_mode: active.request.size_mode,
+                                                size_value: active.request.size_value,
+                                                stop_price: active.request.size_stop_price,
+                                            },
+                                            &mut cash,
+                                        ) {
+                                            Ok(result) => result,
+                                            Err(reason) => {
+                                                update_order_record(
+                                                    &mut orders[active.record_index],
+                                                    OrderRecordUpdate {
+                                                        trigger_time: execution.trigger_time,
+                                                        fill_bar_index: None,
+                                                        fill_time: None,
+                                                        raw_price: None,
+                                                        fill_price: None,
+                                                        effective_risk_per_unit: None,
+                                                        capital_limited: None,
+                                                        status: OrderStatus::Cancelled,
+                                                        end_reason: Some(reason),
+                                                    },
+                                                );
+                                                continue;
+                                            }
+                                        };
+                                        refresh_position_risk(
+                                            position_state,
+                                            &state.accounting,
+                                            current_mark
+                                                .map(|mark| mark.close)
+                                                .unwrap_or(bar.close),
+                                        );
+                                        update_open_trade_excursions(
+                                            open_trade_state,
+                                            bar.high,
+                                            bar.low,
+                                        );
+                                        fills.push(entry_fill);
+                                        match next_side {
+                                            PositionSide::Long => {
+                                                position_events.long_entry_fill = true
+                                            }
+                                            PositionSide::Short => {
+                                                position_events.short_entry_fill = true
+                                            }
+                                        }
+                                        mark_entry_filled(
+                                            &mut state.entry_progress,
+                                            next_side,
+                                            role.entry_stage().unwrap_or(1),
+                                        );
+                                        set_entry_stage_event(
+                                            &mut position_events,
+                                            next_side,
+                                            role.entry_stage(),
+                                        );
+                                        reset_target_consumption(
+                                            &mut state.target_consumption,
+                                            next_side,
+                                        );
+                                        orders[active.record_index].effective_risk_per_unit =
+                                            entry_sizing.effective_risk_per_unit;
+                                        orders[active.record_index].capital_limited =
+                                            entry_sizing.capital_limited;
+                                    }
+                                } else {
+                                    let (
+                                        mut next_position,
+                                        mut next_trade,
+                                        entry_fill,
+                                        entry_sizing,
+                                    ) = match open_position(
+                                        PositionFillContext {
+                                            execution_alias: &state.alias,
+                                            execution: execution_context,
+                                            accounting: &state.accounting,
+                                            fee_rate,
+                                        },
+                                        next_side,
+                                        TradeEntryContext {
+                                            order_id: active.record_index,
+                                            role,
+                                            kind: active.request.kind,
+                                            snapshot: state.last_snapshot.clone(),
+                                        },
+                                        EntrySizingSpec {
+                                            size_mode: active.request.size_mode,
+                                            size_value: active.request.size_value,
+                                            stop_price: active.request.size_stop_price,
+                                        },
+                                        &mut cash,
+                                    ) {
+                                        Ok(result) => result,
+                                        Err(reason) => {
+                                            update_order_record(
+                                                &mut orders[active.record_index],
+                                                OrderRecordUpdate {
+                                                    trigger_time: execution.trigger_time,
+                                                    fill_bar_index: None,
+                                                    fill_time: None,
+                                                    raw_price: None,
+                                                    fill_price: None,
+                                                    effective_risk_per_unit: None,
+                                                    capital_limited: None,
+                                                    status: OrderStatus::Cancelled,
+                                                    end_reason: Some(reason),
+                                                },
+                                            );
+                                            continue;
+                                        }
+                                    };
+                                    refresh_position_risk(
+                                        &mut next_position,
+                                        &state.accounting,
+                                        current_mark.map(|mark| mark.close).unwrap_or(bar.close),
+                                    );
+                                    update_open_trade_excursions(
+                                        &mut next_trade,
+                                        bar.high,
+                                        bar.low,
+                                    );
+                                    fills.push(entry_fill);
+                                    match next_side {
+                                        PositionSide::Long => {
+                                            position_events.long_entry_fill = true
+                                        }
+                                        PositionSide::Short => {
+                                            position_events.short_entry_fill = true
+                                        }
+                                    }
+                                    mark_entry_filled(
+                                        &mut state.entry_progress,
+                                        next_side,
+                                        role.entry_stage().unwrap_or(1),
+                                    );
+                                    set_entry_stage_event(
+                                        &mut position_events,
+                                        next_side,
+                                        role.entry_stage(),
+                                    );
+                                    reset_target_consumption(
+                                        &mut state.target_consumption,
+                                        next_side,
+                                    );
+                                    state.position = Some(next_position);
+                                    state.open_trade = Some(next_trade);
+                                    orders[active.record_index].effective_risk_per_unit =
+                                        entry_sizing.effective_risk_per_unit;
+                                    orders[active.record_index].capital_limited =
+                                        entry_sizing.capital_limited;
+                                }
+                            }
+
+                            let effective_risk_per_unit =
+                                orders[active.record_index].effective_risk_per_unit;
+                            let capital_limited = orders[active.record_index].capital_limited;
+                            update_order_record(
+                                &mut orders[active.record_index],
+                                OrderRecordUpdate {
+                                    trigger_time: execution.trigger_time,
+                                    fill_bar_index: Some(state.execution_cursor),
+                                    fill_time: Some(bar.time),
+                                    raw_price: Some(execution.raw_price),
+                                    fill_price: Some(execution_price),
+                                    effective_risk_per_unit,
+                                    capital_limited: Some(capital_limited),
+                                    status: OrderStatus::Filled,
+                                    end_reason: None,
+                                },
+                            );
+                            filled_record_indices.push(active.record_index);
+                            invalidate_inapplicable_orders(
+                                &mut state.active_orders,
+                                state.position.as_ref(),
+                                state.entry_progress,
+                                &mut orders,
+                            );
+                            invalidate_stale_attached_orders(
+                                &mut state.active_orders,
+                                state.position.as_ref(),
+                                state.target_consumption,
+                                &prepared,
+                                &mut orders,
+                            );
+                            filled_this_bar = true;
+                        }
+                    }
+                }
+
+                if let (Some(mark_bar), Some(position_state)) =
+                    (current_mark, state.position.as_mut())
+                {
+                    refresh_position_risk(position_state, &state.accounting, mark_bar.close);
+                    if position_state.entry_bar_index < state.execution_cursor {
+                        if let Some(liquidation_price) = liquidation_trigger_price(
+                            position_state,
+                            mark_bar.open,
+                            mark_bar.high,
+                            mark_bar.low,
+                        ) {
+                            let liquidation_outcome = force_liquidation(
+                                &state.alias,
+                                position_state.side,
+                                state.execution_cursor,
+                                bar.time,
+                                liquidation_price,
+                                fee_rate,
+                                &mut cash,
+                                &mut state.position,
+                                &mut state.open_trade,
+                                &mut fills,
+                                &mut trades,
+                                &mut trade_diagnostics,
+                                &mut total_realized_pnl,
+                            );
+                            if let Some(snapshot) = liquidation_outcome.snapshot {
+                                set_exit_events(&mut position_events, snapshot.side, snapshot.kind);
+                                update_last_exit_snapshots(
+                                    &mut state.last_exit,
+                                    &mut state.last_long_exit,
+                                    &mut state.last_short_exit,
+                                    snapshot,
+                                );
+                            }
+                            if let Some(side) = liquidation_outcome.fully_closed_side {
+                                reset_target_consumption(&mut state.target_consumption, side);
+                                reset_entry_progress(&mut state.entry_progress, side);
+                                cancel_orders_for_closed_side(
+                                    &mut state.active_orders,
+                                    side,
+                                    liquidation_signal_role(side),
+                                    &mut orders,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            let overrides = build_runtime_overrides(
+                &prepared.position_fields,
+                &prepared.position_event_fields,
+                &prepared.last_exit_fields,
+                state.position.as_ref(),
+                state.open_trade.as_ref(),
+                state.last_exit.as_ref(),
+                state.last_long_exit.as_ref(),
+                state.last_short_exit.as_ref(),
+                current_execution
+                    .map(|bar| bar.close)
+                    .or(state.last_mark_price),
+                open_time as f64,
+                current_execution.map(|_| state.execution_cursor),
+                position_events,
+            );
+            let RuntimeStep { output, .. } = state
+                .stepper
+                .step_with_overrides(&overrides)
+                .map_err(BacktestError::Runtime)?
+                .expect("peeked runtime step should exist");
+            let step_time = open_time as f64;
+            let snapshot = snapshot_from_step(&output, step_time);
+            let step_bar_index = snapshot
+                .as_ref()
+                .map_or(state.execution_cursor, |feature_snapshot| {
+                    feature_snapshot.bar_index
+                });
+            let decision_position_snapshot = current_execution.and_then(|bar| {
+                current_position_snapshot(
+                    state.position.as_ref(),
+                    &state.alias,
+                    bar.close,
+                    bar.time,
+                )
+            });
+
+            if let Some(bar) = current_execution {
+                if position_events.long_entry_fill || position_events.short_entry_fill {
+                    if let Some(open_trade) = state.open_trade.as_mut() {
+                        open_trade.entry_snapshot = snapshot.clone();
+                    }
+                }
+                let fill_position = current_position_snapshot(
+                    state.position.as_ref(),
+                    &state.alias,
+                    bar.close,
+                    bar.time,
+                );
+                for record_index in filled_record_indices {
+                    order_contexts[record_index].fill_snapshot = snapshot.clone();
+                    order_contexts[record_index].fill_position = fill_position.clone();
+                }
+                let bar_return = state
+                    .diagnostics
+                    .observe_execution_bar(bar.close, state.position.as_ref().map(|s| s.side));
+                state.diagnostics.observe_exports(
+                    &output,
+                    snapshot.as_ref(),
+                    fill_position.as_ref(),
+                    state.execution_cursor,
+                    step_time,
+                    bar_return,
+                    state.position.as_ref().map(|s| s.side),
+                );
+                state.last_mark_price =
+                    Some(current_mark.map(|mark| mark.close).unwrap_or(bar.close));
+                if let Some(trace) = decision_trace.as_mut() {
+                    ensure_no_signal_traces(trace, &prepared);
+                    all_traces.push(PerBarDecisionTrace {
+                        execution_alias: state.alias.clone(),
+                        bar_index: state.execution_cursor,
+                        time: bar.time,
+                        position_snapshot: fill_position.clone(),
+                        feature_snapshot: snapshot.clone(),
+                        signal_decisions: std::mem::take(&mut trace.signal_decisions),
+                        order_decisions: std::mem::take(&mut trace.order_decisions),
+                    });
+                }
+                state.execution_cursor += 1;
+            }
+
+            enqueue_signal_requests(
+                &output,
+                step_time,
+                &prepared,
+                &mut state.pending_requests,
+                &mut state.pending_snapshots,
+                &mut state.pending_signal_names,
+                &mut state.pending_conflict_time,
+                &mut state.diagnostics,
+                decision_position_snapshot.as_ref(),
+                snapshot.as_ref(),
+                step_bar_index,
+                &state.alias,
+                decision_trace.as_mut(),
+            );
+            enqueue_attached_requests(
+                step_time,
+                &output,
+                &prepared,
+                state.position.as_ref(),
+                state.position.as_ref(),
+                state.target_consumption,
+                &mut state.pending_requests,
+                &mut state.pending_snapshots,
+                &mut state.pending_signal_names,
+                &mut state.diagnostics,
+                decision_position_snapshot.as_ref(),
+                snapshot.as_ref(),
+                step_bar_index,
+                &state.alias,
+                decision_trace.as_mut(),
+            );
+            state.last_snapshot = snapshot;
+            state_index += 1;
+        }
+
+        let mut gross_exposure = 0.0;
+        let mut net_exposure = 0.0;
+        let mut unrealized_total = 0.0;
+        let mut long_count = 0usize;
+        let mut short_count = 0usize;
+        for state in &alias_states {
+            let Some(position) = state.position.as_ref() else {
+                continue;
+            };
+            let mark_price = state.last_mark_price.unwrap_or(position.entry_price);
+            let signed_notional = position.quantity * mark_price;
+            gross_exposure += signed_notional.abs();
+            net_exposure += signed_notional;
+            unrealized_total += unrealized_pnl_for_position(position, mark_price);
+            match position.side {
+                PositionSide::Long => long_count += 1,
+                PositionSide::Short => short_count += 1,
+            }
+        }
+        let open_position_count = long_count + short_count;
+        let equity = cash
+            + alias_states
+                .iter()
+                .filter_map(|state| state.position.as_ref())
+                .map(|position| position.isolated_margin)
+                .sum::<f64>()
+            + unrealized_total;
+        peak_equity = peak_equity.max(equity);
+        max_drawdown = max_drawdown.max(peak_equity - equity);
+        let gross_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
+            0.0
+        } else {
+            gross_exposure / equity
+        };
+        let net_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
+            0.0
+        } else {
+            net_exposure / equity
+        };
+        max_gross_exposure = max_gross_exposure.max(gross_exposure_pct);
+        max_net_exposure = max_net_exposure.max(net_exposure_pct.abs());
+        peak_open_position_count = peak_open_position_count.max(open_position_count);
+        equity_curve.push(EquityPoint {
+            bar_index: equity_curve.len(),
+            time: open_time as f64,
+            cash,
+            equity,
+            position_side: None,
+            quantity: 0.0,
+            mark_price: 0.0,
+            gross_exposure: gross_exposure_pct,
+            net_exposure: net_exposure_pct,
+            open_position_count,
+            long_position_count: long_count,
+            short_position_count: short_count,
+            free_collateral: None,
+            isolated_margin: None,
+            maintenance_margin: None,
+            liquidation_price: None,
+        });
+    }
+
+    let mut outputs = Outputs::default();
+    let mut source_alignment = crate::runtime::SourceAlignmentDiagnostics::default();
+    let mut capture_summary = BacktestCaptureSummary::default();
+    let mut export_summaries = Vec::new();
+    let mut opportunity_events = Vec::new();
+    let mut open_positions = Vec::new();
+    for (index, state) in alias_states.into_iter().enumerate() {
+        let alias_trade_diagnostics = trade_diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.execution_alias == state.alias)
+            .cloned()
+            .collect::<Vec<_>>();
+        let (alias_capture, alias_exports, alias_events) = state.diagnostics.finalize(
+            &state.execution_bars,
+            &alias_trade_diagnostics,
+            if config.initial_capital.abs() <= crate::backtest::EPSILON {
+                0.0
+            } else {
+                (equity_curve
+                    .last()
+                    .map(|point| point.equity)
+                    .unwrap_or(config.initial_capital)
+                    - config.initial_capital)
+                    / config.initial_capital
+            },
+        );
+        if index == 0 {
+            capture_summary = alias_capture;
+            export_summaries = alias_exports;
+            source_alignment = state.stepper.source_alignment_diagnostics();
+            outputs = state.stepper.finish();
+        } else {
+            let _ = state.stepper.finish();
+        }
+        opportunity_events.extend(alias_events);
+        if let Some(mark_price) = state.last_mark_price {
+            if let Some(position) = state.position.as_ref() {
+                open_positions.push(
+                    current_position_snapshot(
+                        Some(position),
+                        &state.alias,
+                        mark_price,
+                        equity_curve.last().map(|point| point.time).unwrap_or(0.0),
+                    )
+                    .expect("open position snapshot should exist"),
+                );
+            }
+        }
+    }
+
+    let order_diagnostics = build_order_diagnostics(&orders, &order_contexts);
+    let diagnostics_summary = build_diagnostics_summary(&order_diagnostics, &trade_diagnostics);
+    let ending_equity = equity_curve
+        .last()
+        .map_or(config.initial_capital, |point| point.equity);
+    let unrealized_pnl = ending_equity - config.initial_capital - total_realized_pnl;
+    let winning_trade_count = trades
+        .iter()
+        .filter(|trade| trade.realized_pnl > 0.0)
+        .count();
+    let losing_trade_count = trades
+        .iter()
+        .filter(|trade| trade.realized_pnl < 0.0)
+        .count();
+    let trade_count = trades.len();
+    let win_rate = if trade_count == 0 {
+        0.0
+    } else {
+        winning_trade_count as f64 / trade_count as f64
+    };
+    let summary = BacktestSummary {
+        starting_equity: config.initial_capital,
+        ending_equity,
+        realized_pnl: total_realized_pnl,
+        unrealized_pnl,
+        total_return: (ending_equity - config.initial_capital) / config.initial_capital,
+        trade_count,
+        winning_trade_count,
+        losing_trade_count,
+        win_rate,
+        max_drawdown,
+        max_gross_exposure,
+        max_net_exposure,
+        peak_open_position_count,
+    };
+    let cohorts = build_cohort_diagnostics(&trade_diagnostics, &export_summaries);
+    let drawdown = build_drawdown_diagnostics(&equity_curve);
+    let mut hints = build_backtest_hints(&summary, &diagnostics_summary, &cohorts, &drawdown);
+    let blocked_portfolio_entries = blocked_counts
+        .into_iter()
+        .map(
+            |((kind, alias, group), count)| crate::backtest::PortfolioControlBlockSummary {
+                kind,
+                alias,
+                group,
+                count,
+            },
+        )
+        .collect::<Vec<_>>();
+    extend_portfolio_hints(&blocked_portfolio_entries, &mut hints);
+
+    Ok(BacktestResult {
+        outputs,
+        orders,
+        fills,
+        trades,
+        diagnostics: BacktestDiagnostics {
+            order_diagnostics,
+            trade_diagnostics,
+            summary: diagnostics_summary,
+            capture_summary,
+            export_summaries,
+            opportunity_events,
+            per_bar_trace: all_traces,
+            cohorts,
+            drawdown,
+            source_alignment,
+            hints,
+            portfolio_mode: true,
+            blocked_portfolio_entries,
+        },
+        equity_curve,
+        summary,
+        open_position: open_positions.first().cloned(),
+        open_positions,
+        perp: None,
     })
 }
 
@@ -1172,6 +2235,7 @@ fn enqueue_signal_requests(
     position_snapshot: Option<&PositionSnapshot>,
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
+    execution_alias: &str,
     decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let mut decision_trace = decision_trace;
@@ -1197,6 +2261,7 @@ fn enqueue_signal_requests(
             OpportunityEventKind::SignalQueued
         };
         diagnostics.record_signal_event(
+            execution_alias,
             event_kind,
             &event.name,
             role,
@@ -1241,6 +2306,7 @@ fn enqueue_attached_requests(
     position_snapshot: Option<&PositionSnapshot>,
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
+    execution_alias: &str,
     decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let (Some(before), Some(after)) = (position_before_step, position_after_step) else {
@@ -1258,6 +2324,7 @@ fn enqueue_attached_requests(
         let template = prepared.order_templates[&role];
         let slot = role_index(role);
         diagnostics.record_signal_event(
+            execution_alias,
             if pending_requests[slot].is_some() {
                 OpportunityEventKind::SignalReplacedPendingOrder
             } else {
@@ -1304,6 +2371,7 @@ fn place_pending_requests(
     placed_position: Option<PositionSnapshot>,
     bar_index: usize,
     time: f64,
+    execution_alias: &str,
     decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let mut decision_trace = decision_trace;
@@ -1324,6 +2392,7 @@ fn place_pending_requests(
             )
         {
             diagnostics.record_signal_event(
+                execution_alias,
                 OpportunityEventKind::SignalIgnoredCooldown,
                 signal_name.as_deref().unwrap_or(role.canonical_name()),
                 role,
@@ -1354,6 +2423,7 @@ fn place_pending_requests(
                 DecisionReason::NoPosition
             };
             diagnostics.record_signal_event(
+                execution_alias,
                 if matches!(
                     (
                         role.is_entry(),
@@ -1385,6 +2455,7 @@ fn place_pending_requests(
 
         if let Some(existing) = active_orders[slot].take() {
             diagnostics.record_signal_event(
+                execution_alias,
                 OpportunityEventKind::SignalReplacedPendingOrder,
                 signal_name.as_deref().unwrap_or(role.canonical_name()),
                 role,
@@ -1413,8 +2484,13 @@ fn place_pending_requests(
             );
         }
 
-        let mut record =
-            crate::backtest::orders::order_record(request, bar_index, time, orders.len());
+        let mut record = crate::backtest::orders::order_record(
+            execution_alias,
+            request,
+            bar_index,
+            time,
+            orders.len(),
+        );
         let record_index = orders.len();
         order_contexts.push(OrderDiagnosticContext {
             signal_snapshot,
@@ -1673,6 +2749,7 @@ fn cancel_active_role(
 
 #[allow(clippy::too_many_arguments)]
 fn maybe_close_position_for_role(
+    execution_alias: &str,
     role: SignalRole,
     order_id: usize,
     order_kind: OrderKind,
@@ -1737,6 +2814,7 @@ fn maybe_close_position_for_role(
         .clone();
     let exit_fill = match accounting {
         AccountingMode::Spot => close_position(
+            execution_alias,
             CloseExecution {
                 execution: FillExecutionContext {
                     bar_index,
@@ -1761,6 +2839,7 @@ fn maybe_close_position_for_role(
             let notional = close_quantity * execution_price;
             let fee = notional * fee_rate;
             Fill {
+                execution_alias: execution_alias.to_string(),
                 bar_index,
                 time,
                 action: realization.action,
@@ -1786,7 +2865,12 @@ fn maybe_close_position_for_role(
         bars_held,
     ) = {
         let open_trade = open_trade.as_mut().expect("open trade should exist");
-        let trade = close_trade_slice(open_trade, exit_fill.clone(), close_quantity);
+        let trade = close_trade_slice(
+            execution_alias,
+            open_trade,
+            exit_fill.clone(),
+            close_quantity,
+        );
         let bars_held = exit_fill
             .bar_index
             .saturating_sub(open_trade.entry.bar_index);
@@ -1841,6 +2925,7 @@ fn maybe_close_position_for_role(
     *total_realized_pnl += realized_pnl;
     fills.push(exit_fill.clone());
     trade_diagnostics.push(TradeDiagnostic {
+        execution_alias: execution_alias.to_string(),
         trade_id: trades.len(),
         side,
         entry_order_id,
@@ -2086,6 +3171,7 @@ fn decision_reason_for_order_end(reason: OrderEndReason) -> DecisionReason {
         | OrderEndReason::InvalidRiskPct
         | OrderEndReason::InvalidRiskDistance => DecisionReason::MissingOrderField,
         OrderEndReason::InsufficientCollateral => DecisionReason::InsufficientCollateral,
+        OrderEndReason::PortfolioControlRejected => DecisionReason::VenueRuleRejected,
         OrderEndReason::IocUnfilled | OrderEndReason::FokUnfilled => DecisionReason::TifExpired,
         OrderEndReason::PostOnlyWouldCross => DecisionReason::PostOnlyWouldCross,
         OrderEndReason::Replaced
@@ -2133,10 +3219,12 @@ fn exit_kind_for_role(role: SignalRole) -> ExitKind {
 
 fn current_position_snapshot(
     position: Option<&PositionState>,
+    execution_alias: &str,
     mark_price: f64,
     market_time: f64,
 ) -> Option<PositionSnapshot> {
     position.map(|state| PositionSnapshot {
+        execution_alias: execution_alias.to_string(),
         side: state.side,
         quantity: state.quantity.abs(),
         entry_bar_index: state.entry_bar_index,
@@ -2159,6 +3247,32 @@ fn accounting_mode(config: &BacktestConfig) -> AccountingMode {
             risk_tiers: risk_tiers(&context.risk_snapshot).to_vec(),
         },
         _ => AccountingMode::Spot,
+    }
+}
+
+fn accounting_mode_for_alias(
+    config: &BacktestConfig,
+    alias: &str,
+    template: crate::interval::SourceTemplate,
+) -> AccountingMode {
+    match template {
+        crate::interval::SourceTemplate::BinanceSpot
+        | crate::interval::SourceTemplate::BybitSpot
+        | crate::interval::SourceTemplate::GateSpot => AccountingMode::Spot,
+        crate::interval::SourceTemplate::BinanceUsdm
+        | crate::interval::SourceTemplate::BybitUsdtPerps
+        | crate::interval::SourceTemplate::GateUsdtPerps => {
+            let leverage = config.perp.as_ref().map_or(1.0, |perp| perp.leverage);
+            let context = config
+                .portfolio_perp_contexts
+                .get(alias)
+                .or(config.perp_context.as_ref())
+                .expect("portfolio perp execution requires context");
+            AccountingMode::PerpIsolated {
+                leverage,
+                risk_tiers: risk_tiers(&context.risk_snapshot).to_vec(),
+            }
+        }
     }
 }
 
@@ -2193,6 +3307,347 @@ fn aligned_mark_bars(
     Ok(aligned)
 }
 
+fn aligned_mark_bars_for_alias(
+    config: &BacktestConfig,
+    alias: &str,
+    template: crate::interval::SourceTemplate,
+    execution_bars: &[Bar],
+) -> Result<Vec<Bar>, BacktestError> {
+    match template {
+        crate::interval::SourceTemplate::BinanceSpot
+        | crate::interval::SourceTemplate::BybitSpot
+        | crate::interval::SourceTemplate::GateSpot => Ok(execution_bars.to_vec()),
+        crate::interval::SourceTemplate::BinanceUsdm
+        | crate::interval::SourceTemplate::BybitUsdtPerps
+        | crate::interval::SourceTemplate::GateUsdtPerps => {
+            let context = config
+                .portfolio_perp_contexts
+                .get(alias)
+                .or(config.perp_context.as_ref())
+                .ok_or_else(|| BacktestError::MissingPerpContext {
+                    alias: alias.to_string(),
+                })?;
+            let mut by_time = BTreeMap::<i64, Bar>::new();
+            for bar in &context.mark_bars {
+                by_time.insert(bar.time as i64, *bar);
+            }
+            let mut aligned = Vec::with_capacity(execution_bars.len());
+            for execution_bar in execution_bars {
+                let Some(mark_bar) = by_time.get(&(execution_bar.time as i64)).copied() else {
+                    return Err(BacktestError::MissingPerpMarkFeed {
+                        alias: alias.to_string(),
+                    });
+                };
+                aligned.push(mark_bar);
+            }
+            Ok(aligned)
+        }
+    }
+}
+
+fn mapped_portfolio_control_kind(
+    kind: ProgramPortfolioControlKind,
+) -> BacktestPortfolioControlKind {
+    match kind {
+        ProgramPortfolioControlKind::MaxPositions => BacktestPortfolioControlKind::MaxPositions,
+        ProgramPortfolioControlKind::MaxLongPositions => {
+            BacktestPortfolioControlKind::MaxLongPositions
+        }
+        ProgramPortfolioControlKind::MaxShortPositions => {
+            BacktestPortfolioControlKind::MaxShortPositions
+        }
+        ProgramPortfolioControlKind::MaxGrossExposurePct => {
+            BacktestPortfolioControlKind::MaxGrossExposurePct
+        }
+        ProgramPortfolioControlKind::MaxNetExposurePct => {
+            BacktestPortfolioControlKind::MaxNetExposurePct
+        }
+    }
+}
+
+fn decision_reason_for_portfolio_control(kind: ProgramPortfolioControlKind) -> DecisionReason {
+    match kind {
+        ProgramPortfolioControlKind::MaxPositions => DecisionReason::PortfolioMaxPositionsExceeded,
+        ProgramPortfolioControlKind::MaxLongPositions => {
+            DecisionReason::PortfolioMaxLongPositionsExceeded
+        }
+        ProgramPortfolioControlKind::MaxShortPositions => {
+            DecisionReason::PortfolioMaxShortPositionsExceeded
+        }
+        ProgramPortfolioControlKind::MaxGrossExposurePct => {
+            DecisionReason::PortfolioMaxGrossExposureExceeded
+        }
+        ProgramPortfolioControlKind::MaxNetExposurePct => {
+            DecisionReason::PortfolioMaxNetExposureExceeded
+        }
+    }
+}
+
+fn portfolio_control_value(
+    controls: &[PortfolioControlDecl],
+    kind: ProgramPortfolioControlKind,
+) -> Option<f64> {
+    controls
+        .iter()
+        .find(|decl| decl.kind == kind)
+        .map(|decl| decl.value)
+}
+
+fn open_position_metrics<'a>(
+    states: impl Iterator<Item = &'a PortfolioAliasState>,
+) -> (usize, usize, usize, f64, f64, f64, f64) {
+    let mut open_position_count = 0usize;
+    let mut long_count = 0usize;
+    let mut short_count = 0usize;
+    let mut gross_notional = 0.0;
+    let mut net_notional = 0.0;
+    let mut isolated_margin = 0.0;
+    let mut unrealized_total = 0.0;
+    for state in states {
+        let Some(position) = state.position.as_ref() else {
+            continue;
+        };
+        open_position_count += 1;
+        match position.side {
+            PositionSide::Long => long_count += 1,
+            PositionSide::Short => short_count += 1,
+        }
+        let mark_price = state.last_mark_price.unwrap_or(position.entry_price);
+        let signed_notional = position.quantity * mark_price;
+        gross_notional += signed_notional.abs();
+        net_notional += signed_notional;
+        isolated_margin += position.isolated_margin;
+        unrealized_total += unrealized_pnl_for_position(position, mark_price);
+    }
+    (
+        open_position_count,
+        long_count,
+        short_count,
+        gross_notional,
+        net_notional,
+        isolated_margin,
+        unrealized_total,
+    )
+}
+
+struct PortfolioStateWindow<'a> {
+    before_current: &'a [PortfolioAliasState],
+    current_state: &'a PortfolioAliasState,
+    after_current: &'a [PortfolioAliasState],
+}
+
+struct PortfolioEntrySizingContext {
+    execution_price: f64,
+    cash: f64,
+    fee_rate: f64,
+    size_mode: Option<crate::order::SizeMode>,
+    size_value: Option<f64>,
+    stop_price: Option<f64>,
+}
+
+fn portfolio_entry_block_reason(
+    prepared: &PreparedBacktest,
+    states: PortfolioStateWindow<'_>,
+    next_side: PositionSide,
+    sizing_context: PortfolioEntrySizingContext,
+) -> Option<(DecisionReason, BacktestPortfolioControlKind)> {
+    let sizing = resolve_entry_sizing(
+        sizing_context.cash,
+        EntrySizingSpec {
+            size_mode: sizing_context.size_mode,
+            size_value: sizing_context.size_value,
+            stop_price: sizing_context.stop_price,
+        },
+        next_side,
+        &states.current_state.accounting,
+        sizing_context.execution_price,
+        sizing_context.fee_rate,
+    )
+    .ok()?;
+    if sizing.quantity <= crate::backtest::EPSILON {
+        return None;
+    }
+
+    let (
+        open_position_count,
+        long_count,
+        short_count,
+        gross_notional,
+        net_notional,
+        isolated_margin,
+        unrealized_total,
+    ) = open_position_metrics(
+        states
+            .before_current
+            .iter()
+            .chain(std::iter::once(states.current_state))
+            .chain(states.after_current.iter()),
+    );
+
+    let adds_to_existing_position = states
+        .current_state
+        .position
+        .as_ref()
+        .is_some_and(|position| position.side == next_side);
+    let additional_notional = sizing.quantity * sizing_context.execution_price;
+    let projected_position_count = if adds_to_existing_position {
+        open_position_count
+    } else {
+        open_position_count + 1
+    };
+    let projected_long_count =
+        long_count + usize::from(!adds_to_existing_position && next_side == PositionSide::Long);
+    let projected_short_count =
+        short_count + usize::from(!adds_to_existing_position && next_side == PositionSide::Short);
+    let signed_additional = match next_side {
+        PositionSide::Long => additional_notional,
+        PositionSide::Short => -additional_notional,
+    };
+    let projected_gross_notional = gross_notional + additional_notional.abs();
+    let projected_net_notional = net_notional + signed_additional;
+    let projected_equity = sizing_context.cash + isolated_margin + unrealized_total;
+    let projected_gross_exposure = if projected_equity.abs() <= crate::backtest::EPSILON {
+        f64::INFINITY
+    } else {
+        projected_gross_notional / projected_equity
+    };
+    let projected_net_exposure = if projected_equity.abs() <= crate::backtest::EPSILON {
+        f64::INFINITY
+    } else {
+        projected_net_notional.abs() / projected_equity.abs()
+    };
+
+    for kind in [
+        ProgramPortfolioControlKind::MaxPositions,
+        ProgramPortfolioControlKind::MaxLongPositions,
+        ProgramPortfolioControlKind::MaxShortPositions,
+        ProgramPortfolioControlKind::MaxGrossExposurePct,
+        ProgramPortfolioControlKind::MaxNetExposurePct,
+    ] {
+        let Some(limit) = portfolio_control_value(&prepared.portfolio_controls, kind) else {
+            continue;
+        };
+        let exceeded = match kind {
+            ProgramPortfolioControlKind::MaxPositions => projected_position_count as f64 > limit,
+            ProgramPortfolioControlKind::MaxLongPositions => projected_long_count as f64 > limit,
+            ProgramPortfolioControlKind::MaxShortPositions => projected_short_count as f64 > limit,
+            ProgramPortfolioControlKind::MaxGrossExposurePct => projected_gross_exposure > limit,
+            ProgramPortfolioControlKind::MaxNetExposurePct => projected_net_exposure > limit,
+        };
+        if exceeded {
+            return Some((
+                decision_reason_for_portfolio_control(kind),
+                mapped_portfolio_control_kind(kind),
+            ));
+        }
+    }
+    None
+}
+
+fn increment_portfolio_block_counts(
+    blocked_counts: &mut BTreeMap<(BacktestPortfolioControlKind, String, Option<String>), usize>,
+    prepared: &PreparedBacktest,
+    kind: BacktestPortfolioControlKind,
+    alias: &str,
+) {
+    *blocked_counts
+        .entry((kind, alias.to_string(), None))
+        .or_default() += 1;
+    for group in prepared
+        .portfolio_groups
+        .iter()
+        .filter(|group| group.aliases.iter().any(|member| member == alias))
+    {
+        *blocked_counts
+            .entry((kind, alias.to_string(), Some(group.name.clone())))
+            .or_default() += 1;
+    }
+}
+
+fn extend_portfolio_hints(
+    blocked_portfolio_entries: &[PortfolioControlBlockSummary],
+    hints: &mut Vec<crate::backtest::ImprovementHint>,
+) {
+    if blocked_portfolio_entries.is_empty() {
+        return;
+    }
+    hints.push(crate::backtest::ImprovementHint {
+        kind: crate::backtest::ImprovementHintKind::PortfolioCapsTooTight,
+        metric: Some("blocked_portfolio_entries".to_string()),
+        value: Some(
+            blocked_portfolio_entries
+                .iter()
+                .map(|summary| summary.count)
+                .sum::<usize>() as f64,
+        ),
+    });
+
+    let exposure_block_count = blocked_portfolio_entries
+        .iter()
+        .filter(|summary| {
+            matches!(
+                summary.kind,
+                BacktestPortfolioControlKind::MaxGrossExposurePct
+                    | BacktestPortfolioControlKind::MaxNetExposurePct
+            )
+        })
+        .map(|summary| summary.count)
+        .sum::<usize>();
+    if exposure_block_count > 0 {
+        hints.push(crate::backtest::ImprovementHint {
+            kind: crate::backtest::ImprovementHintKind::ExposureCapBlocksMajorityOfEntries,
+            metric: Some("portfolio_exposure_blocks".to_string()),
+            value: Some(exposure_block_count as f64),
+        });
+    }
+
+    let position_block_count = blocked_portfolio_entries
+        .iter()
+        .filter(|summary| {
+            matches!(
+                summary.kind,
+                BacktestPortfolioControlKind::MaxPositions
+                    | BacktestPortfolioControlKind::MaxLongPositions
+                    | BacktestPortfolioControlKind::MaxShortPositions
+            )
+        })
+        .map(|summary| summary.count)
+        .sum::<usize>();
+    if position_block_count > 0 {
+        hints.push(crate::backtest::ImprovementHint {
+            kind: crate::backtest::ImprovementHintKind::PositionCountCapBlocksMajorityOfEntries,
+            metric: Some("portfolio_position_blocks".to_string()),
+            value: Some(position_block_count as f64),
+        });
+    }
+
+    let long_side_block_count = blocked_portfolio_entries
+        .iter()
+        .filter(|summary| summary.kind == BacktestPortfolioControlKind::MaxLongPositions)
+        .map(|summary| summary.count)
+        .sum::<usize>();
+    if long_side_block_count > 0 {
+        hints.push(crate::backtest::ImprovementHint {
+            kind: crate::backtest::ImprovementHintKind::LongSideCapacitySaturated,
+            metric: Some("portfolio_long_blocks".to_string()),
+            value: Some(long_side_block_count as f64),
+        });
+    }
+
+    let short_side_block_count = blocked_portfolio_entries
+        .iter()
+        .filter(|summary| summary.kind == BacktestPortfolioControlKind::MaxShortPositions)
+        .map(|summary| summary.count)
+        .sum::<usize>();
+    if short_side_block_count > 0 {
+        hints.push(crate::backtest::ImprovementHint {
+            kind: crate::backtest::ImprovementHintKind::ShortSideCapacitySaturated,
+            metric: Some("portfolio_short_blocks".to_string()),
+            value: Some(short_side_block_count as f64),
+        });
+    }
+}
+
 fn liquidation_signal_role(side: PositionSide) -> SignalRole {
     match side {
         PositionSide::Long => SignalRole::ProtectLong,
@@ -2209,6 +3664,7 @@ fn exit_signal_role(side: PositionSide) -> SignalRole {
 
 #[allow(clippy::too_many_arguments)]
 fn maybe_force_time_exit(
+    execution_alias: &str,
     controls: &[RiskControlDecl],
     bar_index: usize,
     time: f64,
@@ -2240,6 +3696,7 @@ fn maybe_force_time_exit(
     );
 
     Some(maybe_close_position_for_role(
+        execution_alias,
         exit_signal_role(position_side),
         usize::MAX,
         OrderKind::Market,
@@ -2263,6 +3720,7 @@ fn maybe_force_time_exit(
 
 #[allow(clippy::too_many_arguments)]
 fn force_liquidation(
+    execution_alias: &str,
     side: PositionSide,
     bar_index: usize,
     time: f64,
@@ -2286,6 +3744,7 @@ fn force_liquidation(
     let notional = quantity * execution_price;
     let fee = notional * fee_rate;
     let exit_fill = Fill {
+        execution_alias: execution_alias.to_string(),
         bar_index,
         time,
         action: realization.action,
@@ -2310,7 +3769,7 @@ fn force_liquidation(
         let open_trade = open_trade
             .as_mut()
             .expect("liquidation requires an open trade");
-        let trade = close_trade_slice(open_trade, exit_fill.clone(), quantity);
+        let trade = close_trade_slice(execution_alias, open_trade, exit_fill.clone(), quantity);
         (
             trade,
             open_trade.entry_order_id,
@@ -2337,6 +3796,7 @@ fn force_liquidation(
     *total_realized_pnl += realized_pnl;
     fills.push(exit_fill.clone());
     trade_diagnostics.push(TradeDiagnostic {
+        execution_alias: execution_alias.to_string(),
         trade_id: trades.len(),
         side,
         entry_order_id,

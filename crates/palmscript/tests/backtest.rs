@@ -22,15 +22,35 @@ fn bar(time: i64, open: f64, close: f64) -> Bar {
     }
 }
 
+fn multi_source_runtime(left_bars: Vec<Bar>, right_bars: Vec<Bar>) -> SourceRuntimeConfig {
+    SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: left_bars,
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars: right_bars,
+            },
+        ],
+    }
+}
+
 fn config(alias: &str) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),
+        portfolio_execution_aliases: Vec::new(),
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
+        portfolio_perp_contexts: std::collections::BTreeMap::new(),
     }
 }
 
@@ -43,6 +63,7 @@ fn trace_config(alias: &str) -> BacktestConfig {
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),
+        portfolio_execution_aliases: Vec::new(),
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
@@ -67,6 +88,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
                 }],
             }),
         }),
+        portfolio_perp_contexts: std::collections::BTreeMap::new(),
     }
 }
 
@@ -342,6 +364,124 @@ plot(spot.close)",
     let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
         .expect("backtest should succeed");
     assert!(result.diagnostics.per_bar_trace.is_empty());
+}
+
+#[test]
+fn portfolio_mode_opens_positions_on_multiple_execution_aliases() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+entry long = left.close > left.close[1]
+order entry long = market()
+size entry long = 0.4
+entry short = false
+exit long = false
+exit short = false
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                12.0,
+                12.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 21.0, 21.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                22.0,
+                22.0,
+            ),
+        ],
+    );
+    let mut backtest = config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("portfolio backtest should succeed");
+
+    assert!(result.diagnostics.portfolio_mode);
+    assert_eq!(result.open_positions.len(), 2);
+    assert_eq!(result.summary.peak_open_position_count, 2);
+    assert_eq!(
+        result
+            .equity_curve
+            .iter()
+            .map(|point| point.open_position_count)
+            .max()
+            .unwrap_or(0),
+        2
+    );
+    assert_eq!(result.fills.len(), 2);
+    assert!(result
+        .open_positions
+        .iter()
+        .any(|position| position.execution_alias == "left"));
+    assert!(result
+        .open_positions
+        .iter()
+        .any(|position| position.execution_alias == "right"));
+}
+
+#[test]
+fn portfolio_controls_block_second_entry_when_max_positions_is_reached() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+max_positions = 1
+entry long = left.close > left.close[1]
+order entry long = market()
+size entry long = 0.4
+entry short = false
+exit long = false
+exit short = false
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                12.0,
+                12.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 21.0, 21.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                22.0,
+                22.0,
+            ),
+        ],
+    );
+    let mut backtest = trace_config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("portfolio backtest should succeed");
+
+    assert_eq!(result.open_positions.len(), 1);
+    assert_eq!(result.summary.peak_open_position_count, 1);
+    assert_eq!(result.diagnostics.blocked_portfolio_entries.len(), 1);
+    assert_eq!(
+        result.diagnostics.blocked_portfolio_entries[0].kind,
+        palmscript::backtest::PortfolioControlKind::MaxPositions
+    );
+    assert!(result.diagnostics.per_bar_trace.iter().any(|trace| {
+        trace.signal_decisions.iter().any(|decision| {
+            decision.reason == palmscript::DecisionReason::PortfolioMaxPositionsExceeded
+        })
+    }));
 }
 
 #[test]

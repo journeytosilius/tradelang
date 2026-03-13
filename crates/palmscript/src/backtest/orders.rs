@@ -284,6 +284,7 @@ pub(crate) const fn is_attached_exit_role(role: SignalRole) -> bool {
 }
 
 pub(crate) fn order_record(
+    execution_alias: &str,
     request: CapturedOrderRequest,
     bar_index: usize,
     time: f64,
@@ -291,6 +292,7 @@ pub(crate) fn order_record(
 ) -> OrderRecord {
     OrderRecord {
         id,
+        execution_alias: execution_alias.to_string(),
         role: request.role,
         kind: request.kind,
         action: fill_action_for_role(request.role),
@@ -702,13 +704,18 @@ fn capital_limited_entry_quantity(
     }
 }
 
+pub(crate) struct PositionFillContext<'a> {
+    pub execution_alias: &'a str,
+    pub execution: FillExecutionContext,
+    pub accounting: &'a AccountingMode,
+    pub fee_rate: f64,
+}
+
 pub(crate) fn open_position(
-    execution: FillExecutionContext,
+    context: PositionFillContext<'_>,
     side: PositionSide,
     entry_context: TradeEntryContext,
     sizing: EntrySizingSpec,
-    accounting: &AccountingMode,
-    fee_rate: f64,
     cash: &mut f64,
 ) -> Result<(PositionState, OpenTrade, Fill, SizingResolution), OrderEndReason> {
     let action = match side {
@@ -719,18 +726,18 @@ pub(crate) fn open_position(
         *cash,
         sizing,
         side,
-        accounting,
-        execution.execution_price,
-        fee_rate,
+        context.accounting,
+        context.execution.execution_price,
+        context.fee_rate,
     )?;
     let quantity = sizing.quantity;
-    let notional = quantity * execution.execution_price;
-    let fee = notional * fee_rate;
-    let isolated_margin = match accounting {
+    let notional = quantity * context.execution.execution_price;
+    let fee = notional * context.fee_rate;
+    let isolated_margin = match context.accounting {
         AccountingMode::Spot => 0.0,
         AccountingMode::PerpIsolated { leverage, .. } => notional / leverage,
     };
-    match accounting {
+    match context.accounting {
         AccountingMode::Spot => match side {
             PositionSide::Long => *cash -= notional + fee,
             PositionSide::Short => *cash += notional - fee,
@@ -745,21 +752,22 @@ pub(crate) fn open_position(
         PositionSide::Short => -quantity,
     };
     let fill = Fill {
-        bar_index: execution.bar_index,
-        time: execution.time,
+        execution_alias: context.execution_alias.to_string(),
+        bar_index: context.execution.bar_index,
+        time: context.execution.time,
         action,
         quantity,
-        raw_price: execution.raw_price,
-        price: execution.execution_price,
+        raw_price: context.execution.raw_price,
+        price: context.execution.execution_price,
         notional,
         fee,
     };
     let position = PositionState {
         side,
         quantity: signed_quantity,
-        entry_bar_index: execution.bar_index,
-        entry_time: execution.time,
-        entry_price: execution.execution_price,
+        entry_bar_index: context.execution.bar_index,
+        entry_time: context.execution.time,
+        entry_price: context.execution.execution_price,
         isolated_margin,
         maintenance_margin: 0.0,
         liquidation_price: None,
@@ -780,12 +788,10 @@ pub(crate) fn open_position(
 }
 
 pub(crate) fn add_to_position(
-    execution: FillExecutionContext,
+    context: PositionFillContext<'_>,
     position: &mut PositionState,
     open_trade: &mut OpenTrade,
     sizing: EntrySizingSpec,
-    accounting: &AccountingMode,
-    fee_rate: f64,
     cash: &mut f64,
 ) -> Result<(Fill, SizingResolution), OrderEndReason> {
     let action = match position.side {
@@ -796,18 +802,18 @@ pub(crate) fn add_to_position(
         *cash,
         sizing,
         position.side,
-        accounting,
-        execution.execution_price,
-        fee_rate,
+        context.accounting,
+        context.execution.execution_price,
+        context.fee_rate,
     )?;
     let quantity = sizing.quantity;
-    let notional = quantity * execution.execution_price;
-    let fee = notional * fee_rate;
-    let isolated_margin = match accounting {
+    let notional = quantity * context.execution.execution_price;
+    let fee = notional * context.fee_rate;
+    let isolated_margin = match context.accounting {
         AccountingMode::Spot => 0.0,
         AccountingMode::PerpIsolated { leverage, .. } => notional / leverage,
     };
-    match accounting {
+    match context.accounting {
         AccountingMode::Spot => match position.side {
             PositionSide::Long => *cash -= notional + fee,
             PositionSide::Short => *cash += notional - fee,
@@ -819,12 +825,13 @@ pub(crate) fn add_to_position(
     zero_small_cash(cash);
 
     let fill = Fill {
-        bar_index: execution.bar_index,
-        time: execution.time,
+        execution_alias: context.execution_alias.to_string(),
+        bar_index: context.execution.bar_index,
+        time: context.execution.time,
         action,
         quantity,
-        raw_price: execution.raw_price,
-        price: execution.execution_price,
+        raw_price: context.execution.raw_price,
+        price: context.execution.execution_price,
         notional,
         fee,
     };
@@ -832,9 +839,10 @@ pub(crate) fn add_to_position(
     let previous_quantity = position.quantity.abs();
     let next_quantity = previous_quantity + quantity;
     let weighted_entry_price = if next_quantity <= EPSILON {
-        execution.execution_price
+        context.execution.execution_price
     } else {
-        ((position.entry_price * previous_quantity) + (execution.execution_price * quantity))
+        ((position.entry_price * previous_quantity)
+            + (context.execution.execution_price * quantity))
             / next_quantity
     };
     position.entry_price = weighted_entry_price;
@@ -845,9 +853,10 @@ pub(crate) fn add_to_position(
     position.isolated_margin += isolated_margin;
 
     let weighted_raw_price = if next_quantity <= EPSILON {
-        execution.raw_price
+        context.execution.raw_price
     } else {
-        ((open_trade.entry.raw_price * previous_quantity) + (execution.raw_price * quantity))
+        ((open_trade.entry.raw_price * previous_quantity)
+            + (context.execution.raw_price * quantity))
             / next_quantity
     };
     open_trade.quantity = next_quantity;
@@ -861,7 +870,11 @@ pub(crate) fn add_to_position(
     Ok((fill, sizing))
 }
 
-pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {
+pub(crate) fn close_position(
+    execution_alias: &str,
+    close: CloseExecution<'_>,
+    fee_rate: f64,
+) -> Fill {
     let CloseExecution {
         execution,
         cash,
@@ -881,6 +894,7 @@ pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {
     }
     zero_small_cash(cash);
     Fill {
+        execution_alias: execution_alias.to_string(),
         bar_index: execution.bar_index,
         time: execution.time,
         action,
@@ -893,6 +907,7 @@ pub(crate) fn close_position(close: CloseExecution<'_>, fee_rate: f64) -> Fill {
 }
 
 pub(crate) fn close_trade_slice(
+    execution_alias: &str,
     open_trade: &mut OpenTrade,
     exit: Fill,
     quantity: f64,
@@ -918,6 +933,7 @@ pub(crate) fn close_trade_slice(
     };
     let realized_pnl = (signed_entry_price + signed_exit_price) * quantity - entry.fee - exit.fee;
     crate::backtest::Trade {
+        execution_alias: execution_alias.to_string(),
         side: open_trade.side,
         quantity,
         entry,

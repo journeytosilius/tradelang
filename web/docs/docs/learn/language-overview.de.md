@@ -57,3 +57,10 @@ input fast_len = 21 optimize(int, 8, 34, 1)
 ```
 
 Dadurch koennen `run optimize` den Suchraum aus dem Skript selbst ableiten, wenn kein `--param` uebergeben wird.
+
+## Latest Portfolio Additions
+
+- PalmScript now reserves `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group`.
+- These declarations are top-level only and compile-time only.
+- Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
+- Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.

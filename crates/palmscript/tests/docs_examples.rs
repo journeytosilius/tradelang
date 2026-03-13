@@ -40,6 +40,7 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 fn referenced_docs_examples_compile() {
     let examples = [
         "examples/strategies/adaptive_trend_backtest.ps",
+        "examples/strategies/portfolio_caps_backtest.ps",
         "examples/strategies/sma_cross.ps",
         "examples/strategies/volume_breakout.ps",
         "examples/strategies/signal_helpers.ps",
@@ -207,17 +208,60 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
             VmLimits::default(),
             BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 0.0,
                 slippage_bps: 0.0,
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
         )
         .unwrap_or_else(|_| panic!("{path} should backtest"));
         assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
     }
+}
+
+#[test]
+fn portfolio_backtest_docs_example_runs_with_local_feeds() {
+    let path = "examples/strategies/portfolio_caps_backtest.ps";
+    let compiled = compile(&read_strategy(path)).expect("portfolio_caps_backtest should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: palmscript::Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: palmscript::Interval::Min1,
+                bars: bars(JAN_1_2024_UTC_MS, MINUTE_MS, 120, 100.0),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: palmscript::Interval::Min1,
+                bars: bars(JAN_1_2024_UTC_MS, MINUTE_MS, 120, 95.0),
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        BacktestConfig {
+            execution_source_alias: "left".to_string(),
+            portfolio_execution_aliases: vec!["left".to_string(), "right".to_string()],
+            initial_capital: 10_000.0,
+            fee_bps: 0.0,
+            slippage_bps: 0.0,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            perp: None,
+            perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
+        },
+    )
+    .expect("portfolio_caps_backtest should backtest");
+    assert!(result.diagnostics.portfolio_mode);
+    assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
 }
 
 #[test]
@@ -243,12 +287,14 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
         VmLimits::default(),
         BacktestConfig {
             execution_source_alias: "spot".to_string(),
+            portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 0.0,
             slippage_bps: 0.0,
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
     )
     .expect("venue_orders_backtest should backtest");

@@ -23,7 +23,7 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 16] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 22] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("use", "Declare an additional referenced interval"),
@@ -40,6 +40,30 @@ const KEYWORD_COMPLETIONS: [(&str, &str); 16] = [
     (
         "max_bars_in_trade",
         "Force a same-side exit after a fixed number of bars",
+    ),
+    (
+        "max_positions",
+        "Limit total simultaneous open execution-source positions",
+    ),
+    (
+        "max_long_positions",
+        "Limit simultaneous long execution-source positions",
+    ),
+    (
+        "max_short_positions",
+        "Limit simultaneous short execution-source positions",
+    ),
+    (
+        "max_gross_exposure_pct",
+        "Limit portfolio gross notional exposure relative to equity",
+    ),
+    (
+        "max_net_exposure_pct",
+        "Limit portfolio net notional exposure relative to equity",
+    ),
+    (
+        "portfolio_group",
+        "Declare a named execution-source alias group for portfolio diagnostics",
     ),
     ("if", "Start a conditional block"),
     ("else", "Start an alternate conditional block"),
@@ -548,6 +572,10 @@ fn resolve_stmt(
         StmtKind::RiskControl { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
+        StmtKind::PortfolioControl { expr, .. } => {
+            resolve_expr(context, expr, scope);
+        }
+        StmtKind::PortfolioGroup { .. } => {}
         StmtKind::If {
             condition,
             then_block,
@@ -779,6 +807,8 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
         StmtKind::Order { .. } => {}
         StmtKind::OrderSize { .. } => {}
         StmtKind::RiskControl { .. } => {}
+        StmtKind::PortfolioControl { .. } => {}
+        StmtKind::PortfolioGroup { .. } => {}
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -1591,6 +1621,28 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
             lines.push(format!(
                 "{prefix}{keyword} {side} = {}",
                 format_expr(expr, 0)
+            ));
+        }
+        StmtKind::PortfolioControl { kind, expr } => {
+            let keyword = match kind {
+                crate::ast::PortfolioControlKind::MaxPositions => "max_positions",
+                crate::ast::PortfolioControlKind::MaxLongPositions => "max_long_positions",
+                crate::ast::PortfolioControlKind::MaxShortPositions => "max_short_positions",
+                crate::ast::PortfolioControlKind::MaxGrossExposurePct => "max_gross_exposure_pct",
+                crate::ast::PortfolioControlKind::MaxNetExposurePct => "max_net_exposure_pct",
+            };
+            lines.push(format!("{prefix}{keyword} = {}", format_expr(expr, 0)));
+        }
+        StmtKind::PortfolioGroup { group } => {
+            let aliases = group
+                .aliases
+                .iter()
+                .map(|alias| alias.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            lines.push(format!(
+                "{prefix}portfolio_group \"{}\" = [{aliases}]",
+                group.name
             ));
         }
         StmtKind::Expr(expr) => {

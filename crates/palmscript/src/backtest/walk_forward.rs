@@ -575,6 +575,8 @@ pub(crate) fn summarize_segment_diagnostics(
             win_rate: segment_summary.win_rate,
             max_drawdown: segment_summary.max_drawdown,
             max_gross_exposure: 0.0,
+            max_net_exposure: 0.0,
+            peak_open_position_count: 0,
         },
         &summary,
         &cohorts,

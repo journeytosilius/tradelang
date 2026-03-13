@@ -28,6 +28,7 @@ Checked-in `.ps` strategies live under `crates/palmscript/examples/strategies/`.
 Representative files:
 
 - `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned EMA, RSI, MACD, entry sizing, ATR target, and post-target stop-ratchet inputs around staged `entry1` / `entry2` and `target1` / `target2` order flow, including inline `input ... optimize(...)` metadata for durable CLI optimization
+- `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: multi-alias portfolio backtest example using `portfolio_group`, position-count caps, and gross/net exposure caps under repeated `--execution-source` CLI selection
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
@@ -66,6 +67,7 @@ Common commands:
 ./palmscript run market crates/palmscript/examples/strategies/exchange_backed_sources.ps --from 1704067200000 --to 1704153600000
 ./palmscript run backtest crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
 ./palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --leverage 2
+./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right
 ./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000
 ./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000
 ./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --train-bars 252 --test-bars 63 --step-bars 63

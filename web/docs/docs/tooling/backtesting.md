@@ -18,11 +18,14 @@ numeric `input` grids by stitched out-of-sample performance.
 PalmScript also exposes a first-class optimizer layer that performs seeded,
 bounded hyper-parameter search over selected numeric `input`s.
 
-PalmScript also supports declarative backtest controls for two common safety
+PalmScript also supports declarative backtest controls for common safety
 policies:
 
 - `cooldown long|short = <bars>` blocks same-side re-entry for a fixed number of execution bars after a full exit
 - `max_bars_in_trade long|short = <bars>` forces a same-side market exit at the next execution open once the position has been held for the declared number of execution bars
+- `max_positions = <N>`, `max_long_positions = <N>`, and `max_short_positions = <N>` cap simultaneous alias positions when portfolio mode is active
+- `max_gross_exposure_pct = <N>` and `max_net_exposure_pct = <N>` cap shared-equity exposure when portfolio mode is active
+- `portfolio_group "name" = [alias1, alias2, ...]` declares a named alias bucket for diagnostics and future group-scoped controls
 
 ## CLI
 
@@ -50,7 +53,21 @@ Modes:
 - `--diagnostics summary` keeps the default compact diagnostics payload
 - `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
 
-When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
+When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases.
+
+Portfolio mode example:
+
+```bash
+palmscript run backtest portfolio_caps_backtest.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --execution-source left \
+  --execution-source right \
+  --fee-bps 10 \
+  --slippage-bps 2
+```
+
+Portfolio mode keeps one shared cash/equity ledger while evaluating the same compiled strategy logic for each selected execution alias. Entry-cap declarations such as `max_positions` and `max_gross_exposure_pct` only block new entries; they do not shrink orders or force exits after the portfolio is already open.
 
 Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the
@@ -199,6 +216,26 @@ Rules:
 - `max_bars_in_trade` is side-specific and exits at the next execution-bar open when the limit is reached
 - the forced exit is reported as a signal-style exit so `last_exit.*` and `position_event.*` stay deterministic
 
+PalmScript can also express shared-equity portfolio caps directly in the script:
+
+```palmscript
+portfolio_group "majors" = [left, right]
+max_positions = 2
+max_long_positions = 2
+max_short_positions = 0
+max_gross_exposure_pct = 0.8
+max_net_exposure_pct = 0.8
+```
+
+Additional rules:
+
+- portfolio controls are top-level only
+- count controls require a compile-time non-negative whole-number scalar expression
+- exposure controls require a compile-time non-negative finite numeric scalar expression
+- `portfolio_group` aliases must refer to declared `source` aliases
+- portfolio controls only matter when multiple `--execution-source` aliases activate portfolio mode
+- blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:
@@ -232,12 +269,14 @@ let result = run_backtest_with_sources(
     VmLimits::default(),
     BacktestConfig {
         execution_source_alias: "spot".to_string(),
+        portfolio_execution_aliases: Vec::new(),
         initial_capital: 10_000.0,
         fee_bps: 5.0,
         slippage_bps: 2.0,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
+        portfolio_perp_contexts: std::collections::BTreeMap::new(),
     },
 )
 .expect("backtest succeeds");
@@ -269,11 +308,14 @@ let result = run_walk_forward_with_sources(
     WalkForwardConfig {
         backtest: BacktestConfig {
             execution_source_alias: "spot".to_string(),
+            portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
             slippage_bps: 2.0,
+            diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
         train_bars: 252,
         test_bars: 63,
@@ -313,11 +355,14 @@ let result = run_walk_forward_sweep_with_source(
         walk_forward: WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
                 slippage_bps: 2.0,
+                diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             train_bars: 252,
             test_bars: 63,
@@ -370,20 +415,26 @@ let result = run_optimize_with_source(
         runner: OptimizeRunner::WalkForward,
         backtest: BacktestConfig {
             execution_source_alias: "spot".to_string(),
+            portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
             slippage_bps: 2.0,
+            diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
         walk_forward: Some(WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
                 slippage_bps: 2.0,
+                diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             train_bars: 252,
             test_bars: 63,
@@ -417,7 +468,7 @@ The result includes:
 - event-centered diagnostics in `diagnostics`
 - per-bar account marks in `equity_curve`
 - aggregate metrics in `summary`
-- any still-open position in `open_position`
+- any still-open positions in `open_positions` plus the legacy single-position `open_position` convenience field
 - optional perp metadata in `perp`
 
 Walk-forward results instead include:

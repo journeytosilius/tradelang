@@ -14,6 +14,7 @@ Typical flow:
 4. tune strategies with `palmscript run optimize` and save the best preset with `--preset-out`
 5. rerun the winner with `run backtest` or `run walk-forward` before you trust it
 6. switch `--diagnostics` between `summary` and `full-trace` depending on whether you need compact output or per-bar decision traces
+7. repeat `--execution-source` when you want one shared-equity portfolio backtest across multiple execution aliases
 
 ## Validate Without Running
 
@@ -86,6 +87,20 @@ The backtest, walk-forward, and optimize commands all accept:
 - `--diagnostics full-trace`
 
 Use `summary` for normal iterative tuning. Use `full-trace` when you want one typed per-bar decision trace per execution bar so an agent can inspect why signals were queued, blocked, ignored, expired, or forced out.
+
+The same backtest-oriented commands also accept repeated `--execution-source` flags. Passing one alias keeps the legacy single-position mode. Passing multiple aliases activates portfolio mode, which evaluates the compiled strategy logic for each selected execution alias under one shared equity ledger.
+
+Portfolio scripts can declare compile-time caps directly in the source:
+
+```palmscript
+portfolio_group "majors" = [left, right]
+max_positions = 2
+max_long_positions = 2
+max_gross_exposure_pct = 0.8
+max_net_exposure_pct = 0.8
+```
+
+Those declarations block only the new entry that would exceed the configured cap. They do not auto-resize orders or force exits after exposure drifts.
 
 Walk-forward optimize now reserves a final untouched holdout window by default. If you pass `--test-bars 63`, PalmScript also reserves the last `63` execution bars as an unseen holdout unless you override that with `--holdout-bars <N>` or disable it with `--no-holdout`.
 

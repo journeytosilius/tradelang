@@ -21,6 +21,7 @@ pub(crate) struct OrderDiagnosticContext {
 
 #[derive(Clone, Debug)]
 struct RawOpportunityEvent {
+    execution_alias: String,
     kind: OpportunityEventKind,
     name: String,
     role: Option<SignalRole>,
@@ -339,6 +340,9 @@ impl DiagnosticsAccumulator {
             }
             if emit_activation {
                 self.raw_events.push(RawOpportunityEvent {
+                    execution_alias: position_snapshot
+                        .map(|snapshot| snapshot.execution_alias.clone())
+                        .unwrap_or_default(),
                     kind: OpportunityEventKind::ExportActivated,
                     name: export_name,
                     role: None,
@@ -354,6 +358,7 @@ impl DiagnosticsAccumulator {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn record_signal_event(
         &mut self,
+        execution_alias: &str,
         kind: OpportunityEventKind,
         name: &str,
         role: SignalRole,
@@ -363,6 +368,7 @@ impl DiagnosticsAccumulator {
         feature_snapshot: Option<&FeatureSnapshot>,
     ) {
         self.raw_events.push(RawOpportunityEvent {
+            execution_alias: execution_alias.to_string(),
             kind,
             name: name.to_string(),
             role: Some(role),
@@ -519,6 +525,7 @@ impl DiagnosticsAccumulator {
         self.raw_events
             .iter()
             .map(|event| OpportunityEvent {
+                execution_alias: event.execution_alias.clone(),
                 kind: event.kind,
                 name: event.name.clone(),
                 role: event.role,

@@ -143,11 +143,40 @@ fn parses_declarative_risk_control_statements() {
 }
 
 #[test]
+fn parses_portfolio_control_and_group_declarations() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+max_positions = 2
+max_long_positions = 1
+max_short_positions = 1
+max_gross_exposure_pct = 1.5
+max_net_exposure_pct = 1.0
+portfolio_group \"majors\" = [left, right]
+entry long = left.close > right.close
+entry short = left.close < right.close
+exit long = false
+exit short = false
+plot(left.close)",
+    )
+    .expect("portfolio declarations should compile");
+}
+
+#[test]
 fn rejects_nested_risk_control_declarations() {
     let message = compile_err(&with_interval(
         "if true { cooldown long = 1 } else { plot(close) }",
     ));
     assert!(message.contains("risk control declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_nested_portfolio_control_declarations() {
+    let message = compile_err(&with_interval(
+        "if true { max_positions = 2 } else { plot(close) }",
+    ));
+    assert!(message.contains("portfolio declarations are only allowed at the top level"));
 }
 
 #[test]

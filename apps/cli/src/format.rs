@@ -171,6 +171,12 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
     let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
     let _ = writeln!(out, "max_gross_exposure={:.2}", summary.max_gross_exposure);
+    let _ = writeln!(out, "max_net_exposure={:.2}", summary.max_net_exposure);
+    let _ = writeln!(
+        out,
+        "peak_open_position_count={}",
+        summary.peak_open_position_count
+    );
 
     out.push_str("Order Summary\n");
     let _ = writeln!(out, "placed_count={placed_count}");
@@ -276,6 +282,21 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         "average_recovery_bars={:.2}",
         result.diagnostics.drawdown.average_recovery_bars
     );
+    let _ = writeln!(out, "portfolio_mode={}", result.diagnostics.portfolio_mode);
+
+    if !result.diagnostics.blocked_portfolio_entries.is_empty() {
+        out.push_str("Portfolio Blocks\n");
+        for blocked in &result.diagnostics.blocked_portfolio_entries {
+            let _ = writeln!(
+                out,
+                "kind={:?} alias={} group={} count={}",
+                blocked.kind,
+                blocked.alias,
+                blocked.group.as_deref().unwrap_or("none"),
+                blocked.count
+            );
+        }
+    }
     let _ = writeln!(
         out,
         "degraded_bar_count={}",
@@ -1112,6 +1133,7 @@ mod tests {
             outputs: Outputs::default(),
             orders: vec![OrderRecord {
                 id: 0,
+                execution_alias: "spot".to_string(),
                 role: SignalRole::LongEntry,
                 kind: OrderKind::Market,
                 action: FillAction::Buy,
@@ -1140,9 +1162,11 @@ mod tests {
             }],
             fills: vec![],
             trades: vec![Trade {
+                execution_alias: "spot".to_string(),
                 side: PositionSide::Long,
                 quantity: 1.25,
                 entry: Fill {
+                    execution_alias: "spot".to_string(),
                     bar_index: 1,
                     time: 10.0,
                     action: FillAction::Buy,
@@ -1153,6 +1177,7 @@ mod tests {
                     fee: 0.5,
                 },
                 exit: Fill {
+                    execution_alias: "spot".to_string(),
                     bar_index: 2,
                     time: 20.0,
                     action: FillAction::Sell,
@@ -1173,6 +1198,10 @@ mod tests {
                 quantity: 0.0,
                 mark_price: 100.0,
                 gross_exposure: 0.0,
+                net_exposure: 0.0,
+                open_position_count: 0,
+                long_position_count: 0,
+                short_position_count: 0,
                 free_collateral: None,
                 isolated_margin: None,
                 maintenance_margin: None,
@@ -1190,6 +1219,8 @@ mod tests {
                 win_rate: 1.0,
                 max_drawdown: 10.0,
                 max_gross_exposure: 125.0,
+                max_net_exposure: 125.0,
+                peak_open_position_count: 1,
             },
             diagnostics: palmscript::BacktestDiagnostics {
                 order_diagnostics: vec![],
@@ -1247,6 +1278,7 @@ mod tests {
                     },
                 )],
                 opportunity_events: vec![palmscript::OpportunityEvent {
+                    execution_alias: "spot".to_string(),
                     kind: palmscript::OpportunityEventKind::ExportActivated,
                     name: "trend_state".to_string(),
                     role: None,
@@ -1267,8 +1299,11 @@ mod tests {
                 drawdown: palmscript::DrawdownDiagnostics::default(),
                 source_alignment: palmscript::runtime::SourceAlignmentDiagnostics::default(),
                 hints: vec![],
+                portfolio_mode: false,
+                blocked_portfolio_entries: vec![],
             },
             open_position: None,
+            open_positions: vec![],
             perp: None,
         };
 

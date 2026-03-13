@@ -7,15 +7,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
     Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, NodeId, OrderSpec,
-    OrderSpecKind, RiskControlKind as AstRiskControlKind, SignalRole as AstSignalRole, Stmt,
-    StmtKind, UnaryOp,
+    OrderSpecKind, PortfolioControlKind as AstPortfolioControlKind,
+    RiskControlKind as AstRiskControlKind, SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
     Constant, InputDecl, InputOptimizationDecl, InputOptimizationDeclKind, Instruction,
     LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
-    PositionEventFieldDecl, PositionFieldDecl, Program, RiskControlDecl,
-    RiskControlKind as CompiledRiskControlKind, SignalRole as CompiledSignalRole,
+    PortfolioControlDecl, PortfolioControlKind as CompiledPortfolioControlKind,
+    PortfolioGroupDecl as CompiledPortfolioGroupDecl, PositionEventFieldDecl, PositionFieldDecl,
+    Program, RiskControlDecl, RiskControlKind as CompiledRiskControlKind,
+    SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -236,6 +238,8 @@ struct Analysis {
     last_exit_field_slots: HashMap<(LastExitScope, LastExitField), u16>,
     orders: Vec<OrderDecl>,
     risk_controls: Vec<RiskControlDecl>,
+    portfolio_controls: Vec<PortfolioControlDecl>,
+    portfolio_groups: Vec<CompiledPortfolioGroupDecl>,
     source_slots: HashMap<(u16, Option<Interval>, MarketField), u16>,
     function_specializations: HashMap<FunctionSpecializationKey, FunctionSpecialization>,
 }
@@ -1283,6 +1287,12 @@ impl<'a> Analyzer<'a> {
             StmtKind::RiskControl { kind, side, expr } => {
                 self.analyze_risk_control_stmt(stmt, *kind, *side, expr);
             }
+            StmtKind::PortfolioControl { kind, expr } => {
+                self.analyze_portfolio_control_stmt(stmt, *kind, expr);
+            }
+            StmtKind::PortfolioGroup { group } => {
+                self.analyze_portfolio_group_stmt(group);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -1835,6 +1845,182 @@ impl<'a> Analyzer<'a> {
             kind: compiled_kind,
             bars: value as usize,
         });
+    }
+
+    fn analyze_portfolio_control_stmt(
+        &mut self,
+        stmt: &Stmt,
+        kind: AstPortfolioControlKind,
+        expr: &Expr,
+    ) {
+        let compiled_kind = compiled_portfolio_control_kind(kind);
+        if self
+            .analysis
+            .portfolio_controls
+            .iter()
+            .any(|decl| decl.kind == compiled_kind)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "duplicate {} declaration",
+                    portfolio_control_name(compiled_kind)
+                ),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let info = self.analyze_expr(expr);
+        let Some(ty) = info.concrete() else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    portfolio_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        if ty != Type::F64 {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    portfolio_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        }
+        let Some(value) = eval_immutable_expr(expr, &self.analysis.immutable_values) else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    portfolio_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        let Value::F64(value) = value else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a compile-time numeric scalar expression",
+                    portfolio_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        };
+        if !value.is_finite() || value < 0.0 {
+            let message = match compiled_kind {
+                CompiledPortfolioControlKind::MaxPositions
+                | CompiledPortfolioControlKind::MaxLongPositions
+                | CompiledPortfolioControlKind::MaxShortPositions => format!(
+                    "{} requires a non-negative whole number",
+                    portfolio_control_name(compiled_kind)
+                ),
+                CompiledPortfolioControlKind::MaxGrossExposurePct
+                | CompiledPortfolioControlKind::MaxNetExposurePct => format!(
+                    "{} requires a finite non-negative exposure fraction",
+                    portfolio_control_name(compiled_kind)
+                ),
+            };
+            self.diagnostics
+                .push(Diagnostic::new(DiagnosticKind::Type, message, expr.span));
+            return;
+        }
+        if matches!(
+            compiled_kind,
+            CompiledPortfolioControlKind::MaxPositions
+                | CompiledPortfolioControlKind::MaxLongPositions
+                | CompiledPortfolioControlKind::MaxShortPositions
+        ) && value.fract() != 0.0
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "{} requires a non-negative whole number",
+                    portfolio_control_name(compiled_kind)
+                ),
+                expr.span,
+            ));
+            return;
+        }
+        self.analysis.portfolio_controls.push(PortfolioControlDecl {
+            kind: compiled_kind,
+            value,
+        });
+    }
+
+    fn analyze_portfolio_group_stmt(&mut self, group: &crate::ast::PortfolioGroupDecl) {
+        if self
+            .analysis
+            .portfolio_groups
+            .iter()
+            .any(|decl| decl.name == group.name)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("duplicate portfolio group `{}`", group.name),
+                group.name_span,
+            ));
+            return;
+        }
+        if group.aliases.is_empty() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "portfolio group `{}` must include at least one source alias",
+                    group.name
+                ),
+                group.span,
+            ));
+            return;
+        }
+        let declared_aliases = self
+            .analysis
+            .declared_sources
+            .iter()
+            .map(|source| source.alias.as_str())
+            .collect::<HashSet<_>>();
+        let mut seen = HashSet::new();
+        let mut aliases = Vec::with_capacity(group.aliases.len());
+        for alias in &group.aliases {
+            if !seen.insert(alias.name.clone()) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "portfolio group `{}` contains duplicate alias `{}`",
+                        group.name, alias.name
+                    ),
+                    alias.span,
+                ));
+                continue;
+            }
+            if !declared_aliases.contains(alias.name.as_str()) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "portfolio group `{}` references unknown source alias `{}`",
+                        group.name, alias.name
+                    ),
+                    alias.span,
+                ));
+                continue;
+            }
+            aliases.push(alias.name.clone());
+        }
+        self.analysis
+            .portfolio_groups
+            .push(CompiledPortfolioGroupDecl {
+                name: group.name.clone(),
+                aliases,
+            });
     }
 
     fn diagnose_unknown_enum_literal(&mut self, expr: &Expr) {
@@ -2746,9 +2932,11 @@ fn collect_source_series_stmt(
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::RiskControl { expr, .. }
+        | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
+        StmtKind::PortfolioGroup { .. } => {}
         StmtKind::If {
             condition,
             then_block,
@@ -2868,9 +3056,11 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
         | StmtKind::RiskControl { expr, .. }
+        | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
+        StmtKind::PortfolioGroup { .. } => None,
         StmtKind::If {
             condition,
             then_block,
@@ -4803,10 +4993,36 @@ fn compiled_risk_control_kind(kind: AstRiskControlKind) -> CompiledRiskControlKi
     }
 }
 
+fn compiled_portfolio_control_kind(kind: AstPortfolioControlKind) -> CompiledPortfolioControlKind {
+    match kind {
+        AstPortfolioControlKind::MaxPositions => CompiledPortfolioControlKind::MaxPositions,
+        AstPortfolioControlKind::MaxLongPositions => CompiledPortfolioControlKind::MaxLongPositions,
+        AstPortfolioControlKind::MaxShortPositions => {
+            CompiledPortfolioControlKind::MaxShortPositions
+        }
+        AstPortfolioControlKind::MaxGrossExposurePct => {
+            CompiledPortfolioControlKind::MaxGrossExposurePct
+        }
+        AstPortfolioControlKind::MaxNetExposurePct => {
+            CompiledPortfolioControlKind::MaxNetExposurePct
+        }
+    }
+}
+
 fn risk_control_name(kind: CompiledRiskControlKind) -> &'static str {
     match kind {
         CompiledRiskControlKind::Cooldown => "`cooldown`",
         CompiledRiskControlKind::MaxBarsInTrade => "`max_bars_in_trade`",
+    }
+}
+
+fn portfolio_control_name(kind: CompiledPortfolioControlKind) -> &'static str {
+    match kind {
+        CompiledPortfolioControlKind::MaxPositions => "`max_positions`",
+        CompiledPortfolioControlKind::MaxLongPositions => "`max_long_positions`",
+        CompiledPortfolioControlKind::MaxShortPositions => "`max_short_positions`",
+        CompiledPortfolioControlKind::MaxGrossExposurePct => "`max_gross_exposure_pct`",
+        CompiledPortfolioControlKind::MaxNetExposurePct => "`max_net_exposure_pct`",
     }
 }
 
@@ -5330,6 +5546,8 @@ impl<'a> Compiler<'a> {
         self.program.last_exit_fields = self.analysis.last_exit_fields.clone();
         self.program.orders = self.analysis.orders.clone();
         self.program.risk_controls = self.analysis.risk_controls.clone();
+        self.program.portfolio_controls = self.analysis.portfolio_controls.clone();
+        self.program.portfolio_groups = self.analysis.portfolio_groups.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
         self.program.source_intervals = self.analysis.source_intervals.clone();
@@ -5543,7 +5761,9 @@ impl<'a> Compiler<'a> {
                     | OrderSizeExpr::InvalidRiskPctArity => {}
                 }
             }
-            StmtKind::RiskControl { .. } => {}
+            StmtKind::RiskControl { .. }
+            | StmtKind::PortfolioControl { .. }
+            | StmtKind::PortfolioGroup { .. } => {}
             StmtKind::If {
                 condition,
                 then_block,

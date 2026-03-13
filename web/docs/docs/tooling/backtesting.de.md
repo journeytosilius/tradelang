@@ -4,7 +4,6 @@ Diese Seite ist wieder oeffentlich verfuegbar, weil PalmScript jetzt Open Source
 
 ## English Canonical Content
 
-
 # Backtesting
 
 PalmScript exposes a deterministic backtester on top of the existing
@@ -25,11 +24,14 @@ numeric `input` grids by stitched out-of-sample performance.
 PalmScript also exposes a first-class optimizer layer that performs seeded,
 bounded hyper-parameter search over selected numeric `input`s.
 
-PalmScript also supports declarative backtest controls for two common safety
+PalmScript also supports declarative backtest controls for common safety
 policies:
 
 - `cooldown long|short = <bars>` blocks same-side re-entry for a fixed number of execution bars after a full exit
 - `max_bars_in_trade long|short = <bars>` forces a same-side market exit at the next execution open once the position has been held for the declared number of execution bars
+- `max_positions = <N>`, `max_long_positions = <N>`, and `max_short_positions = <N>` cap simultaneous alias positions when portfolio mode is active
+- `max_gross_exposure_pct = <N>` and `max_net_exposure_pct = <N>` cap shared-equity exposure when portfolio mode is active
+- `portfolio_group "name" = [alias1, alias2, ...]` declares a named alias bucket for diagnostics and future group-scoped controls
 
 ## CLI
 
@@ -43,7 +45,35 @@ palmscript run backtest strategy.ps \
   --slippage-bps 2
 ```
 
-When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`.
+Diagnostics detail can now be configured explicitly:
+
+```bash
+palmscript run backtest strategy.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --diagnostics full-trace
+```
+
+Modes:
+
+- `--diagnostics summary` keeps the default compact diagnostics payload
+- `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
+
+When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases.
+
+Portfolio mode example:
+
+```bash
+palmscript run backtest portfolio_caps_backtest.ps \
+  --from 1741348800000 \
+  --to 1772884800000 \
+  --execution-source left \
+  --execution-source right \
+  --fee-bps 10 \
+  --slippage-bps 2
+```
+
+Portfolio mode keeps one shared cash/equity ledger while evaluating the same compiled strategy logic for each selected execution alias. Entry-cap declarations such as `max_positions` and `max_gross_exposure_pct` only block new entries; they do not shrink orders or force exits after the portfolio is already open.
 
 Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the
@@ -129,6 +159,7 @@ V1 optimizer notes:
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
+- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 
@@ -164,6 +195,16 @@ PalmScript cannot mathematically prevent overfitting, but the CLI now applies a 
 
 This does not replace paper trading or live forward validation, but it does make the default tuning workflow less likely to confuse in-sample fitting with genuinely unseen performance.
 
+## Diagnostics Output
+
+Backtest, walk-forward, and optimize results now expose richer machine-readable diagnostics on top of the existing order/trade summaries:
+
+- cohort summaries by side, exit classification, weekday/hour UTC, holding-time bucket, and active exported bool state
+- drawdown duration and stagnation diagnostics
+- source alignment diagnostics that show degraded bars and synthetic supplemental updates
+- deterministic improvement hints such as `too_few_trades`, `holdout_collapse`, and `signal_quality_weak`
+- optional per-bar decision traces when `--diagnostics full-trace` is enabled
+
 ## Declarative Risk Controls
 
 PalmScript can express two common backtest guardrails directly in the script:
@@ -181,14 +222,34 @@ Rules:
 - `max_bars_in_trade` is side-specific and exits at the next execution-bar open when the limit is reached
 - the forced exit is reported as a signal-style exit so `last_exit.*` and `position_event.*` stay deterministic
 
+PalmScript can also express shared-equity portfolio caps directly in the script:
+
+```palmscript
+portfolio_group "majors" = [left, right]
+max_positions = 2
+max_long_positions = 2
+max_short_positions = 0
+max_gross_exposure_pct = 0.8
+max_net_exposure_pct = 0.8
+```
+
+Additional rules:
+
+- portfolio controls are top-level only
+- count controls require a compile-time non-negative whole-number scalar expression
+- exposure controls require a compile-time non-negative finite numeric scalar expression
+- `portfolio_group` aliases must refer to declared `source` aliases
+- portfolio controls only matter when multiple `--execution-source` aliases activate portfolio mode
+- blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:
 
 ```rust
 use palmscript::{
-    compile, run_backtest_with_sources, BacktestConfig, Interval, SourceFeed, SourceRuntimeConfig,
-    VmLimits,
+    compile, run_backtest_with_sources, BacktestConfig, DiagnosticsDetailMode, Interval,
+    SourceFeed, SourceRuntimeConfig, VmLimits,
 };
 
 let source = r#"
@@ -214,11 +275,14 @@ let result = run_backtest_with_sources(
     VmLimits::default(),
     BacktestConfig {
         execution_source_alias: "spot".to_string(),
+        portfolio_execution_aliases: Vec::new(),
         initial_capital: 10_000.0,
         fee_bps: 5.0,
         slippage_bps: 2.0,
+        diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
+        portfolio_perp_contexts: std::collections::BTreeMap::new(),
     },
 )
 .expect("backtest succeeds");
@@ -250,11 +314,14 @@ let result = run_walk_forward_with_sources(
     WalkForwardConfig {
         backtest: BacktestConfig {
             execution_source_alias: "spot".to_string(),
+            portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
             slippage_bps: 2.0,
+            diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
         train_bars: 252,
         test_bars: 63,
@@ -294,11 +361,14 @@ let result = run_walk_forward_sweep_with_source(
         walk_forward: WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
                 slippage_bps: 2.0,
+                diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             train_bars: 252,
             test_bars: 63,
@@ -351,20 +421,26 @@ let result = run_optimize_with_source(
         runner: OptimizeRunner::WalkForward,
         backtest: BacktestConfig {
             execution_source_alias: "spot".to_string(),
+            portfolio_execution_aliases: Vec::new(),
             initial_capital: 10_000.0,
             fee_bps: 5.0,
             slippage_bps: 2.0,
+            diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
+            portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
         walk_forward: Some(WalkForwardConfig {
             backtest: BacktestConfig {
                 execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
                 initial_capital: 10_000.0,
                 fee_bps: 5.0,
                 slippage_bps: 2.0,
+                diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
             },
             train_bars: 252,
             test_bars: 63,
@@ -398,7 +474,7 @@ The result includes:
 - event-centered diagnostics in `diagnostics`
 - per-bar account marks in `equity_curve`
 - aggregate metrics in `summary`
-- any still-open position in `open_position`
+- any still-open positions in `open_positions` plus the legacy single-position `open_position` convenience field
 - optional perp metadata in `perp`
 
 Walk-forward results instead include:
@@ -597,13 +673,3 @@ Not included in V1:
 - funding payments
 - borrow fees
 - venue liquidation penalty fees
-
-## Latest Diagnostics Additions
-
-PalmScript now exposes richer machine-readable backtest diagnostics in every public locale build:
-
-- `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
-- summary mode keeps cohort, drawdown-path, source-alignment, holdout-drift, robustness, and hint data
-- full-trace mode adds one typed per-bar decision trace per execution bar
-- optimize output now includes top-candidate holdout checks plus parameter stability summaries
-

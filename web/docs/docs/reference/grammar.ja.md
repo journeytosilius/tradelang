@@ -163,3 +163,10 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 ## `input ... optimize(...)` について
 
 パーサー表面は、`input` 宣言の末尾に任意の `optimize(...)` 接尾辞を受け入れるようになりました。この接尾辞は整数範囲、float 範囲、または `choice` の列を表現できますが、追加の意味検証は引き続き必要です。
+
+## Latest Portfolio Additions
+
+- PalmScript now reserves `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group`.
+- These declarations are top-level only and compile-time only.
+- Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
+- Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.

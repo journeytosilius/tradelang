@@ -1051,6 +1051,70 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
 }
 
 #[test]
+fn run_backtest_accepts_repeated_execution_sources_for_portfolio_mode() {
+    let mut binance = Server::new();
+    mock_binance_interval(
+        &mut binance,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "10.5", "9.5", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "11.5", "9.5", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "12.5", "10.5", "12.0", "12.0"]),
+        ],
+    );
+    let mut gate = Server::new();
+    mock_gate_spot_interval(
+        &mut gate,
+        "BTC_USDT",
+        "1m",
+        &[
+            serde_json::json!(["1704067200", "100.0", "10.0", "10.5", "9.5", "10.0", "10.0"]),
+            serde_json::json!(["1704067260", "110.0", "11.0", "11.5", "9.5", "10.0", "11.0"]),
+            serde_json::json!([
+                "1704067320",
+                "120.0",
+                "12.0",
+                "12.5",
+                "10.5",
+                "11.0",
+                "12.0"
+            ]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "portfolio.ps",
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\norder entry long = market()\nsize entry long = 0.4\nentry short = false\nexit long = false\nexit short = false\nplot(left.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", binance.url())
+        .env("PALMSCRIPT_GATE_BASE_URL", gate.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067380000",
+            "--execution-source",
+            "left",
+            "--execution-source",
+            "right",
+        ])
+        .output()
+        .expect("runs palmscript");
+    assert!(output.status.success(), "{output:?}");
+    let value: Value = serde_json::from_slice(&output.stdout).expect("valid json");
+    assert_eq!(value["diagnostics"]["portfolio_mode"], true);
+    assert_eq!(value["summary"]["peak_open_position_count"], 2);
+    assert_eq!(value["open_positions"].as_array().map_or(0, Vec::len), 2);
+}
+
+#[test]
 fn run_walk_forward_emits_segmented_json() {
     let mut server = Server::new();
     mock_binance_interval(
