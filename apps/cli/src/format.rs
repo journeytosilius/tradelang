@@ -4,9 +4,11 @@ use std::path::Path;
 use palmscript::bytecode::{Constant, LocalInfo, Program};
 use palmscript::exchange::binance::UsdmRiskSource as BinanceUsdmRiskSource;
 use palmscript::{
-    BacktestResult, CompiledProgram, ExportDiagnosticSummary, OptimizeCandidateSummary,
-    OptimizeEvaluationSummary, OptimizeResult, OrderStatus, OutputKind, OutputValue, Outputs,
-    PositionSide, SignalRole, Value, VenueRiskSnapshot, WalkForwardResult, WalkForwardSweepResult,
+    BacktestResult, CompiledProgram, ExecutionDaemonStatus, ExportDiagnosticSummary, Fill,
+    OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeResult, OrderRecord, OrderStatus,
+    OutputKind, OutputValue, Outputs, PaperSessionExport, PaperSessionLogEvent,
+    PaperSessionManifest, PaperSessionSnapshot, PositionSide, PositionSnapshot, SignalRole, Value,
+    VenueRiskSnapshot, WalkForwardResult, WalkForwardSweepResult,
 };
 
 pub fn render_outputs_text(outputs: &Outputs) -> String {
@@ -468,6 +470,178 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         }
     }
 
+    out
+}
+
+pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "session_id={}", manifest.session_id);
+    let _ = writeln!(out, "status={:?}", manifest.status);
+    let _ = writeln!(out, "health={:?}", manifest.health);
+    let _ = writeln!(out, "start_time_ms={}", manifest.start_time_ms);
+    let _ = writeln!(out, "created_at_ms={}", manifest.created_at_ms);
+    let _ = writeln!(out, "updated_at_ms={}", manifest.updated_at_ms);
+    let _ = writeln!(out, "base_interval={}", manifest.base_interval.as_str());
+    let _ = writeln!(out, "history_capacity={}", manifest.history_capacity);
+    let _ = writeln!(
+        out,
+        "execution_sources={}",
+        manifest.config.execution_source_aliases.join(",")
+    );
+    let _ = writeln!(
+        out,
+        "initial_capital={:.2}",
+        manifest.config.initial_capital
+    );
+    let _ = writeln!(out, "fee_bps={:.2}", manifest.config.fee_bps);
+    let _ = writeln!(out, "slippage_bps={:.2}", manifest.config.slippage_bps);
+    let _ = writeln!(out, "stop_requested={}", manifest.stop_requested);
+    if let Some(warmup_from_ms) = manifest.warmup_from_ms {
+        let _ = writeln!(out, "warmup_from_ms={warmup_from_ms}");
+    }
+    if let Some(latest_runtime_to_ms) = manifest.latest_runtime_to_ms {
+        let _ = writeln!(out, "latest_runtime_to_ms={latest_runtime_to_ms}");
+    }
+    if let Some(message) = &manifest.failure_message {
+        let _ = writeln!(out, "failure_message={message}");
+    }
+    out
+}
+
+pub fn render_paper_snapshot_text(snapshot: &PaperSessionSnapshot) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "session_id={}", snapshot.session_id);
+    let _ = writeln!(out, "status={:?}", snapshot.status);
+    let _ = writeln!(out, "health={:?}", snapshot.health);
+    let _ = writeln!(out, "updated_at_ms={}", snapshot.updated_at_ms);
+    if let Some(latest_runtime_to_ms) = snapshot.latest_runtime_to_ms {
+        let _ = writeln!(out, "latest_runtime_to_ms={latest_runtime_to_ms}");
+    }
+    if let Some(latest_closed_bar_time_ms) = snapshot.latest_closed_bar_time_ms {
+        let _ = writeln!(out, "latest_closed_bar_time_ms={latest_closed_bar_time_ms}");
+    }
+    if let Some(summary) = &snapshot.summary {
+        let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
+        let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
+        let _ = writeln!(out, "trade_count={}", summary.trade_count);
+        let _ = writeln!(out, "win_rate_pct={:.2}", summary.win_rate * 100.0);
+        let _ = writeln!(out, "max_drawdown={:.2}", summary.max_drawdown);
+    }
+    let _ = writeln!(out, "open_positions={}", snapshot.open_positions.len());
+    let _ = writeln!(out, "open_order_count={}", snapshot.open_order_count);
+    let _ = writeln!(out, "fill_count={}", snapshot.fill_count);
+    let _ = writeln!(out, "trade_count={}", snapshot.trade_count);
+    if let Some(message) = &snapshot.failure_message {
+        let _ = writeln!(out, "failure_message={message}");
+    }
+    out
+}
+
+pub fn render_paper_positions_text(session_id: &str, positions: &[PositionSnapshot]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "session_id={session_id}");
+    for position in positions {
+        let _ = writeln!(
+            out,
+            "alias={} side={} quantity={:.8} entry_price={:.8} market_price={:.8} unrealized_pnl={:.8}",
+            position.execution_alias,
+            fmt_position_side(position.side),
+            position.quantity,
+            position.entry_price,
+            position.market_price,
+            position.unrealized_pnl,
+        );
+    }
+    out
+}
+
+pub fn render_paper_export_text(
+    session_id: &str,
+    orders: &[OrderRecord],
+    fills: &[Fill],
+) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "session_id={session_id}");
+    if !orders.is_empty() {
+        out.push_str("Orders\n");
+        for order in orders {
+            let _ = writeln!(
+                out,
+                "id={} alias={} role={} kind={:?} status={:?}",
+                order.id,
+                order.execution_alias,
+                fmt_signal_role(order.role),
+                order.kind,
+                order.status
+            );
+        }
+    }
+    if !fills.is_empty() {
+        out.push_str("Fills\n");
+        for fill in fills {
+            let _ = writeln!(
+                out,
+                "alias={} bar={} time={} action={:?} quantity={:.8} price={:.8}",
+                fill.execution_alias,
+                fill.bar_index,
+                fmt_opt_f64(Some(fill.time)),
+                fill.action,
+                fill.quantity,
+                fill.price
+            );
+        }
+    }
+    out
+}
+
+pub fn render_paper_export_text_full(export: &PaperSessionExport) -> String {
+    let mut out = render_paper_manifest_text(&export.manifest);
+    if let Some(snapshot) = &export.snapshot {
+        out.push('\n');
+        out.push_str(&render_paper_snapshot_text(snapshot));
+    }
+    if let Some(result) = &export.latest_result {
+        out.push('\n');
+        out.push_str(&render_paper_export_text(
+            &export.manifest.session_id,
+            &result.orders,
+            &result.fills,
+        ));
+    }
+    out
+}
+
+pub fn render_paper_logs_text(session_id: &str, logs: &[PaperSessionLogEvent]) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "session_id={session_id}");
+    for event in logs {
+        let _ = writeln!(
+            out,
+            "time_ms={} status={:?} health={:?} latest_runtime_to_ms={} message={}",
+            event.time_ms,
+            event.status,
+            event.health,
+            event
+                .latest_runtime_to_ms
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            event.message
+        );
+    }
+    out
+}
+
+pub fn render_execution_daemon_status_text(status: &ExecutionDaemonStatus) -> String {
+    let mut out = String::new();
+    let _ = writeln!(out, "pid={}", status.pid);
+    let _ = writeln!(out, "started_at_ms={}", status.started_at_ms);
+    let _ = writeln!(out, "updated_at_ms={}", status.updated_at_ms);
+    let _ = writeln!(out, "poll_interval_ms={}", status.poll_interval_ms);
+    let _ = writeln!(out, "once={}", status.once);
+    let _ = writeln!(out, "running={}", status.running);
+    let _ = writeln!(out, "stop_requested={}", status.stop_requested);
+    let _ = writeln!(out, "state_root={}", status.state_root);
+    let _ = writeln!(out, "active_sessions={}", status.active_sessions.join(","));
     out
 }
 

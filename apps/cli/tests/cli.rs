@@ -167,9 +167,65 @@ fn run_help_mentions_market_mode() {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("market"))
+        .stdout(predicate::str::contains("paper"))
         .stdout(predicate::str::contains("backtest"))
         .stdout(predicate::str::contains("optimize"))
         .stdout(predicate::str::contains("csv").not());
+}
+
+#[test]
+fn execution_help_mentions_serve_status_and_stop() {
+    let mut cmd = palmscript_cmd();
+    cmd.args(["execution", "--help"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("serve"))
+        .stdout(predicate::str::contains("status"))
+        .stdout(predicate::str::contains("stop"));
+}
+
+#[test]
+fn paper_submit_list_and_stop_use_local_execution_state() {
+    let dir = tempdir().expect("tempdir");
+    let state_dir = dir.path().join("execution-state");
+    let script = write_file(
+        dir.path(),
+        "paper.ps",
+        "interval 1m\nsource spot = binance.spot(\"BTCUSDT\")\nentry long = spot.close > spot.close[1]\nentry short = false\nexit long = false\nexit short = false\nplot(spot.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_EXECUTION_STATE_DIR", &state_dir)
+        .args([
+            "run",
+            "paper",
+            script.to_str().unwrap(),
+            "--execution-source",
+            "spot",
+        ])
+        .output()
+        .expect("paper submit should run");
+    assert!(output.status.success());
+    let manifest: Value =
+        serde_json::from_slice(&output.stdout).expect("paper submit should emit manifest json");
+    let session_id = manifest["session_id"]
+        .as_str()
+        .expect("session id should exist")
+        .to_string();
+
+    palmscript_cmd()
+        .env("PALMSCRIPT_EXECUTION_STATE_DIR", &state_dir)
+        .args(["run", "paper-list"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(&session_id));
+
+    palmscript_cmd()
+        .env("PALMSCRIPT_EXECUTION_STATE_DIR", &state_dir)
+        .args(["run", "paper-stop", &session_id])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("stopped").or(predicate::str::contains("Stopped")));
 }
 
 #[test]

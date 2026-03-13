@@ -5,27 +5,36 @@ use std::thread;
 
 use palmscript::{
     bytecode::InputOptimizationDeclKind, compile, compile_with_input_overrides,
-    fetch_perp_backtest_context, fetch_source_runtime_config, run_backtest_with_sources,
+    execution_daemon_status, fetch_perp_backtest_context, fetch_source_runtime_config,
+    list_paper_sessions, load_paper_session_export, load_paper_session_logs,
+    load_paper_session_snapshot, request_execution_daemon_stop, run_backtest_with_sources,
     run_optimize_with_source, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
-    run_with_sources, BacktestConfig, CompiledProgram, DiagnosticsDetailMode, ExchangeEndpoints,
-    InputSweepDefinition, OptimizeConfig, OptimizeError, OptimizeHoldoutConfig, OptimizeObjective,
-    OptimizeParamSpace, OptimizePreset, OptimizeResult, OptimizeRunner, PerpBacktestConfig,
-    PerpMarginMode, RuntimeError, SourceTemplate, VmLimits, WalkForwardConfig,
-    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    run_with_sources, serve_execution_daemon, stop_paper_session, submit_paper_session,
+    BacktestConfig, CompiledProgram, DiagnosticsDetailMode, ExchangeEndpoints,
+    ExecutionDaemonConfig, ExecutionError, InputSweepDefinition, OptimizeConfig, OptimizeError,
+    OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace, OptimizePreset, OptimizeResult,
+    OptimizeRunner, PaperSessionConfig, PerpBacktestConfig, PerpMarginMode, RuntimeError,
+    SourceTemplate, SubmitPaperSession, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
+    WalkForwardSweepError, WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
 use crate::args::{
     BacktestMarginMode, BacktestRunArgs, BytecodeFormat, CheckArgs, Cli, Command,
-    DiagnosticsDetailArg, DocsArgs, DumpBytecodeArgs, MarketRunArgs, OptimizeObjectiveArg,
-    OptimizeRunArgs, OptimizeRunnerArg, OutputFormat, RunCommand, WalkForwardRunArgs,
-    WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
+    DiagnosticsDetailArg, DocsArgs, DumpBytecodeArgs, ExecutionCommand, ExecutionServeArgs,
+    ExecutionStatusArgs, MarketRunArgs, OptimizeObjectiveArg, OptimizeRunArgs, OptimizeRunnerArg,
+    OutputFormat, PaperExportArgs, PaperFillsArgs, PaperListArgs, PaperLogsArgs, PaperOrdersArgs,
+    PaperPositionsArgs, PaperRunArgs, PaperStatusArgs, PaperStopArgs, RunCommand,
+    WalkForwardRunArgs, WalkForwardSweepObjectiveArg, WalkForwardSweepRunArgs,
 };
 use crate::diagnostics::{format_compile_error, format_runtime_error};
 use crate::docs;
 use crate::format::{
-    render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
-    render_walk_forward_sweep_text, render_walk_forward_text,
+    render_backtest_text, render_bytecode_text, render_execution_daemon_status_text,
+    render_optimize_text, render_outputs_text, render_paper_export_text,
+    render_paper_export_text_full, render_paper_logs_text, render_paper_manifest_text,
+    render_paper_positions_text, render_paper_snapshot_text, render_walk_forward_sweep_text,
+    render_walk_forward_text,
 };
 
 type ResolvedPerpContexts = (
@@ -38,6 +47,7 @@ pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Docs(args) => print_docs(args),
         Command::Run { mode } => run_mode(*mode),
+        Command::Execution { command } => run_execution(*command),
         Command::Check(args) => check_script(args),
         Command::DumpBytecode(args) => dump_bytecode(args),
     }
@@ -55,6 +65,23 @@ fn run_mode(mode: RunCommand) -> Result<(), String> {
         RunCommand::WalkForward(args) => run_walk_forward(args),
         RunCommand::WalkForwardSweep(args) => run_walk_forward_sweep(args),
         RunCommand::Optimize(args) => run_optimize(args),
+        RunCommand::Paper(args) => run_paper(args),
+        RunCommand::PaperStatus(args) => run_paper_status(args),
+        RunCommand::PaperList(args) => run_paper_list(args),
+        RunCommand::PaperStop(args) => run_paper_stop(args),
+        RunCommand::PaperLogs(args) => run_paper_logs(args),
+        RunCommand::PaperPositions(args) => run_paper_positions(args),
+        RunCommand::PaperOrders(args) => run_paper_orders(args),
+        RunCommand::PaperFills(args) => run_paper_fills(args),
+        RunCommand::PaperExport(args) => run_paper_export(args),
+    }
+}
+
+fn run_execution(command: ExecutionCommand) -> Result<(), String> {
+    match command {
+        ExecutionCommand::Serve(args) => run_execution_serve(args),
+        ExecutionCommand::Status(args) => run_execution_status(args),
+        ExecutionCommand::Stop => run_execution_stop(),
     }
 }
 
@@ -128,6 +155,7 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             } else {
                 Vec::new()
             },
+            activation_time_ms: None,
             initial_capital: args.initial_capital,
             fee_bps: args.fee_bps,
             slippage_bps: args.slippage_bps,
@@ -187,6 +215,7 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
                 } else {
                     Vec::new()
                 },
+                activation_time_ms: None,
                 initial_capital: args.initial_capital,
                 fee_bps: args.fee_bps,
                 slippage_bps: args.slippage_bps,
@@ -254,6 +283,7 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
                     } else {
                         Vec::new()
                     },
+                    activation_time_ms: None,
                     initial_capital: args.initial_capital,
                     fee_bps: args.fee_bps,
                     slippage_bps: args.slippage_bps,
@@ -325,6 +355,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         } else {
             Vec::new()
         },
+        activation_time_ms: None,
         initial_capital: args.initial_capital,
         fee_bps: args.fee_bps,
         slippage_bps: args.slippage_bps,
@@ -392,6 +423,227 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             render_optimize_text(&result, args.preset_out.as_deref())
         ),
     }
+    Ok(())
+}
+
+fn run_paper(args: PaperRunArgs) -> Result<(), String> {
+    let source = load_source(&args.script)?;
+    let compiled = compile_source(&source, &args.script)?;
+    if compiled.program.declared_sources.is_empty() {
+        return Err("paper mode requires at least one `source` declaration".to_string());
+    }
+    let execution_source_aliases =
+        resolve_execution_source_aliases(&compiled, &args.execution_source)?;
+    let manifest = submit_paper_session(SubmitPaperSession {
+        source,
+        script_path: Some(args.script.clone()),
+        config: PaperSessionConfig {
+            execution_source_aliases,
+            initial_capital: args.initial_capital,
+            fee_bps: args.fee_bps,
+            slippage_bps: args.slippage_bps,
+            diagnostics_detail: map_diagnostics_detail(args.diagnostics),
+            leverage: args.leverage,
+            margin_mode: args.margin_mode.map(|mode| match mode {
+                BacktestMarginMode::Isolated => PerpMarginMode::Isolated,
+            }),
+            vm_limits: VmLimits {
+                max_instructions_per_bar: args.max_instructions_per_bar,
+                max_history_capacity: args.max_history_capacity,
+            },
+        },
+        start_time_ms: current_unix_ms(),
+        endpoints: ExchangeEndpoints::from_env(),
+    })
+    .map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_paper_manifest_text(&manifest)),
+    }
+    Ok(())
+}
+
+fn run_paper_status(args: PaperStatusArgs) -> Result<(), String> {
+    let snapshot = load_paper_session_snapshot(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&snapshot).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_paper_snapshot_text(&snapshot)),
+    }
+    Ok(())
+}
+
+fn run_paper_list(args: PaperListArgs) -> Result<(), String> {
+    let sessions = list_paper_sessions().map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&sessions).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => {
+            for session in &sessions {
+                print!("{}", render_paper_manifest_text(session));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_paper_stop(args: PaperStopArgs) -> Result<(), String> {
+    let manifest = stop_paper_session(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&manifest).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_paper_manifest_text(&manifest)),
+    }
+    Ok(())
+}
+
+fn run_paper_logs(args: PaperLogsArgs) -> Result<(), String> {
+    let logs = load_paper_session_logs(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&logs).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_paper_logs_text(&args.session_id, &logs)),
+    }
+    Ok(())
+}
+
+fn run_paper_positions(args: PaperPositionsArgs) -> Result<(), String> {
+    let export = load_paper_session_export(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &export
+                    .latest_result
+                    .as_ref()
+                    .map(|result| &result.open_positions)
+            )
+            .map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!(
+            "{}",
+            render_paper_positions_text(
+                &args.session_id,
+                export
+                    .latest_result
+                    .as_ref()
+                    .map(|result| result.open_positions.as_slice())
+                    .unwrap_or(&[])
+            )
+        ),
+    }
+    Ok(())
+}
+
+fn run_paper_orders(args: PaperOrdersArgs) -> Result<(), String> {
+    let export = load_paper_session_export(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &export.latest_result.as_ref().map(|result| &result.orders)
+            )
+            .map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!(
+            "{}",
+            render_paper_export_text(
+                &args.session_id,
+                export
+                    .latest_result
+                    .as_ref()
+                    .map(|result| result.orders.as_slice())
+                    .unwrap_or(&[]),
+                &[]
+            )
+        ),
+    }
+    Ok(())
+}
+
+fn run_paper_fills(args: PaperFillsArgs) -> Result<(), String> {
+    let export = load_paper_session_export(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(
+                &export.latest_result.as_ref().map(|result| &result.fills)
+            )
+            .map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!(
+            "{}",
+            render_paper_export_text(
+                &args.session_id,
+                &[],
+                export
+                    .latest_result
+                    .as_ref()
+                    .map(|result| result.fills.as_slice())
+                    .unwrap_or(&[])
+            )
+        ),
+    }
+    Ok(())
+}
+
+fn run_paper_export(args: PaperExportArgs) -> Result<(), String> {
+    let export = load_paper_session_export(&args.session_id).map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&export).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => print!("{}", render_paper_export_text_full(&export)),
+    }
+    Ok(())
+}
+
+fn run_execution_serve(args: ExecutionServeArgs) -> Result<(), String> {
+    let status = serve_execution_daemon(ExecutionDaemonConfig {
+        poll_interval_ms: args.poll_interval_ms,
+        once: args.once,
+    })
+    .map_err(format_execution_error)?;
+    print!("{}", render_execution_daemon_status_text(&status));
+    Ok(())
+}
+
+fn run_execution_status(args: ExecutionStatusArgs) -> Result<(), String> {
+    let status = execution_daemon_status().map_err(format_execution_error)?;
+    match args.format {
+        OutputFormat::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&status).map_err(|err| err.to_string())?
+        ),
+        OutputFormat::Text => {
+            if let Some(status) = status {
+                print!("{}", render_execution_daemon_status_text(&status));
+            } else {
+                println!("execution daemon status unavailable");
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_execution_stop() -> Result<(), String> {
+    let stop_path = request_execution_daemon_stop().map_err(format_execution_error)?;
+    println!(
+        "execution daemon stop requested via {}",
+        stop_path.display()
+    );
     Ok(())
 }
 
@@ -775,6 +1027,17 @@ fn format_optimize_error(error: OptimizeError) -> String {
         OptimizeError::Backtest(err) => format!("optimize mode error: {err}"),
         other => format!("optimize mode error: {other}"),
     }
+}
+
+fn format_execution_error(error: ExecutionError) -> String {
+    format!("execution error: {error}")
+}
+
+fn current_unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 pub(crate) fn default_parallel_workers() -> usize {

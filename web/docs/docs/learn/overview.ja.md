@@ -45,3 +45,11 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus parameter stability summaries
 
+## ローカル Paper 実行
+
+PalmScript はローカル paper 実行デーモンも提供するようになりました。
+
+- `palmscript run paper ...` は永続的な paper セッションを作成します
+- `palmscript execution serve` はクローズ済みバーの実データでそのセッションを処理します
+- セッションはバックテストと同じコンパイル済み VM、注文シミュレーション、ポートフォリオ制約を再利用します
+- v1 は仮想資金のみを使い、実際の注文は送信しません

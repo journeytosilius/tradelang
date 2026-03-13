@@ -38,6 +38,7 @@ fn optimize_backtest_config() -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: "spot".to_string(),
         portfolio_execution_aliases: Vec::new(),
+        activation_time_ms: None,
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,

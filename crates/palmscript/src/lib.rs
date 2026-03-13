@@ -12,6 +12,7 @@ pub mod bytecode;
 pub mod compiler;
 pub mod diagnostic;
 pub mod exchange;
+pub mod execution;
 pub mod ide;
 pub mod ide_lsp;
 mod indicators;
@@ -54,6 +55,15 @@ pub use diagnostic::{CompileError, Diagnostic, DiagnosticKind, RuntimeError};
 pub use exchange::{
     fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints,
     ExchangeFetchError, MarkPriceBasis, RiskTier, VenueRiskSnapshot,
+};
+pub use execution::{
+    default_execution_state_root, execution_daemon_status, list_paper_sessions,
+    load_paper_session_export, load_paper_session_logs, load_paper_session_manifest,
+    load_paper_session_script, load_paper_session_snapshot, request_execution_daemon_stop,
+    serve_execution_daemon, stop_paper_session, submit_paper_session, ExecutionDaemonConfig,
+    ExecutionDaemonStatus, ExecutionError, ExecutionMode, ExecutionSessionHealth,
+    ExecutionSessionStatus, PaperSessionConfig, PaperSessionExport, PaperSessionLogEvent,
+    PaperSessionManifest, PaperSessionSnapshot, SubmitPaperSession,
 };
 pub use ide::{
     analyze_document, format_document, highlight_document, CompletionEntry, CompletionKind,

@@ -19,8 +19,9 @@ Typical flow:
 3. inspect the compiled form with `palmscript dump-bytecode` when you want to understand how the script is compiled
 4. tune strategies with `palmscript run optimize` and save the best preset with `--preset-out`
 5. rerun the winner with `run backtest` or `run walk-forward` before you trust it
-6. switch `--diagnostics` between `summary` and `full-trace` depending on whether you need compact output or per-bar decision traces
-7. repeat `--execution-source` when you want one shared-equity portfolio backtest across multiple execution aliases
+6. queue a local paper session with `palmscript run paper` and drive it with `palmscript execution serve`
+7. switch `--diagnostics` between `summary` and `full-trace` depending on whether you need compact output or per-bar decision traces
+8. repeat `--execution-source` when you want one shared-equity portfolio backtest or paper session across multiple execution aliases
 
 ## Validate Without Running
 
@@ -136,6 +137,42 @@ input fast_len = 21 optimize(int, 8, 34, 1)
 input target_atr_mult = 2.5 optimize(float, 1.5, 4.0, 0.25)
 input weekly_bias = 21 optimize(choice, 13, 21, 34)
 ```
+
+## Run A Local Paper Session
+
+PalmScript now exposes a local paper-execution loop that reuses the same compiled VM and order simulation path as backtest mode.
+
+```bash
+palmscript run paper strategy.ps --execution-source exec
+palmscript execution serve
+```
+
+The v1 execution layer is intentionally conservative:
+
+- `paper` only, no real authenticated order placement
+- local daemon only, no remote control plane
+- closed-bar polling against the exchange-backed source adapters
+- one persistent local ledger per paper session
+- the same strategy semantics, portfolio caps, cooldowns, and max-bars exits as backtest mode
+
+When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` polls the supported exchange-backed sources, warms the VM with pre-session history, and then updates the session on each new closed execution bar without generating fake pre-session fills.
+
+Useful inspection commands:
+
+```bash
+palmscript run paper-list
+palmscript run paper-status <session-id>
+palmscript run paper-positions <session-id>
+palmscript run paper-orders <session-id>
+palmscript run paper-fills <session-id>
+palmscript run paper-logs <session-id>
+palmscript run paper-export <session-id> --format json
+palmscript run paper-stop <session-id>
+palmscript execution status
+palmscript execution stop
+```
+
+Portfolio paper mode uses the same repeated `--execution-source` convention as backtest mode. Repeating execution aliases keeps one shared cash/equity ledger across all selected aliases and enforces `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` declarations on new entries only.
 
 ## Output Formats
 

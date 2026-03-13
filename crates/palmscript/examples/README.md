@@ -50,6 +50,16 @@ For runnable public examples and workflow guidance, use the linked docs pages ab
 
 When you inspect these strategies from the CLI, `run backtest`, `run walk-forward`, and `run optimize` now support `--diagnostics summary|full-trace`. Use `summary` for the normal compact diagnostics payload and `full-trace` when you want one typed per-bar decision trace record per execution bar.
 
+The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
+
+```bash
+./palmscript run paper crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps --execution-source perp
+./palmscript execution serve --once
+./palmscript run paper-export <session-id> --format json
+```
+
+Paper mode is local-only and fake-money-only in v1, but it reuses the same compiled VM, backtest order semantics, portfolio caps, cooldowns, and `max_bars_in_trade` controls as ordinary backtests.
+
 Common commands:
 
 ```bash

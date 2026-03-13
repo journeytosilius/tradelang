@@ -542,6 +542,7 @@ async fn run_backtest(
                         .alias
                         .clone(),
                     portfolio_execution_aliases: Vec::new(),
+                    activation_time_ms: None,
                     initial_capital: dataset.initial_capital,
                     fee_bps: dataset.fee_bps,
                     slippage_bps: dataset.slippage_bps,

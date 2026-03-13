@@ -45,3 +45,11 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus parameter stability summaries
 
+## Lokale Paper-Ausfuhrung
+
+PalmScript enthaelt jetzt auch einen lokalen Paper-Ausfuehrungs-Daemon:
+
+- `palmscript run paper ...` legt eine persistente Paper-Session an
+- `palmscript execution serve` verarbeitet diese Sessions mit echten Exchange-Daten auf geschlossenen Kerzen
+- die Session verwendet dieselbe kompilierte VM, dieselbe Ordersimulation und dieselben Portfolio-Regeln wie der Backtester
+- v1 verwendet nur Spielgeld und sendet niemals echte Orders

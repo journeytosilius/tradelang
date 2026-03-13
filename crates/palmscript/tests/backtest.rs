@@ -44,6 +44,7 @@ fn config(alias: &str) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),
         portfolio_execution_aliases: Vec::new(),
+        activation_time_ms: None,
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
@@ -64,6 +65,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
     BacktestConfig {
         execution_source_alias: alias.to_string(),
         portfolio_execution_aliases: Vec::new(),
+        activation_time_ms: None,
         initial_capital: 1_000.0,
         fee_bps: 0.0,
         slippage_bps: 0.0,
@@ -331,6 +333,52 @@ plot(spot.close)",
             .count(),
         2
     );
+}
+
+#[test]
+fn activation_time_warms_history_without_creating_pre_session_orders() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let start_time_ms = support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS;
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+                bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                    12.0,
+                    12.0,
+                ),
+                bar(
+                    support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                    13.0,
+                    13.0,
+                ),
+            ],
+        }],
+    };
+    let mut backtest = config("spot");
+    backtest.activation_time_ms = Some(start_time_ms);
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 1);
+    assert_eq!(result.fills[0].bar_index, 3);
+    assert_eq!(result.equity_curve.len(), 2);
+    assert_eq!(result.equity_curve[0].time as i64, start_time_ms);
 }
 
 #[test]

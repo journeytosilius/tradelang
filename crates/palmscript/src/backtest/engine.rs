@@ -133,6 +133,13 @@ struct PortfolioAliasState {
     diagnostics: DiagnosticsAccumulator,
 }
 
+fn step_is_active(open_time_ms: i64, activation_time_ms: Option<i64>) -> bool {
+    match activation_time_ms {
+        Some(activation_time_ms) => open_time_ms >= activation_time_ms,
+        None => true,
+    }
+}
+
 pub(crate) fn simulate_backtest(
     mut stepper: RuntimeStepper,
     execution_bars: Vec<Bar>,
@@ -178,6 +185,7 @@ pub(crate) fn simulate_backtest(
         let next_execution = execution_bars.get(execution_cursor).copied();
         let current_execution =
             next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
+        let session_active = step_is_active(open_time, config.activation_time_ms);
         let current_mark =
             current_execution.and_then(|_| aligned_mark_bars.get(execution_cursor).copied());
         let mut position_events = PositionEventStep::default();
@@ -185,7 +193,7 @@ pub(crate) fn simulate_backtest(
         let mut decision_trace =
             matches!(config.diagnostics_detail, DiagnosticsDetailMode::FullTrace)
                 .then(StepDecisionTrace::default);
-        if let Some(bar) = current_execution {
+        if let Some(bar) = current_execution.filter(|_| session_active) {
             if let Some(open_trade) = open_trade.as_mut() {
                 update_open_trade_excursions(open_trade, bar.high, bar.low);
             }
@@ -733,82 +741,88 @@ pub(crate) fn simulate_backtest(
         });
 
         if let Some(bar) = current_execution {
-            if position_events.long_entry_fill || position_events.short_entry_fill {
-                if let Some(open_trade) = open_trade.as_mut() {
-                    open_trade.entry_snapshot = snapshot.clone();
+            if session_active {
+                if position_events.long_entry_fill || position_events.short_entry_fill {
+                    if let Some(open_trade) = open_trade.as_mut() {
+                        open_trade.entry_snapshot = snapshot.clone();
+                    }
                 }
-            }
-            let fill_position =
-                current_position_snapshot(position.as_ref(), execution_alias, bar.close, bar.time);
-            for record_index in filled_record_indices {
-                order_contexts[record_index].fill_snapshot = snapshot.clone();
-                order_contexts[record_index].fill_position = fill_position.clone();
-            }
-            let bar_return = diagnostics
-                .observe_execution_bar(bar.close, position.as_ref().map(|state| state.side));
-            diagnostics.observe_exports(
-                &output,
-                snapshot.as_ref(),
-                fill_position.as_ref(),
-                execution_cursor,
-                step_time,
-                bar_return,
-                position.as_ref().map(|state| state.side),
-            );
-            let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
-            let mark_price = current_mark.map(|mark| mark.close).unwrap_or(bar.close);
-            let gross_exposure = quantity.abs() * mark_price;
-            let net_exposure = quantity * mark_price;
-            max_gross_exposure = max_gross_exposure.max(gross_exposure);
-            let equity = match &accounting {
-                AccountingMode::Spot => cash + quantity * mark_price,
-                AccountingMode::PerpIsolated { .. } => {
-                    cash + position.as_ref().map_or(0.0, |state| state.isolated_margin)
-                        + position
-                            .as_ref()
-                            .map_or(0.0, |state| unrealized_pnl_for_position(state, mark_price))
+                let fill_position = current_position_snapshot(
+                    position.as_ref(),
+                    execution_alias,
+                    bar.close,
+                    bar.time,
+                );
+                for record_index in filled_record_indices {
+                    order_contexts[record_index].fill_snapshot = snapshot.clone();
+                    order_contexts[record_index].fill_position = fill_position.clone();
                 }
-            };
-            peak_equity = peak_equity.max(equity);
-            max_drawdown = max_drawdown.max(peak_equity - equity);
-            equity_curve.push(EquityPoint {
-                bar_index: execution_cursor,
-                time: bar.time,
-                cash,
-                equity,
-                position_side: position.as_ref().map(|state| state.side),
-                quantity,
-                mark_price,
-                gross_exposure,
-                net_exposure,
-                open_position_count: usize::from(position.is_some()),
-                long_position_count: usize::from(
-                    position
-                        .as_ref()
-                        .is_some_and(|state| state.side == PositionSide::Long),
-                ),
-                short_position_count: usize::from(
-                    position
-                        .as_ref()
-                        .is_some_and(|state| state.side == PositionSide::Short),
-                ),
-                free_collateral: accounting.is_perp().then_some(cash),
-                isolated_margin: position.as_ref().map(|state| state.isolated_margin),
-                maintenance_margin: position.as_ref().map(|state| state.maintenance_margin),
-                liquidation_price: position.as_ref().and_then(|state| state.liquidation_price),
-            });
-            last_mark_price = Some(mark_price);
-            if let Some(trace) = decision_trace.as_mut() {
-                ensure_no_signal_traces(trace, &prepared);
-                per_bar_trace.push(PerBarDecisionTrace {
-                    execution_alias: execution_alias.to_string(),
+                let bar_return = diagnostics
+                    .observe_execution_bar(bar.close, position.as_ref().map(|state| state.side));
+                diagnostics.observe_exports(
+                    &output,
+                    snapshot.as_ref(),
+                    fill_position.as_ref(),
+                    execution_cursor,
+                    step_time,
+                    bar_return,
+                    position.as_ref().map(|state| state.side),
+                );
+                let quantity = position.as_ref().map_or(0.0, |state| state.quantity);
+                let mark_price = current_mark.map(|mark| mark.close).unwrap_or(bar.close);
+                let gross_exposure = quantity.abs() * mark_price;
+                let net_exposure = quantity * mark_price;
+                max_gross_exposure = max_gross_exposure.max(gross_exposure);
+                let equity = match &accounting {
+                    AccountingMode::Spot => cash + quantity * mark_price,
+                    AccountingMode::PerpIsolated { .. } => {
+                        cash + position.as_ref().map_or(0.0, |state| state.isolated_margin)
+                            + position
+                                .as_ref()
+                                .map_or(0.0, |state| unrealized_pnl_for_position(state, mark_price))
+                    }
+                };
+                peak_equity = peak_equity.max(equity);
+                max_drawdown = max_drawdown.max(peak_equity - equity);
+                equity_curve.push(EquityPoint {
                     bar_index: execution_cursor,
                     time: bar.time,
-                    position_snapshot: fill_position.clone(),
-                    feature_snapshot: snapshot.clone(),
-                    signal_decisions: std::mem::take(&mut trace.signal_decisions),
-                    order_decisions: std::mem::take(&mut trace.order_decisions),
+                    cash,
+                    equity,
+                    position_side: position.as_ref().map(|state| state.side),
+                    quantity,
+                    mark_price,
+                    gross_exposure,
+                    net_exposure,
+                    open_position_count: usize::from(position.is_some()),
+                    long_position_count: usize::from(
+                        position
+                            .as_ref()
+                            .is_some_and(|state| state.side == PositionSide::Long),
+                    ),
+                    short_position_count: usize::from(
+                        position
+                            .as_ref()
+                            .is_some_and(|state| state.side == PositionSide::Short),
+                    ),
+                    free_collateral: accounting.is_perp().then_some(cash),
+                    isolated_margin: position.as_ref().map(|state| state.isolated_margin),
+                    maintenance_margin: position.as_ref().map(|state| state.maintenance_margin),
+                    liquidation_price: position.as_ref().and_then(|state| state.liquidation_price),
                 });
+                last_mark_price = Some(mark_price);
+                if let Some(trace) = decision_trace.as_mut() {
+                    ensure_no_signal_traces(trace, &prepared);
+                    per_bar_trace.push(PerBarDecisionTrace {
+                        execution_alias: execution_alias.to_string(),
+                        bar_index: execution_cursor,
+                        time: bar.time,
+                        position_snapshot: fill_position.clone(),
+                        feature_snapshot: snapshot.clone(),
+                        signal_decisions: std::mem::take(&mut trace.signal_decisions),
+                        order_decisions: std::mem::take(&mut trace.order_decisions),
+                    });
+                }
             }
             execution_cursor += 1;
         } else {
@@ -823,39 +837,41 @@ pub(crate) fn simulate_backtest(
             );
         }
 
-        enqueue_signal_requests(
-            &output,
-            step_time,
-            &prepared,
-            &mut pending_requests,
-            &mut pending_snapshots,
-            &mut pending_signal_names,
-            &mut pending_conflict_time,
-            &mut diagnostics,
-            decision_position_snapshot.as_ref(),
-            snapshot.as_ref(),
-            step_bar_index,
-            execution_alias,
-            decision_trace.as_mut(),
-        );
-        enqueue_attached_requests(
-            step_time,
-            &output,
-            &prepared,
-            position.as_ref(),
-            position.as_ref(),
-            target_consumption,
-            &mut pending_requests,
-            &mut pending_snapshots,
-            &mut pending_signal_names,
-            &mut diagnostics,
-            decision_position_snapshot.as_ref(),
-            snapshot.as_ref(),
-            step_bar_index,
-            execution_alias,
-            decision_trace.as_mut(),
-        );
-        last_snapshot = snapshot;
+        if session_active {
+            enqueue_signal_requests(
+                &output,
+                step_time,
+                &prepared,
+                &mut pending_requests,
+                &mut pending_snapshots,
+                &mut pending_signal_names,
+                &mut pending_conflict_time,
+                &mut diagnostics,
+                decision_position_snapshot.as_ref(),
+                snapshot.as_ref(),
+                step_bar_index,
+                execution_alias,
+                decision_trace.as_mut(),
+            );
+            enqueue_attached_requests(
+                step_time,
+                &output,
+                &prepared,
+                position.as_ref(),
+                position.as_ref(),
+                target_consumption,
+                &mut pending_requests,
+                &mut pending_snapshots,
+                &mut pending_signal_names,
+                &mut diagnostics,
+                decision_position_snapshot.as_ref(),
+                snapshot.as_ref(),
+                step_bar_index,
+                execution_alias,
+                decision_trace.as_mut(),
+            );
+            last_snapshot = snapshot;
+        }
     }
 
     let source_alignment = stepper.source_alignment_diagnostics();
@@ -1073,6 +1089,7 @@ pub(crate) fn simulate_portfolio_backtest(
             let next_execution = state.execution_bars.get(state.execution_cursor).copied();
             let current_execution =
                 next_execution.filter(|bar| bar.time.is_finite() && bar.time == open_time as f64);
+            let session_active = step_is_active(open_time, config.activation_time_ms);
             let current_mark = current_execution
                 .and_then(|_| state.aligned_mark_bars.get(state.execution_cursor).copied());
             let mut position_events = PositionEventStep::default();
@@ -1081,7 +1098,7 @@ pub(crate) fn simulate_portfolio_backtest(
                 matches!(config.diagnostics_detail, DiagnosticsDetailMode::FullTrace)
                     .then(StepDecisionTrace::default);
 
-            if let Some(bar) = current_execution {
+            if let Some(bar) = current_execution.filter(|_| session_active) {
                 if let Some(open_trade) = state.open_trade.as_mut() {
                     update_open_trade_excursions(open_trade, bar.high, bar.low);
                 }
@@ -1711,83 +1728,87 @@ pub(crate) fn simulate_portfolio_backtest(
             });
 
             if let Some(bar) = current_execution {
-                if position_events.long_entry_fill || position_events.short_entry_fill {
-                    if let Some(open_trade) = state.open_trade.as_mut() {
-                        open_trade.entry_snapshot = snapshot.clone();
+                if session_active {
+                    if position_events.long_entry_fill || position_events.short_entry_fill {
+                        if let Some(open_trade) = state.open_trade.as_mut() {
+                            open_trade.entry_snapshot = snapshot.clone();
+                        }
                     }
-                }
-                let fill_position = current_position_snapshot(
-                    state.position.as_ref(),
-                    &state.alias,
-                    bar.close,
-                    bar.time,
-                );
-                for record_index in filled_record_indices {
-                    order_contexts[record_index].fill_snapshot = snapshot.clone();
-                    order_contexts[record_index].fill_position = fill_position.clone();
-                }
-                let bar_return = state
-                    .diagnostics
-                    .observe_execution_bar(bar.close, state.position.as_ref().map(|s| s.side));
-                state.diagnostics.observe_exports(
-                    &output,
-                    snapshot.as_ref(),
-                    fill_position.as_ref(),
-                    state.execution_cursor,
-                    step_time,
-                    bar_return,
-                    state.position.as_ref().map(|s| s.side),
-                );
-                state.last_mark_price =
-                    Some(current_mark.map(|mark| mark.close).unwrap_or(bar.close));
-                if let Some(trace) = decision_trace.as_mut() {
-                    ensure_no_signal_traces(trace, &prepared);
-                    all_traces.push(PerBarDecisionTrace {
-                        execution_alias: state.alias.clone(),
-                        bar_index: state.execution_cursor,
-                        time: bar.time,
-                        position_snapshot: fill_position.clone(),
-                        feature_snapshot: snapshot.clone(),
-                        signal_decisions: std::mem::take(&mut trace.signal_decisions),
-                        order_decisions: std::mem::take(&mut trace.order_decisions),
-                    });
+                    let fill_position = current_position_snapshot(
+                        state.position.as_ref(),
+                        &state.alias,
+                        bar.close,
+                        bar.time,
+                    );
+                    for record_index in filled_record_indices {
+                        order_contexts[record_index].fill_snapshot = snapshot.clone();
+                        order_contexts[record_index].fill_position = fill_position.clone();
+                    }
+                    let bar_return = state
+                        .diagnostics
+                        .observe_execution_bar(bar.close, state.position.as_ref().map(|s| s.side));
+                    state.diagnostics.observe_exports(
+                        &output,
+                        snapshot.as_ref(),
+                        fill_position.as_ref(),
+                        state.execution_cursor,
+                        step_time,
+                        bar_return,
+                        state.position.as_ref().map(|s| s.side),
+                    );
+                    state.last_mark_price =
+                        Some(current_mark.map(|mark| mark.close).unwrap_or(bar.close));
+                    if let Some(trace) = decision_trace.as_mut() {
+                        ensure_no_signal_traces(trace, &prepared);
+                        all_traces.push(PerBarDecisionTrace {
+                            execution_alias: state.alias.clone(),
+                            bar_index: state.execution_cursor,
+                            time: bar.time,
+                            position_snapshot: fill_position.clone(),
+                            feature_snapshot: snapshot.clone(),
+                            signal_decisions: std::mem::take(&mut trace.signal_decisions),
+                            order_decisions: std::mem::take(&mut trace.order_decisions),
+                        });
+                    }
                 }
                 state.execution_cursor += 1;
             }
 
-            enqueue_signal_requests(
-                &output,
-                step_time,
-                &prepared,
-                &mut state.pending_requests,
-                &mut state.pending_snapshots,
-                &mut state.pending_signal_names,
-                &mut state.pending_conflict_time,
-                &mut state.diagnostics,
-                decision_position_snapshot.as_ref(),
-                snapshot.as_ref(),
-                step_bar_index,
-                &state.alias,
-                decision_trace.as_mut(),
-            );
-            enqueue_attached_requests(
-                step_time,
-                &output,
-                &prepared,
-                state.position.as_ref(),
-                state.position.as_ref(),
-                state.target_consumption,
-                &mut state.pending_requests,
-                &mut state.pending_snapshots,
-                &mut state.pending_signal_names,
-                &mut state.diagnostics,
-                decision_position_snapshot.as_ref(),
-                snapshot.as_ref(),
-                step_bar_index,
-                &state.alias,
-                decision_trace.as_mut(),
-            );
-            state.last_snapshot = snapshot;
+            if session_active {
+                enqueue_signal_requests(
+                    &output,
+                    step_time,
+                    &prepared,
+                    &mut state.pending_requests,
+                    &mut state.pending_snapshots,
+                    &mut state.pending_signal_names,
+                    &mut state.pending_conflict_time,
+                    &mut state.diagnostics,
+                    decision_position_snapshot.as_ref(),
+                    snapshot.as_ref(),
+                    step_bar_index,
+                    &state.alias,
+                    decision_trace.as_mut(),
+                );
+                enqueue_attached_requests(
+                    step_time,
+                    &output,
+                    &prepared,
+                    state.position.as_ref(),
+                    state.position.as_ref(),
+                    state.target_consumption,
+                    &mut state.pending_requests,
+                    &mut state.pending_snapshots,
+                    &mut state.pending_signal_names,
+                    &mut state.diagnostics,
+                    decision_position_snapshot.as_ref(),
+                    snapshot.as_ref(),
+                    step_bar_index,
+                    &state.alias,
+                    decision_trace.as_mut(),
+                );
+                state.last_snapshot = snapshot;
+            }
             state_index += 1;
         }
 
@@ -1818,39 +1839,44 @@ pub(crate) fn simulate_portfolio_backtest(
                 .map(|position| position.isolated_margin)
                 .sum::<f64>()
             + unrealized_total;
-        peak_equity = peak_equity.max(equity);
-        max_drawdown = max_drawdown.max(peak_equity - equity);
-        let gross_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
-            0.0
-        } else {
-            gross_exposure / equity
-        };
-        let net_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
-            0.0
-        } else {
-            net_exposure / equity
-        };
-        max_gross_exposure = max_gross_exposure.max(gross_exposure_pct);
-        max_net_exposure = max_net_exposure.max(net_exposure_pct.abs());
-        peak_open_position_count = peak_open_position_count.max(open_position_count);
-        equity_curve.push(EquityPoint {
-            bar_index: equity_curve.len(),
-            time: open_time as f64,
-            cash,
-            equity,
-            position_side: None,
-            quantity: 0.0,
-            mark_price: 0.0,
-            gross_exposure: gross_exposure_pct,
-            net_exposure: net_exposure_pct,
-            open_position_count,
-            long_position_count: long_count,
-            short_position_count: short_count,
-            free_collateral: None,
-            isolated_margin: None,
-            maintenance_margin: None,
-            liquidation_price: None,
-        });
+        if config
+            .activation_time_ms
+            .is_none_or(|activation_time_ms| open_time >= activation_time_ms)
+        {
+            peak_equity = peak_equity.max(equity);
+            max_drawdown = max_drawdown.max(peak_equity - equity);
+            let gross_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
+                0.0
+            } else {
+                gross_exposure / equity
+            };
+            let net_exposure_pct = if equity.abs() <= crate::backtest::EPSILON {
+                0.0
+            } else {
+                net_exposure / equity
+            };
+            max_gross_exposure = max_gross_exposure.max(gross_exposure_pct);
+            max_net_exposure = max_net_exposure.max(net_exposure_pct.abs());
+            peak_open_position_count = peak_open_position_count.max(open_position_count);
+            equity_curve.push(EquityPoint {
+                bar_index: equity_curve.len(),
+                time: open_time as f64,
+                cash,
+                equity,
+                position_side: None,
+                quantity: 0.0,
+                mark_price: 0.0,
+                gross_exposure: gross_exposure_pct,
+                net_exposure: net_exposure_pct,
+                open_position_count,
+                long_position_count: long_count,
+                short_position_count: short_count,
+                free_collateral: None,
+                isolated_margin: None,
+                maintenance_margin: None,
+                liquidation_price: None,
+            });
+        }
     }
 
     let mut outputs = Outputs::default();

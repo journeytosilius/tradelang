@@ -35,6 +35,8 @@ pub struct BacktestConfig {
     pub execution_source_alias: String,
     #[serde(default)]
     pub portfolio_execution_aliases: Vec<String>,
+    #[serde(default)]
+    pub activation_time_ms: Option<i64>,
     pub initial_capital: f64,
     pub fee_bps: f64,
     pub slippage_bps: f64,

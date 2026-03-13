@@ -17,6 +17,10 @@ pub enum Command {
         #[command(subcommand)]
         mode: Box<RunCommand>,
     },
+    Execution {
+        #[command(subcommand)]
+        command: Box<ExecutionCommand>,
+    },
     Check(CheckArgs),
     DumpBytecode(DumpBytecodeArgs),
 }
@@ -37,6 +41,22 @@ pub enum RunCommand {
     WalkForward(WalkForwardRunArgs),
     WalkForwardSweep(WalkForwardSweepRunArgs),
     Optimize(OptimizeRunArgs),
+    Paper(PaperRunArgs),
+    PaperStatus(PaperStatusArgs),
+    PaperList(PaperListArgs),
+    PaperStop(PaperStopArgs),
+    PaperLogs(PaperLogsArgs),
+    PaperPositions(PaperPositionsArgs),
+    PaperOrders(PaperOrdersArgs),
+    PaperFills(PaperFillsArgs),
+    PaperExport(PaperExportArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub enum ExecutionCommand {
+    Serve(ExecutionServeArgs),
+    Status(ExecutionStatusArgs),
+    Stop,
 }
 
 #[derive(Debug, clap::Args)]
@@ -220,6 +240,100 @@ pub struct OptimizeRunArgs {
     pub max_instructions_per_bar: usize,
     #[arg(long, default_value_t = 1_024)]
     pub max_history_capacity: usize,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperRunArgs {
+    pub script: PathBuf,
+    #[arg(long = "execution-source")]
+    pub execution_source: Vec<String>,
+    #[arg(long, default_value_t = 10_000.0)]
+    pub initial_capital: f64,
+    #[arg(long, default_value_t = 5.0)]
+    pub fee_bps: f64,
+    #[arg(long, default_value_t = 2.0)]
+    pub slippage_bps: f64,
+    #[arg(long)]
+    pub leverage: Option<f64>,
+    #[arg(long, value_enum)]
+    pub margin_mode: Option<BacktestMarginMode>,
+    #[arg(long, value_enum, default_value_t = DiagnosticsDetailArg::Summary)]
+    pub diagnostics: DiagnosticsDetailArg,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+    #[arg(long, default_value_t = 10_000)]
+    pub max_instructions_per_bar: usize,
+    #[arg(long, default_value_t = 1_024)]
+    pub max_history_capacity: usize,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperStatusArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperListArgs {
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperStopArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperLogsArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperPositionsArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperOrdersArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperFillsArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct PaperExportArgs {
+    pub session_id: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ExecutionServeArgs {
+    #[arg(long, default_value_t = 30_000)]
+    pub poll_interval_ms: u64,
+    #[arg(long, default_value_t = false)]
+    pub once: bool,
+}
+
+#[derive(Debug, clap::Args)]
+pub struct ExecutionStatusArgs {
+    #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
+    pub format: OutputFormat,
 }
 
 #[derive(Debug, clap::Args)]

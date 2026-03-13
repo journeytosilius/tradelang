@@ -189,6 +189,34 @@ PalmScript cannot mathematically prevent overfitting, but the CLI now applies a 
 
 This does not replace paper trading or live forward validation, but it does make the default tuning workflow less likely to confuse in-sample fitting with genuinely unseen performance.
 
+## Local Paper Execution
+
+PalmScript now also exposes a first-class local paper mode on top of the same VM and deterministic order simulator:
+
+```bash
+palmscript run paper strategy.ps --execution-source exec
+palmscript execution serve
+```
+
+Execution v1 is intentionally conservative:
+
+- paper only
+- local daemon only
+- closed-bar exchange polling
+- persistent local session state
+- no real API keys or live order placement
+
+The paper daemon warms the VM with enough pre-session history to satisfy the compiled history requirements, but suppresses fills, orders, and diagnostics before the paper session activation time. That keeps indicator state realistic without leaking fake pre-session trades into the persistent paper ledger.
+
+Paper mode reuses the same:
+
+- compiled PalmScript program
+- runtime interval-close semantics
+- backtest order/fill rules
+- venue validation
+- portfolio caps and shared-equity behavior
+- cooldown and `max_bars_in_trade` controls
+
 ## Diagnostics Output
 
 Backtest, walk-forward, and optimize results now expose richer machine-readable diagnostics on top of the existing order/trade summaries:

@@ -147,6 +147,129 @@ Default safety behavior:
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
 - the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
 
+## `palmscript run paper`
+
+```bash
+palmscript run paper <script.ps> \
+  [--execution-source <alias>]... \
+  [--initial-capital <N>] \
+  [--fee-bps <N>] \
+  [--slippage-bps <N>] \
+  [--leverage <N>] \
+  [--margin-mode isolated] \
+  [--diagnostics summary|full-trace] \
+  [--format json|text]
+```
+
+Arguments and flags:
+
+- `<script.ps>`: path to the PalmScript source file
+- `--execution-source <alias>`: execution alias selection; repeat it to activate shared-equity portfolio paper mode
+- `--initial-capital <N>`: paper account starting equity; default `10000`
+- `--fee-bps <N>`: fee model in basis points; default `5`
+- `--slippage-bps <N>`: slippage model in basis points; default `2`
+- `--leverage <N>`: optional isolated leverage for perp execution aliases
+- `--margin-mode isolated`: perp margin mode; only `isolated` is currently supported
+- `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- `--format json|text`: output rendering format; default `json`
+
+Notes:
+
+- `run paper` submits a persistent local paper session; it does not start the daemon itself
+- the session snapshots the script source and queues it under the local execution state root
+- v1 paper mode uses the existing VM and deterministic order simulator with closed-bar exchange polling, not real live order placement
+
+## `palmscript run paper-list`
+
+```bash
+palmscript run paper-list [--format json|text]
+```
+
+Lists the locally persisted paper session manifests.
+
+## `palmscript run paper-status`
+
+```bash
+palmscript run paper-status <session-id> [--format json|text]
+```
+
+Reads the latest persisted paper-session snapshot.
+
+## `palmscript run paper-stop`
+
+```bash
+palmscript run paper-stop <session-id> [--format json|text]
+```
+
+Marks a queued or running paper session for stop.
+
+## `palmscript run paper-logs`
+
+```bash
+palmscript run paper-logs <session-id> [--format json|text]
+```
+
+Reads the persistent paper-session event log.
+
+## `palmscript run paper-positions`
+
+```bash
+palmscript run paper-positions <session-id> [--format json|text]
+```
+
+Prints the latest open positions for the paper session.
+
+## `palmscript run paper-orders`
+
+```bash
+palmscript run paper-orders <session-id> [--format json|text]
+```
+
+Prints the latest persisted paper orders for the session.
+
+## `palmscript run paper-fills`
+
+```bash
+palmscript run paper-fills <session-id> [--format json|text]
+```
+
+Prints the latest persisted paper fills for the session.
+
+## `palmscript run paper-export`
+
+```bash
+palmscript run paper-export <session-id> [--format json|text]
+```
+
+Exports the full persisted paper session bundle, including manifest, snapshot, and latest result when available.
+
+## `palmscript execution serve`
+
+```bash
+palmscript execution serve [--poll-interval-ms <N>] [--once]
+```
+
+Arguments and flags:
+
+- `--poll-interval-ms <N>`: closed-bar polling interval for queued/running paper sessions; default `30000`
+- `--once`: process the queue once and exit instead of running as a long-lived local daemon
+
+## `palmscript execution status`
+
+```bash
+palmscript execution status [--format json|text]
+```
+
+Prints the local daemon heartbeat snapshot when available.
+
+## `palmscript execution stop`
+
+```bash
+palmscript execution stop
+```
+
+Requests that the local execution daemon stop on its next loop iteration.
+
 ## `palmscript dump-bytecode`
 
 ```bash

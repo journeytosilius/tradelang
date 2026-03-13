@@ -13,7 +13,9 @@ Typical workflow:
 2. declare a base `interval`
 3. declare one or more `source` bindings
 4. validate it in the browser IDE
-5. run it over historical data in the app
+5. run it over historical data in the app or CLI
+6. tune it with backtest, walk-forward, or optimize
+7. queue a local paper session when you want live-data validation with fake money
 
 ## Long Optimize Runs
 
@@ -36,6 +38,8 @@ Current backtest-oriented outputs include:
 - source-alignment summaries for missing or synthetic feed updates
 - deterministic improvement hints
 - optional per-bar decision traces with `--diagnostics full-trace`
+
+PalmScript also now includes a local execution daemon for paper sessions. The daemon reuses the same compiled VM and order simulator as backtest mode, but drives them from live exchange-backed closed bars under a persistent local paper ledger.
 
 That makes the CLI and JSON output suitable for automated strategy iteration by agents as well as manual inspection by humans.
 

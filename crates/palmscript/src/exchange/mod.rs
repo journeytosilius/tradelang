@@ -46,7 +46,7 @@ pub enum VenueRiskSnapshot {
     GateUsdtPerps(gate::UsdtPerpsRiskSnapshot),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExchangeEndpoints {
     pub binance_spot_base_url: String,
     pub binance_usdm_base_url: String,
