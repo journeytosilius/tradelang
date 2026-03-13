@@ -1,5 +1,6 @@
 interval 1h
 source spot = binance.spot("BTCUSDT")
+execution exec = binance.spot("BTCUSDT")
 
 const trend_fast = 21
 const trend_slow = 55
@@ -13,7 +14,11 @@ let failure = spot.close < ema(spot.close, trend_fast)
 entry long = trend and breakout
 exit long = failure
 
-order entry long = limit(spot.close[1], tif.gtc, false)
-order exit long = stop_market(lowest(spot.low, stop_window)[1], trigger_ref.last)
+order entry long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order exit long = stop_market(
+    trigger_price = lowest(spot.low, stop_window)[1],
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
 
 plot(ema(spot.close, trend_fast) - ema(spot.close, trend_slow))

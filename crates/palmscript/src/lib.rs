@@ -72,8 +72,8 @@ pub use ide::{
 };
 pub use ide_lsp::{server_capabilities as lsp_server_capabilities, IdeLspSession, OpenDocument};
 pub use interval::{
-    DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
-    SourceTemplate, INTERVAL_SPECS,
+    DeclaredExecutionTarget, DeclaredMarketSource, Interval, MarketBinding, MarketField,
+    MarketSource, SourceIntervalRef, SourceTemplate, INTERVAL_SPECS,
 };
 pub use order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 pub use output::{

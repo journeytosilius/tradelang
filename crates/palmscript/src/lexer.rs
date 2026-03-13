@@ -205,6 +205,7 @@ impl<'a> LexerState<'a> {
             "order" => TokenKind::Order,
             "interval" => TokenKind::IntervalKw,
             "source" => TokenKind::Source,
+            "execution" => TokenKind::Execution,
             "use" => TokenKind::Use,
             "export" => TokenKind::Export,
             "optimize" => TokenKind::Optimize,

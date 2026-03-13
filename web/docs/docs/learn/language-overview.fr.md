@@ -64,3 +64,9 @@ Ainsi, `run optimize` peuvent inferer l espace de recherche depuis le script lui
 - These declarations are top-level only and compile-time only.
 - Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
 - Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.
+
+## Latest Execution Additions
+
+- PalmScript now supports separate top-level `execution` declarations for order-routing targets.
+- `source` stays the market-data surface, while `execution` declares where orders are intended to route.
+- Order declarations can target a declared execution alias with named arguments such as `venue = exec`.

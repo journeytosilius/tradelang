@@ -60,6 +60,8 @@ pub struct DeclaredMarketSource {
     pub symbol: String,
 }
 
+pub type DeclaredExecutionTarget = DeclaredMarketSource;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct SourceIntervalRef {
     pub source_id: u16,

@@ -496,9 +496,10 @@ fn document_symbol(symbol: DocumentSymbolInfo) -> DocumentSymbol {
         name: symbol.name,
         detail: symbol.detail,
         kind: match symbol.kind {
-            SymbolKind::Interval | SymbolKind::Source | SymbolKind::UseInterval => {
-                LspSymbolKind::NAMESPACE
-            }
+            SymbolKind::Interval
+            | SymbolKind::Source
+            | SymbolKind::Execution
+            | SymbolKind::UseInterval => LspSymbolKind::NAMESPACE,
             SymbolKind::Function => LspSymbolKind::FUNCTION,
             SymbolKind::Parameter | SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => {
                 LspSymbolKind::VARIABLE

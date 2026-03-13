@@ -10,12 +10,14 @@ The productions below define the accepted parser surface. Rules that depend on n
 program                ::= separator* item* EOF
 item                   ::= interval_decl
                          | source_decl
+                         | execution_decl
                          | use_decl
                          | function_decl
                          | stmt
 
 interval_decl          ::= "interval" interval
 source_decl            ::= "source" ident "=" source_template "(" string_literal ")"
+execution_decl         ::= "execution" ident "=" source_template "(" string_literal ")"
 source_template        ::= ident "." ident
 use_decl               ::= "use" interval
                          | "use" ident interval
@@ -66,12 +68,15 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
 signal_side            ::= "long" | "short"
-order_spec             ::= "market" "(" ")"
-                         | "limit" "(" expr "," expr "," expr ")"
-                         | "stop_market" "(" expr "," expr ")"
-                         | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
-                         | "take_profit_market" "(" expr "," expr ")"
-                         | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+order_spec             ::= "market" "(" order_args? ")"
+                         | "limit" "(" order_args ")"
+                         | "stop_market" "(" order_args ")"
+                         | "stop_limit" "(" order_args ")"
+                         | "take_profit_market" "(" order_args ")"
+                         | "take_profit_limit" "(" order_args ")"
+order_args             ::= expr ("," expr)*
+                         | named_order_arg ("," named_order_arg)*
+named_order_arg        ::= ident "=" (expr | ident)
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -148,11 +153,12 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `execution`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
 - string literals are accepted lexically but are semantically valid only inside `source` declarations
+- `execution` declarations share the same exchange-backed template syntax as `source` declarations but do not create market series bindings
 - only identifiers may be called
 - series indexing must use a non-negative integer literal or a top-level immutable numeric binding
 - tuple-valued builtins must be bound with tuple destructuring before use
@@ -167,6 +173,9 @@ The grammar does not by itself make a program valid. The implementation addition
 - `max_positions`, `max_long_positions`, and `max_short_positions` require a compile-time non-negative whole-number scalar expression
 - `max_gross_exposure_pct` and `max_net_exposure_pct` require a compile-time non-negative finite numeric scalar expression
 - `portfolio_group` aliases must refer to declared `source` bindings and group names must be unique
+- aliases must be unique across declared `source` and `execution` bindings
+- order constructors accept either the legacy positional form or the named-argument form, but not both at once
+- `venue = <execution_alias>` requires a declared `execution` alias
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
 - staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role

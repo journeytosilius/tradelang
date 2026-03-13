@@ -716,10 +716,10 @@ pub(crate) fn resolve_execution_source_aliases(
     if !provided.is_empty() {
         return Ok(provided.to_vec());
     }
-    match compiled.program.declared_sources.as_slice() {
-        [source] => Ok(vec![source.alias.clone()]),
+    match compiled.program.execution_targets() {
+        [execution] => Ok(vec![execution.alias.clone()]),
         _ => Err(
-            "this mode requires --execution-source when the script declares multiple `source`s"
+            "this mode requires --execution-source when the script declares multiple `source`s or `execution`s"
                 .to_string(),
         ),
     }
@@ -738,9 +738,7 @@ fn resolve_backtest_perp_contexts(
     for alias in execution_source_aliases {
         let source = compiled
             .program
-            .declared_sources
-            .iter()
-            .find(|source| source.alias == *alias)
+            .find_execution_target(alias)
             .ok_or_else(|| format!("unknown execution source `{alias}`"))?;
         let (perp, context) = resolve_perp_context(
             source.template,

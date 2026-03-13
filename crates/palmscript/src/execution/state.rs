@@ -199,7 +199,7 @@ pub fn submit_paper_session(
         config: request.config,
         execution_sources: compiled
             .program
-            .declared_sources
+            .execution_targets()
             .iter()
             .map(|source| PaperExecutionSource {
                 alias: source.alias.clone(),

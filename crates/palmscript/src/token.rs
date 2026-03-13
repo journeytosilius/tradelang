@@ -16,6 +16,7 @@ pub enum TokenKind {
     Order,
     IntervalKw,
     Source,
+    Execution,
     Use,
     Export,
     Optimize,

@@ -21,6 +21,7 @@ pub struct Ast {
 pub struct StrategyIntervals {
     pub base: Vec<IntervalDecl>,
     pub sources: Vec<SourceDecl>,
+    pub executions: Vec<ExecutionDecl>,
     pub supplemental: Vec<SourceIntervalDecl>,
 }
 
@@ -32,6 +33,17 @@ pub struct IntervalDecl {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SourceDecl {
+    pub alias: String,
+    pub alias_span: Span,
+    pub template: SourceTemplate,
+    pub template_span: Span,
+    pub symbol: String,
+    pub symbol_span: Span,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ExecutionDecl {
     pub alias: String,
     pub alias_span: Span,
     pub template: SourceTemplate,
@@ -136,6 +148,7 @@ pub enum SignalRole {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderSpec {
     pub span: Span,
+    pub execution: Option<BindingName>,
     pub kind: OrderSpecKind,
 }
 

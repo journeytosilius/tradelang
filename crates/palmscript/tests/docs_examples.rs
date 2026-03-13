@@ -272,11 +272,18 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
     let compiled = compile(&read_strategy(path)).expect("venue_orders_backtest should compile");
     let runtime = SourceRuntimeConfig {
         base_interval: palmscript::Interval::Hour1,
-        feeds: vec![SourceFeed {
-            source_id: 0,
-            interval: palmscript::Interval::Hour1,
-            bars: bars(JAN_1_2024_UTC_MS, HOUR_MS, 240, 100.0),
-        }],
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: palmscript::Interval::Hour1,
+                bars: bars(JAN_1_2024_UTC_MS, HOUR_MS, 240, 100.0),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: palmscript::Interval::Hour1,
+                bars: bars(JAN_1_2024_UTC_MS, HOUR_MS, 240, 100.0),
+            },
+        ],
     };
 
     let outputs = run_with_sources(&compiled, runtime.clone(), VmLimits::default())
@@ -288,7 +295,7 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
         runtime,
         VmLimits::default(),
         BacktestConfig {
-            execution_source_alias: "spot".to_string(),
+            execution_source_alias: "exec".to_string(),
             portfolio_execution_aliases: Vec::new(),
             activation_time_ms: None,
             initial_capital: 10_000.0,

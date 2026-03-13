@@ -173,6 +173,12 @@ pub fn fetch_source_runtime_config(
             interval: base_interval,
         });
     }
+    for execution in &compiled.program.declared_executions {
+        required.insert(SourceIntervalRef {
+            source_id: execution.id,
+            interval: base_interval,
+        });
+    }
     required.extend(compiled.program.source_intervals.iter().copied());
 
     let mut feeds = Vec::new();
@@ -181,6 +187,7 @@ pub fn fetch_source_runtime_config(
             .program
             .declared_sources
             .iter()
+            .chain(compiled.program.declared_executions.iter())
             .find(|source| source.id == requirement.source_id)
             .expect("compiled source interval references should resolve");
         if !source.template.supports_interval(requirement.interval) {

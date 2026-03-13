@@ -21,7 +21,8 @@ use crate::bytecode::{
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
-    DeclaredMarketSource, Interval, MarketBinding, MarketField, MarketSource, SourceIntervalRef,
+    DeclaredExecutionTarget, DeclaredMarketSource, Interval, MarketBinding, MarketField,
+    MarketSource, SourceIntervalRef,
 };
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
@@ -215,6 +216,7 @@ struct FunctionSpecialization {
 struct Analysis {
     base_interval: Option<Interval>,
     declared_sources: Vec<DeclaredMarketSource>,
+    declared_executions: Vec<DeclaredExecutionTarget>,
     source_intervals: Vec<SourceIntervalRef>,
     expr_info: HashMap<NodeId, ExprInfo>,
     user_function_calls: HashMap<NodeId, FunctionSpecializationKey>,
@@ -365,9 +367,9 @@ impl<'a> Analyzer<'a> {
             return;
         }
 
-        let mut sources_by_alias = BTreeMap::new();
+        let mut source_aliases = BTreeSet::new();
         for source in &ast.strategy_intervals.sources {
-            if sources_by_alias.contains_key(source.alias.as_str()) {
+            if !source_aliases.insert(source.alias.as_str()) {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!("duplicate source alias `{}`", source.alias),
@@ -382,12 +384,41 @@ impl<'a> Analyzer<'a> {
                 template: source.template,
                 symbol: source.symbol.clone(),
             });
-            sources_by_alias.insert(source.alias.as_str(), id);
+        }
+
+        let mut execution_aliases = BTreeSet::new();
+        for execution in &ast.strategy_intervals.executions {
+            if source_aliases.contains(execution.alias.as_str())
+                || !execution_aliases.insert(execution.alias.as_str())
+            {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("duplicate execution alias `{}`", execution.alias),
+                    execution.alias_span,
+                ));
+                continue;
+            }
+            let id = (self.analysis.declared_sources.len()
+                + self.analysis.declared_executions.len()) as u16;
+            self.analysis
+                .declared_executions
+                .push(DeclaredExecutionTarget {
+                    id,
+                    alias: execution.alias.clone(),
+                    template: execution.template,
+                    symbol: execution.symbol.clone(),
+                });
         }
 
         let mut uses = BTreeSet::new();
         for decl in &ast.strategy_intervals.supplemental {
-            let Some(&source_id) = sources_by_alias.get(decl.source.as_str()) else {
+            let Some(source_id) = self
+                .analysis
+                .declared_sources
+                .iter()
+                .find(|source| source.alias == decl.source)
+                .map(|source| source.id)
+            else {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
                     format!("unknown source alias `{}`", decl.source),
@@ -435,7 +466,13 @@ impl<'a> Analyzer<'a> {
             collect_source_series_stmt(stmt, &mut refs);
         }
         for (source, interval, _field) in refs {
-            let Some(&source_id) = sources_by_alias.get(source.as_str()) else {
+            let Some(source_id) = self
+                .analysis
+                .declared_sources
+                .iter()
+                .find(|decl| decl.alias == source)
+                .map(|decl| decl.id)
+            else {
                 let span = source_ref_span(ast, &source, interval).unwrap_or_default();
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
@@ -1427,6 +1464,7 @@ impl<'a> Analyzer<'a> {
         let size_decl = self.analysis.order_size_decls.get(&role).copied();
         let mut order = OrderDecl {
             role,
+            execution_alias: None,
             kind: OrderKind::Market,
             tif: None,
             post_only: false,
@@ -1438,6 +1476,23 @@ impl<'a> Analyzer<'a> {
             size_field_id: size_decl.map(|decl| decl.size_field_id),
             risk_stop_field_id: size_decl.and_then(|decl| decl.risk_stop_field_id),
         };
+
+        if let Some(binding) = &spec.execution {
+            let exists = self
+                .analysis
+                .declared_executions
+                .iter()
+                .any(|execution| execution.alias == binding.name);
+            if !exists {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("unknown execution alias `{}`", binding.name),
+                    binding.span,
+                ));
+            } else {
+                order.execution_alias = Some(binding.name.clone());
+            }
+        }
 
         match &spec.kind {
             OrderSpecKind::Market => {}
@@ -5550,6 +5605,7 @@ impl<'a> Compiler<'a> {
         self.program.portfolio_groups = self.analysis.portfolio_groups.clone();
         self.program.base_interval = self.analysis.base_interval;
         self.program.declared_sources = self.analysis.declared_sources.clone();
+        self.program.declared_executions = self.analysis.declared_executions.clone();
         self.program.source_intervals = self.analysis.source_intervals.clone();
         self.rebuild_scopes();
         let expr_info = self.analysis.expr_info.clone();

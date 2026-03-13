@@ -298,3 +298,9 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus parameter stability summaries
 
+## Latest Execution Additions
+
+- `execution` declarations now separate execution routing from market-data `source` bindings.
+- Order constructors accept named arguments in addition to the legacy positional form.
+- `venue = <execution_alias>` binds an `order`, `protect`, or `target` role to a declared execution alias.
+- Named order arguments cannot be mixed with positional arguments in the same constructor call.

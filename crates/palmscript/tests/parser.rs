@@ -230,6 +230,22 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_execution_declarations_and_named_order_arguments() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > right.close
+exit long = left.close < right.close
+order entry long = limit(price = left.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order exit long = stop_market(trigger_price = left.close[1], trigger_ref = trigger_ref.mark, venue = exec)
+plot(left.close)",
+    )
+    .expect("execution declarations and named order arguments should compile");
+}
+
+#[test]
 fn parses_attached_exit_declarations_with_position_fields() {
     compile(
         "interval 1m

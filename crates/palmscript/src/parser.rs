@@ -4,7 +4,7 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, BindingName, Block, Expr, ExprKind, FunctionDecl, FunctionParam,
+    Ast, BinaryOp, BindingName, Block, ExecutionDecl, Expr, ExprKind, FunctionDecl, FunctionParam,
     InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
     PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalRole, SourceDecl,
     SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
@@ -46,6 +46,7 @@ impl<'a> Parser<'a> {
             match self.parse_item() {
                 Some(ParsedItem::BaseInterval(decl)) => strategy_intervals.base.push(decl),
                 Some(ParsedItem::Source(decl)) => strategy_intervals.sources.push(decl),
+                Some(ParsedItem::Execution(decl)) => strategy_intervals.executions.push(decl),
                 Some(ParsedItem::UseInterval(decl)) => strategy_intervals.supplemental.push(decl),
                 Some(ParsedItem::Function(function)) => functions.push(function),
                 Some(ParsedItem::Stmt(stmt)) => statements.push(*stmt),
@@ -88,6 +89,16 @@ impl<'a> Parser<'a> {
             }
             return self.parse_source_decl().map(ParsedItem::Source);
         }
+        if self.matches_keyword(&TokenKind::Execution) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "interval directives are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_execution_decl().map(ParsedItem::Execution);
+        }
         if self.matches_keyword(&TokenKind::Use) {
             if self.block_depth > 0 {
                 self.push_diagnostic(
@@ -115,6 +126,7 @@ impl<'a> Parser<'a> {
         }
         if self.matches_keyword(&TokenKind::IntervalKw)
             || self.matches_keyword(&TokenKind::Source)
+            || self.matches_keyword(&TokenKind::Execution)
             || self.matches_keyword(&TokenKind::Use)
         {
             self.push_diagnostic(
@@ -587,35 +599,30 @@ impl<'a> Parser<'a> {
     fn parse_source_decl(&mut self) -> Option<SourceDecl> {
         let start = self.previous().span;
         let (alias, alias_span) = self.expect_ident("expected identifier after `source`")?;
-        self.expect_assign()?;
-        let (exchange, exchange_span) = self.expect_ident("expected exchange name after `=`")?;
-        self.expect_kind(
-            |kind| matches!(kind, TokenKind::Dot),
-            "expected `.` after exchange name",
-        )?;
-        let (venue, venue_span) = self.expect_ident("expected venue name after `.`")?;
-        let template_span = exchange_span.merge(venue_span);
-        let Some(template) = SourceTemplate::parse(&exchange, &venue) else {
-            self.push_diagnostic("unsupported source template", template_span);
-            return None;
-        };
-        self.expect_kind(
-            |kind| matches!(kind, TokenKind::LeftParen),
-            "expected `(` after source template",
-        )?;
-        let (symbol, symbol_span) = self.expect_string("expected string literal source symbol")?;
-        let right = self.expect_kind(
-            |kind| matches!(kind, TokenKind::RightParen),
-            "expected `)` after source symbol",
-        )?;
+        let parsed = self.parse_market_binding(MarketBindingKind::Source)?;
         Some(SourceDecl {
             alias,
             alias_span,
-            template,
-            template_span,
-            symbol,
-            symbol_span,
-            span: start.merge(right.span),
+            template: parsed.template,
+            template_span: parsed.template_span,
+            symbol: parsed.symbol,
+            symbol_span: parsed.symbol_span,
+            span: start.merge(parsed.span),
+        })
+    }
+
+    fn parse_execution_decl(&mut self) -> Option<ExecutionDecl> {
+        let start = self.previous().span;
+        let (alias, alias_span) = self.expect_ident("expected identifier after `execution`")?;
+        let parsed = self.parse_market_binding(MarketBindingKind::Execution)?;
+        Some(ExecutionDecl {
+            alias,
+            alias_span,
+            template: parsed.template,
+            template_span: parsed.template_span,
+            symbol: parsed.symbol,
+            symbol_span: parsed.symbol_span,
+            span: start.merge(parsed.span),
         })
     }
 
@@ -634,6 +641,37 @@ impl<'a> Parser<'a> {
             source_span,
             interval,
             span: start.merge(token.span),
+        })
+    }
+
+    fn parse_market_binding(&mut self, kind: MarketBindingKind) -> Option<ParsedMarketBinding> {
+        self.expect_assign()?;
+        let (exchange, exchange_span) = self.expect_ident(kind.exchange_error())?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Dot),
+            "expected `.` after exchange name",
+        )?;
+        let (venue, venue_span) = self.expect_ident("expected venue name after `.`")?;
+        let template_span = exchange_span.merge(venue_span);
+        let Some(template) = SourceTemplate::parse(&exchange, &venue) else {
+            self.push_diagnostic("unsupported source template", template_span);
+            return None;
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            kind.left_paren_error(),
+        )?;
+        let (symbol, symbol_span) = self.expect_string(kind.symbol_error())?;
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            kind.right_paren_error(),
+        )?;
+        Some(ParsedMarketBinding {
+            template,
+            template_span,
+            symbol,
+            symbol_span,
+            span: template_span.merge(right.span),
         })
     }
 
@@ -1085,7 +1123,7 @@ impl<'a> Parser<'a> {
         let mut args = Vec::new();
         if !matches!(self.peek_kind(), TokenKind::RightParen) {
             loop {
-                args.push(self.parse_expr(0)?);
+                args.push(self.parse_order_arg()?);
                 if !matches!(self.peek_kind(), TokenKind::Comma) {
                     break;
                 }
@@ -1097,7 +1135,82 @@ impl<'a> Parser<'a> {
             "expected `)` after order constructor arguments",
         )?;
         let span = callee_span.merge(right.span);
-        let kind = match (callee.as_str(), args.as_slice()) {
+        let (execution, kind) = self.build_order_spec(&callee, &args, span)?;
+        Some(OrderSpec {
+            span,
+            execution,
+            kind,
+        })
+    }
+
+    fn parse_order_arg(&mut self) -> Option<ParsedOrderArg> {
+        if let (
+            Some(Token {
+                kind: TokenKind::Ident(name),
+                span,
+            }),
+            Some(Token {
+                kind: TokenKind::Assign,
+                ..
+            }),
+        ) = (
+            self.tokens.get(self.cursor),
+            self.tokens.get(self.cursor + 1),
+        ) {
+            let name = name.clone();
+            let name_span = *span;
+            self.advance();
+            self.advance();
+            let value = self.parse_expr(0)?;
+            return Some(ParsedOrderArg::Named {
+                name,
+                name_span,
+                value,
+            });
+        }
+        self.parse_expr(0).map(ParsedOrderArg::Positional)
+    }
+
+    fn build_order_spec(
+        &mut self,
+        callee: &str,
+        args: &[ParsedOrderArg],
+        span: Span,
+    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+        let uses_named = args
+            .iter()
+            .any(|arg| matches!(arg, ParsedOrderArg::Named { .. }));
+        let uses_positional = args
+            .iter()
+            .any(|arg| matches!(arg, ParsedOrderArg::Positional(_)));
+        if uses_named && uses_positional {
+            self.push_diagnostic(
+                "order constructors must use either positional arguments or named arguments",
+                span,
+            );
+            return None;
+        }
+        if !uses_named {
+            return self.build_positional_order_spec(callee, args, span);
+        }
+        self.build_named_order_spec(callee, args, span)
+    }
+
+    fn build_positional_order_spec(
+        &mut self,
+        callee: &str,
+        args: &[ParsedOrderArg],
+        span: Span,
+    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+        let positional: Option<Vec<Expr>> = args
+            .iter()
+            .map(|arg| match arg {
+                ParsedOrderArg::Positional(expr) => Some(expr.clone()),
+                ParsedOrderArg::Named { .. } => None,
+            })
+            .collect();
+        let positional = positional?;
+        let kind = match (callee, positional.as_slice()) {
             ("market", []) => OrderSpecKind::Market,
             ("limit", [price, tif, post_only]) => OrderSpecKind::Limit {
                 price: price.clone(),
@@ -1141,7 +1254,202 @@ impl<'a> Parser<'a> {
                 return None;
             }
         };
-        Some(OrderSpec { span, kind })
+        Some((None, kind))
+    }
+
+    fn build_named_order_spec(
+        &mut self,
+        callee: &str,
+        args: &[ParsedOrderArg],
+        span: Span,
+    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+        let mut fields = std::collections::BTreeMap::<String, (Span, Expr)>::new();
+        let mut execution = None;
+        for arg in args {
+            let ParsedOrderArg::Named {
+                name,
+                name_span,
+                value,
+            } = arg
+            else {
+                continue;
+            };
+            if name == "venue" {
+                let ExprKind::Ident(alias) = &value.kind else {
+                    self.push_diagnostic(
+                        "`venue` must reference an execution alias identifier",
+                        value.span,
+                    );
+                    return None;
+                };
+                if execution.is_some() {
+                    self.push_diagnostic("duplicate `venue` order argument", *name_span);
+                    return None;
+                }
+                execution = Some(BindingName {
+                    name: alias.clone(),
+                    span: value.span,
+                });
+                continue;
+            }
+            if fields
+                .insert(name.clone(), (*name_span, value.clone()))
+                .is_some()
+            {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Parse,
+                    format!("duplicate `{name}` order argument"),
+                    *name_span,
+                ));
+                return None;
+            }
+        }
+        let take = |name: &str, fields: &mut std::collections::BTreeMap<String, (Span, Expr)>| {
+            fields.remove(name).map(|(_, expr)| expr)
+        };
+        let kind = match callee {
+            "market" => OrderSpecKind::Market,
+            "limit" => OrderSpecKind::Limit {
+                price: take("price", &mut fields)
+                    .or_else(|| take("limit_price", &mut fields))
+                    .unwrap_or_else(|| {
+                        self.push_diagnostic("`limit` requires `price = ...`", span);
+                        self.synthetic_na_expr(span)
+                    }),
+                tif: take("tif", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`limit` requires `tif = tif.<variant>`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                post_only: take("post_only", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`limit` requires `post_only = <bool>`", span);
+                    self.synthetic_na_expr(span)
+                }),
+            },
+            "stop_market" => OrderSpecKind::StopMarket {
+                trigger_price: take("trigger_price", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`stop_market` requires `trigger_price = ...`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                trigger_ref: take("trigger_ref", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`stop_market` requires `trigger_ref = trigger_ref.<variant>`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+            },
+            "stop_limit" => OrderSpecKind::StopLimit {
+                trigger_price: take("trigger_price", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`stop_limit` requires `trigger_price = ...`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                limit_price: take("limit_price", &mut fields)
+                    .or_else(|| take("price", &mut fields))
+                    .unwrap_or_else(|| {
+                        self.push_diagnostic("`stop_limit` requires `limit_price = ...`", span);
+                        self.synthetic_na_expr(span)
+                    }),
+                tif: take("tif", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`stop_limit` requires `tif = tif.<variant>`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                post_only: take("post_only", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`stop_limit` requires `post_only = <bool>`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                trigger_ref: take("trigger_ref", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`stop_limit` requires `trigger_ref = trigger_ref.<variant>`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+                expire_time_ms: take("expire_time_ms", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`stop_limit` requires `expire_time_ms = ...`", span);
+                    self.synthetic_na_expr(span)
+                }),
+            },
+            "take_profit_market" => OrderSpecKind::TakeProfitMarket {
+                trigger_price: take("trigger_price", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_market` requires `trigger_price = ...`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+                trigger_ref: take("trigger_ref", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_market` requires `trigger_ref = trigger_ref.<variant>`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+            },
+            "take_profit_limit" => OrderSpecKind::TakeProfitLimit {
+                trigger_price: take("trigger_price", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_limit` requires `trigger_price = ...`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+                limit_price: take("limit_price", &mut fields)
+                    .or_else(|| take("price", &mut fields))
+                    .unwrap_or_else(|| {
+                        self.push_diagnostic(
+                            "`take_profit_limit` requires `limit_price = ...`",
+                            span,
+                        );
+                        self.synthetic_na_expr(span)
+                    }),
+                tif: take("tif", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_limit` requires `tif = tif.<variant>`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+                post_only: take("post_only", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic("`take_profit_limit` requires `post_only = <bool>`", span);
+                    self.synthetic_na_expr(span)
+                }),
+                trigger_ref: take("trigger_ref", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_limit` requires `trigger_ref = trigger_ref.<variant>`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+                expire_time_ms: take("expire_time_ms", &mut fields).unwrap_or_else(|| {
+                    self.push_diagnostic(
+                        "`take_profit_limit` requires `expire_time_ms = ...`",
+                        span,
+                    );
+                    self.synthetic_na_expr(span)
+                }),
+            },
+            _ => {
+                self.push_diagnostic("invalid order constructor or arity", span);
+                return None;
+            }
+        };
+        if let Some((name, (field_span, _))) = fields.into_iter().next() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Parse,
+                format!("unexpected `{name}` order argument for `{callee}`"),
+                field_span,
+            ));
+            return None;
+        }
+        Some((execution, kind))
+    }
+
+    fn synthetic_na_expr(&mut self, span: Span) -> Expr {
+        Expr {
+            id: self.alloc_id(),
+            span,
+            kind: ExprKind::Na,
+        }
     }
 
     fn parse_if_stmt(&mut self) -> Option<Stmt> {
@@ -1795,9 +2103,63 @@ fn short_role(role: SignalRole) -> SignalRole {
 enum ParsedItem {
     BaseInterval(IntervalDecl),
     Source(SourceDecl),
+    Execution(ExecutionDecl),
     UseInterval(SourceIntervalDecl),
     Function(FunctionDecl),
     Stmt(Box<Stmt>),
+}
+
+enum ParsedOrderArg {
+    Positional(Expr),
+    Named {
+        name: String,
+        name_span: Span,
+        value: Expr,
+    },
+}
+
+struct ParsedMarketBinding {
+    template: SourceTemplate,
+    template_span: Span,
+    symbol: String,
+    symbol_span: Span,
+    span: Span,
+}
+
+#[derive(Clone, Copy)]
+enum MarketBindingKind {
+    Source,
+    Execution,
+}
+
+impl MarketBindingKind {
+    fn exchange_error(self) -> &'static str {
+        match self {
+            Self::Source => "expected exchange name after `=`",
+            Self::Execution => "expected exchange name after `=`",
+        }
+    }
+
+    fn symbol_error(self) -> &'static str {
+        match self {
+            Self::Source => "expected string literal source symbol",
+            Self::Execution => "expected string literal execution symbol",
+        }
+    }
+
+    fn left_paren_error(self) -> &'static str {
+        match self {
+            Self::Source => "expected `(` after source template",
+            Self::Execution => "expected `(` after execution template",
+        }
+    }
+
+    fn right_paren_error(self) -> &'static str {
+        match self {
+            Self::Source => "expected `)` after source symbol",
+            Self::Execution => "expected `)` after execution symbol",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

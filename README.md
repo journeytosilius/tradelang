@@ -66,6 +66,8 @@ Backtest-oriented CLI commands now also expose a richer diagnostics surface. `ru
 
 PalmScript also now ships a first-class local paper-execution loop. `run paper` snapshots a script into a persistent local paper session, and `execution serve` maintains one shared live quote bus per local service so paper sessions can reuse top-of-book bid/ask, last-price, and mark-price snapshots without duplicating upstream venue fetches. The VM still evaluates only on closed execution bars, but open paper positions are now valued from live top-of-book mid prices when available. v1 execution is still paper only and never places real live orders.
 
+The language now also separates market-data bindings from execution routing. `source` remains the market-series input surface, while top-level `execution` declarations define venue targets for orders. Order constructors still accept the legacy positional syntax, but they also support named arguments such as `venue = exec` so multi-source scripts can read from many exchanges while routing fills to one explicit execution alias.
+
 Exchange-backed source endpoints can be overridden with environment variables for mock servers and venue-specific routing:
 
 - `PALMSCRIPT_BINANCE_SPOT_BASE_URL`

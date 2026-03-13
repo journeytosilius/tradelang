@@ -23,9 +23,10 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 22] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 23] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
+    ("execution", "Declare a named execution venue"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
@@ -88,6 +89,7 @@ const MARKET_FIELDS: [(&str, &str); 6] = [
 pub enum SymbolKind {
     Interval,
     Source,
+    Execution,
     UseInterval,
     Function,
     Parameter,
@@ -345,6 +347,37 @@ fn build_semantic_document(context: &mut ResolutionContext<'_>, ast: &Ast) {
                 "{}(\"{}\")",
                 source.template.as_str(),
                 source.symbol
+            )),
+            children: Vec::new(),
+        });
+    }
+
+    for execution in &ast.strategy_intervals.executions {
+        let index = push_definition(
+            context,
+            DefinitionTarget {
+                name: execution.alias.clone(),
+                kind: SymbolKind::Execution,
+                span: execution.span,
+                selection_span: execution.alias_span,
+                detail: Some(format!(
+                    "{}(\"{}\")",
+                    execution.template.as_str(),
+                    execution.symbol
+                )),
+                navigable: true,
+            },
+        );
+        context.root_symbols.insert(execution.alias.clone(), index);
+        context.document_symbols.push(DocumentSymbolInfo {
+            name: execution.alias.clone(),
+            kind: SymbolKind::Execution,
+            span: execution.span,
+            selection_span: execution.alias_span,
+            detail: Some(format!(
+                "{}(\"{}\")",
+                execution.template.as_str(),
+                execution.symbol
             )),
             children: Vec::new(),
         });
@@ -1001,7 +1034,7 @@ fn completions_for_source(
                 for definition in definitions {
                     let kind = match definition.kind {
                         SymbolKind::Function => CompletionKind::Function,
-                        SymbolKind::Source => CompletionKind::Source,
+                        SymbolKind::Source | SymbolKind::Execution => CompletionKind::Source,
                         _ => CompletionKind::Variable,
                     };
                     items
@@ -1048,6 +1081,20 @@ fn collect_definition_fallbacks(ast: &Ast) -> Vec<DefinitionTarget> {
                 "{}(\"{}\")",
                 source.template.as_str(),
                 source.symbol
+            )),
+            navigable: true,
+        });
+    }
+    for execution in &ast.strategy_intervals.executions {
+        definitions.push(DefinitionTarget {
+            name: execution.alias.clone(),
+            kind: SymbolKind::Execution,
+            span: execution.span,
+            selection_span: execution.alias_span,
+            detail: Some(format!(
+                "{}(\"{}\")",
+                execution.template.as_str(),
+                execution.symbol
             )),
             navigable: true,
         });
@@ -1258,6 +1305,7 @@ pub(crate) fn classify_highlight(
         | TokenKind::Order
         | TokenKind::IntervalKw
         | TokenKind::Source
+        | TokenKind::Execution
         | TokenKind::Use
         | TokenKind::Export
         | TokenKind::Regime
@@ -1292,9 +1340,10 @@ pub(crate) fn classify_highlight(
                 .map(|definition| match definition.kind {
                     SymbolKind::Function => HighlightKind::Function,
                     SymbolKind::Parameter => HighlightKind::Parameter,
-                    SymbolKind::Source | SymbolKind::UseInterval | SymbolKind::Interval => {
-                        HighlightKind::Namespace
-                    }
+                    SymbolKind::Source
+                    | SymbolKind::Execution
+                    | SymbolKind::UseInterval
+                    | SymbolKind::Interval => HighlightKind::Namespace,
                     SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => {
                         HighlightKind::Variable
                     }
@@ -1420,6 +1469,14 @@ fn format_ast(ast: &Ast) -> String {
             source.symbol.replace('\\', "\\\\").replace('"', "\\\"")
         ));
     }
+    for execution in &ast.strategy_intervals.executions {
+        lines.push(format!(
+            "execution {} = {}(\"{}\")",
+            execution.alias,
+            execution.template.as_str(),
+            execution.symbol.replace('\\', "\\\\").replace('"', "\\\"")
+        ));
+    }
     for decl in &ast.strategy_intervals.supplemental {
         if decl.source.is_empty() {
             lines.push(format!("use {}", decl.interval.as_str()));
@@ -1429,6 +1486,7 @@ fn format_ast(ast: &Ast) -> String {
     }
     if !ast.strategy_intervals.base.is_empty()
         || !ast.strategy_intervals.sources.is_empty()
+        || !ast.strategy_intervals.executions.is_empty()
         || !ast.strategy_intervals.supplemental.is_empty()
     {
         lines.push(String::new());
@@ -1718,6 +1776,20 @@ fn resolve_order_spec(
     spec: &crate::ast::OrderSpec,
     scope: &HashMap<String, usize>,
 ) {
+    if let Some(execution) = &spec.execution {
+        if let Some(definition_index) = scope.get(&execution.name).copied() {
+            let hover = context
+                .definitions
+                .get(definition_index)
+                .map(definition_hover)
+                .unwrap_or_else(|| format!("`{}`", execution.name));
+            context.references.push(Reference {
+                span: execution.span,
+                definition_index: Some(definition_index),
+                hover,
+            });
+        }
+    }
     match &spec.kind {
         crate::ast::OrderSpecKind::Market => {}
         crate::ast::OrderSpecKind::Limit {
@@ -1767,34 +1839,35 @@ fn resolve_order_spec(
 }
 
 fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
-    match &spec.kind {
-        crate::ast::OrderSpecKind::Market => "market()".to_string(),
+    let execution_arg = spec
+        .execution
+        .as_ref()
+        .map(|execution| format!("venue = {}", execution.name));
+    let mut args = match &spec.kind {
+        crate::ast::OrderSpecKind::Market => Vec::new(),
         crate::ast::OrderSpecKind::Limit {
             price,
             tif,
             post_only,
-        } => format!(
-            "limit({}, {}, {})",
-            format_expr(price, 0),
-            format_expr(tif, 0),
-            format_expr(post_only, 0)
-        ),
+        } => vec![
+            format!("price = {}", format_expr(price, 0)),
+            format!("tif = {}", format_expr(tif, 0)),
+            format!("post_only = {}", format_expr(post_only, 0)),
+        ],
         crate::ast::OrderSpecKind::StopMarket {
             trigger_price,
             trigger_ref,
-        } => format!(
-            "stop_market({}, {})",
-            format_expr(trigger_price, 0),
-            format_expr(trigger_ref, 0)
-        ),
+        } => vec![
+            format!("trigger_price = {}", format_expr(trigger_price, 0)),
+            format!("trigger_ref = {}", format_expr(trigger_ref, 0)),
+        ],
         crate::ast::OrderSpecKind::TakeProfitMarket {
             trigger_price,
             trigger_ref,
-        } => format!(
-            "take_profit_market({}, {})",
-            format_expr(trigger_price, 0),
-            format_expr(trigger_ref, 0)
-        ),
+        } => vec![
+            format!("trigger_price = {}", format_expr(trigger_price, 0)),
+            format!("trigger_ref = {}", format_expr(trigger_ref, 0)),
+        ],
         crate::ast::OrderSpecKind::StopLimit {
             trigger_price,
             limit_price,
@@ -1802,15 +1875,14 @@ fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
             post_only,
             trigger_ref,
             expire_time_ms,
-        } => format!(
-            "stop_limit({}, {}, {}, {}, {}, {})",
-            format_expr(trigger_price, 0),
-            format_expr(limit_price, 0),
-            format_expr(tif, 0),
-            format_expr(post_only, 0),
-            format_expr(trigger_ref, 0),
-            format_expr(expire_time_ms, 0)
-        ),
+        } => vec![
+            format!("trigger_price = {}", format_expr(trigger_price, 0)),
+            format!("limit_price = {}", format_expr(limit_price, 0)),
+            format!("tif = {}", format_expr(tif, 0)),
+            format!("post_only = {}", format_expr(post_only, 0)),
+            format!("trigger_ref = {}", format_expr(trigger_ref, 0)),
+            format!("expire_time_ms = {}", format_expr(expire_time_ms, 0)),
+        ],
         crate::ast::OrderSpecKind::TakeProfitLimit {
             trigger_price,
             limit_price,
@@ -1818,15 +1890,30 @@ fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
             post_only,
             trigger_ref,
             expire_time_ms,
-        } => format!(
-            "take_profit_limit({}, {}, {}, {}, {}, {})",
-            format_expr(trigger_price, 0),
-            format_expr(limit_price, 0),
-            format_expr(tif, 0),
-            format_expr(post_only, 0),
-            format_expr(trigger_ref, 0),
-            format_expr(expire_time_ms, 0)
-        ),
+        } => vec![
+            format!("trigger_price = {}", format_expr(trigger_price, 0)),
+            format!("limit_price = {}", format_expr(limit_price, 0)),
+            format!("tif = {}", format_expr(tif, 0)),
+            format!("post_only = {}", format_expr(post_only, 0)),
+            format!("trigger_ref = {}", format_expr(trigger_ref, 0)),
+            format!("expire_time_ms = {}", format_expr(expire_time_ms, 0)),
+        ],
+    };
+    if let Some(execution_arg) = execution_arg {
+        args.push(execution_arg);
+    }
+    let callee = match spec.kind {
+        crate::ast::OrderSpecKind::Market => "market",
+        crate::ast::OrderSpecKind::Limit { .. } => "limit",
+        crate::ast::OrderSpecKind::StopMarket { .. } => "stop_market",
+        crate::ast::OrderSpecKind::StopLimit { .. } => "stop_limit",
+        crate::ast::OrderSpecKind::TakeProfitMarket { .. } => "take_profit_market",
+        crate::ast::OrderSpecKind::TakeProfitLimit { .. } => "take_profit_limit",
+    };
+    if args.is_empty() {
+        format!("{callee}()")
+    } else {
+        format!("{callee}({})", args.join(", "))
     }
 }
 

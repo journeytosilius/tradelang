@@ -6,6 +6,7 @@ Common building blocks:
 
 - `interval <...>` for the base execution clock
 - `source` declarations for market-backed series
+- separate `execution` declarations for order-routing targets
 - optional supplemental `use <alias> <interval>` declarations
 - top-level functions
 - `let`, `const`, `input`, tuple destructuring, `export`, `regime`, `trigger`, `entry` / `exit`, and `order`
@@ -25,6 +26,7 @@ Executable PalmScript scripts name data sources explicitly:
 interval 1m
 source bn = binance.spot("BTCUSDT")
 source bb = bybit.usdt_perps("BTCUSDT")
+execution exec = bybit.usdt_perps("BTCUSDT")
 
 plot(bn.close - bb.close)
 ```
@@ -33,6 +35,7 @@ plot(bn.close - bb.close)
 
 - every script has one base interval
 - executable scripts declare one or more `source` bindings
+- scripts may also declare one or more `execution` bindings for order routing without exposing new market series
 - market series are always source-qualified
 - series values evolve over time
 - higher intervals update only when those candles fully close
@@ -41,6 +44,7 @@ plot(bn.close - bb.close)
 - optimizer-aware `input` declarations can carry bounded integer, float, or choice search metadata without changing runtime semantics
 - `cooldown` and `max_bars_in_trade` are compile-time bar-count declarations that make re-entry and time-based exits explicit in the script
 - portfolio declarations are compile-time only and become active when backtest-oriented CLI commands receive multiple `--execution-source` aliases
+- order declarations can target a declared execution binding with named arguments such as `venue = exec`
 - portfolio mode shares one equity ledger across the selected execution aliases and blocks only the new entries that would exceed the configured position-count or exposure caps
 
 ## Where To Go For Exact Rules

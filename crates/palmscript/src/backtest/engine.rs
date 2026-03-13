@@ -23,8 +23,9 @@ use crate::backtest::{
     Trade, TradeDiagnostic, TradeExitClassification,
 };
 use crate::bytecode::{
-    LastExitFieldDecl, PortfolioControlDecl, PortfolioControlKind as ProgramPortfolioControlKind,
-    PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, RiskControlKind, SignalRole,
+    LastExitFieldDecl, OrderDecl, PortfolioControlDecl,
+    PortfolioControlKind as ProgramPortfolioControlKind, PositionEventFieldDecl, PositionFieldDecl,
+    RiskControlDecl, RiskControlKind, SignalRole,
 };
 use crate::exchange::{RiskTier, VenueRiskSnapshot};
 use crate::order::OrderKind;
@@ -656,6 +657,7 @@ pub(crate) fn simulate_backtest(
                             position.as_ref(),
                             target_consumption,
                             &prepared,
+                            execution_alias,
                             &mut orders,
                         );
                         filled_this_bar = true;
@@ -1633,6 +1635,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                 state.position.as_ref(),
                                 state.target_consumption,
                                 &prepared,
+                                &state.alias,
                                 &mut orders,
                             );
                             filled_this_bar = true;
@@ -2269,7 +2272,7 @@ fn enqueue_signal_requests(
         let Some(role) = prepared.signal_roles.get(&event.output_id).copied() else {
             continue;
         };
-        let Some(template) = prepared.order_templates.get(&role).copied() else {
+        let Some(template) = order_template_for_alias(prepared, role, execution_alias) else {
             continue;
         };
         let slot = role_index(role);
@@ -2344,10 +2347,14 @@ fn enqueue_attached_requests(
     }
 
     let mut roles = [None, None];
-    roles[0] = resolve_active_protect_role(before.side, target_consumption, prepared);
-    roles[1] = resolve_active_target_role(before.side, target_consumption, prepared);
+    roles[0] =
+        resolve_active_protect_role(before.side, target_consumption, prepared, execution_alias);
+    roles[1] =
+        resolve_active_target_role(before.side, target_consumption, prepared, execution_alias);
     for role in roles.into_iter().flatten() {
-        let template = prepared.order_templates[&role];
+        let Some(template) = order_template_for_alias(prepared, role, execution_alias) else {
+            continue;
+        };
         let slot = role_index(role);
         diagnostics.record_signal_event(
             execution_alias,
@@ -2599,6 +2606,7 @@ fn resolve_active_target_role(
     side: PositionSide,
     state: TargetConsumptionState,
     prepared: &PreparedBacktest,
+    execution_alias: &str,
 ) -> Option<SignalRole> {
     let next_stage = match side {
         PositionSide::Long => state.long_stage + 1,
@@ -2613,13 +2621,14 @@ fn resolve_active_target_role(
         (PositionSide::Short, 3) => SignalRole::TargetShort3,
         _ => return None,
     };
-    prepared.order_templates.contains_key(&role).then_some(role)
+    order_template_for_alias(prepared, role, execution_alias).map(|_| role)
 }
 
 fn resolve_active_protect_role(
     side: PositionSide,
     state: TargetConsumptionState,
     prepared: &PreparedBacktest,
+    execution_alias: &str,
 ) -> Option<SignalRole> {
     let stage = match side {
         PositionSide::Long => state.long_stage,
@@ -2659,7 +2668,25 @@ fn resolve_active_protect_role(
     roles
         .iter()
         .copied()
-        .find(|role| prepared.order_templates.contains_key(role))
+        .find(|role| order_template_for_alias(prepared, *role, execution_alias).is_some())
+}
+
+fn order_template_for_alias(
+    prepared: &PreparedBacktest,
+    role: SignalRole,
+    execution_alias: &str,
+) -> Option<OrderDecl> {
+    prepared
+        .order_templates
+        .get(&role)
+        .cloned()
+        .filter(|order| {
+            order
+                .execution_alias
+                .as_deref()
+                .map(|alias| alias == execution_alias)
+                .unwrap_or(true)
+        })
 }
 
 fn cancel_orders_for_closed_side(
@@ -3061,13 +3088,16 @@ fn invalidate_stale_attached_orders(
     position: Option<&PositionState>,
     target_consumption: TargetConsumptionState,
     prepared: &PreparedBacktest,
+    execution_alias: &str,
     orders: &mut [OrderRecord],
 ) {
     let Some(position) = position else {
         return;
     };
-    let active_protect = resolve_active_protect_role(position.side, target_consumption, prepared);
-    let active_target = resolve_active_target_role(position.side, target_consumption, prepared);
+    let active_protect =
+        resolve_active_protect_role(position.side, target_consumption, prepared, execution_alias);
+    let active_target =
+        resolve_active_target_role(position.side, target_consumption, prepared, execution_alias);
 
     for slot in active_orders.iter_mut() {
         let Some(active) = slot.as_ref() else {

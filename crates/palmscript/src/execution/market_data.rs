@@ -348,7 +348,7 @@ pub(crate) fn resolve_execution_sources<'a>(
         .map(|alias| {
             compiled
                 .program
-                .declared_sources
+                .execution_targets()
                 .iter()
                 .find(|source| source.alias == *alias)
                 .ok_or_else(|| ExecutionError::InvalidConfig {

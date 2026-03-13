@@ -53,7 +53,7 @@ pub(crate) fn resolve_execution_source(
 ) -> Result<ExecutionSource, BacktestError> {
     compiled
         .program
-        .declared_sources
+        .execution_targets()
         .iter()
         .find(|source| source.alias == alias)
         .map(|source| ExecutionSource {
@@ -89,7 +89,22 @@ pub(crate) fn prepare_backtest_for_aliases(
     for (execution_alias, template) in executions {
         let venue = VenueOrderProfile::from_template(*template);
         for order in order_templates.values() {
+            if let Some(bound_alias) = &order.execution_alias {
+                if bound_alias != execution_alias {
+                    continue;
+                }
+            }
             validate_order_for_template(venue, execution_alias, order)?;
+        }
+    }
+
+    for order in order_templates.values() {
+        if let Some(bound_alias) = &order.execution_alias {
+            if executions.iter().all(|(alias, _)| alias != bound_alias) {
+                return Err(BacktestError::UnknownExecutionSource {
+                    alias: bound_alias.clone(),
+                });
+            }
         }
     }
 
@@ -211,6 +226,7 @@ fn resolve_signals(
 fn default_market_order(role: SignalRole) -> OrderDecl {
     OrderDecl {
         role,
+        execution_alias: None,
         kind: OrderKind::Market,
         tif: None,
         post_only: false,

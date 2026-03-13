@@ -40,6 +40,39 @@ fn multi_source_runtime(left_bars: Vec<Bar>, right_bars: Vec<Bar>) -> SourceRunt
     }
 }
 
+fn runtime_with_execution_feeds(
+    left_bars: Vec<Bar>,
+    right_bars: Vec<Bar>,
+    bin_exec_bars: Vec<Bar>,
+    gate_exec_bars: Vec<Bar>,
+) -> SourceRuntimeConfig {
+    SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: left_bars,
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars: right_bars,
+            },
+            SourceFeed {
+                source_id: 2,
+                interval: Interval::Min1,
+                bars: bin_exec_bars,
+            },
+            SourceFeed {
+                source_id: 3,
+                interval: Interval::Min1,
+                bars: gate_exec_bars,
+            },
+        ],
+    }
+}
+
 fn config(alias: &str) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),
@@ -224,6 +257,82 @@ plot(spot.close)",
     approx_eq(result.summary.max_drawdown, 333.33333333333326);
     approx_eq(result.summary.max_gross_exposure, 750.0);
     approx_eq(result.equity_curve[2].equity, 750.0);
+}
+
+#[test]
+fn portfolio_orders_can_bind_to_a_single_execution_alias() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution bin_exec = binance.spot(\"BTCUSDT\")
+execution gate_exec = gate.spot(\"BTC_USDT\")
+entry long = left.close > left.close[1]
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = gate_exec)
+size entry long = 0.4
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = runtime_with_execution_feeds(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                12.0,
+                12.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 21.0, 21.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                22.0,
+                22.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 100.0, 100.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                101.0,
+                101.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                102.0,
+                102.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 200.0, 200.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + support::MINUTE_MS,
+                201.0,
+                201.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                202.0,
+                202.0,
+            ),
+        ],
+    );
+    let mut config = config("bin_exec");
+    config.portfolio_execution_aliases = vec!["bin_exec".to_string(), "gate_exec".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config)
+        .expect("backtest succeeds");
+
+    assert_eq!(result.fills.len(), 1);
+    assert_eq!(result.fills[0].execution_alias, "gate_exec");
+    assert_eq!(result.orders.len(), 1);
+    assert_eq!(result.orders[0].execution_alias, "gate_exec");
+    assert_eq!(result.summary.peak_open_position_count, 1);
 }
 
 #[test]

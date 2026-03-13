@@ -1171,6 +1171,70 @@ fn run_backtest_accepts_repeated_execution_sources_for_portfolio_mode() {
 }
 
 #[test]
+fn run_backtest_uses_single_declared_execution_by_default() {
+    let mut left = Server::new();
+    mock_binance_interval(
+        &mut left,
+        "1m",
+        &[
+            serde_json::json!([1704067200000_i64, "10.0", "10.5", "9.5", "10.0", "10.0"]),
+            serde_json::json!([1704067260000_i64, "10.0", "11.5", "9.5", "11.0", "11.0"]),
+            serde_json::json!([1704067320000_i64, "11.0", "12.5", "10.5", "12.0", "12.0"]),
+        ],
+    );
+    let mut right = Server::new();
+    mock_gate_spot_interval(
+        &mut right,
+        "BTC_USDT",
+        "1m",
+        &[
+            serde_json::json!(["1704067200", "100.0", "10.0", "10.5", "9.5", "10.0", "10.0"]),
+            serde_json::json!(["1704067260", "110.0", "11.0", "11.5", "9.5", "10.0", "11.0"]),
+            serde_json::json!([
+                "1704067320",
+                "120.0",
+                "12.0",
+                "12.5",
+                "10.5",
+                "11.0",
+                "12.0"
+            ]),
+        ],
+    );
+
+    let dir = tempdir().expect("tempdir");
+    let script = write_file(
+        dir.path(),
+        "default_execution.ps",
+        "interval 1m\nsource left = binance.spot(\"BTCUSDT\")\nsource right = gate.spot(\"BTC_USDT\")\nexecution exec = gate.spot(\"BTC_USDT\")\nentry long = left.close > left.close[1]\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = exec)\nsize entry long = 0.4\nplot(left.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_BINANCE_SPOT_BASE_URL", left.url())
+        .env("PALMSCRIPT_GATE_BASE_URL", right.url())
+        .args([
+            "run",
+            "backtest",
+            script.to_str().unwrap(),
+            "--from",
+            "1704067200000",
+            "--to",
+            "1704067380000",
+            "--initial-capital",
+            "1000",
+            "--fee-bps",
+            "0",
+            "--slippage-bps",
+            "0",
+        ])
+        .output()
+        .expect("backtest command executes");
+    assert!(output.status.success());
+    let json: Value = serde_json::from_slice(&output.stdout).expect("stdout is json");
+    assert_eq!(json["fills"][0]["execution_alias"], Value::from("exec"));
+}
+
+#[test]
 fn run_walk_forward_emits_segmented_json() {
     let mut server = Server::new();
     mock_binance_interval(

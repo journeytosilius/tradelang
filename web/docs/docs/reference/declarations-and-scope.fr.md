@@ -277,3 +277,11 @@ Regles :
 - These declarations are top-level only and compile-time only.
 - Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
 - Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.
+
+## Latest Execution Additions
+
+- PalmScript now reserves `execution` as a top-level declaration separate from `source`.
+- `execution exec = bybit.usdt_perps("BTCUSDT")` declares an execution target without creating new market series.
+- Aliases must stay unique across `source` and `execution` declarations.
+- Order constructors now accept named arguments, and `venue = exec` binds that order role to a declared execution alias.
+- Positional and named order arguments cannot be mixed in the same order constructor call.

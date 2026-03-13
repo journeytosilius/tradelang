@@ -170,3 +170,11 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - These declarations are top-level only and compile-time only.
 - Portfolio mode activates when backtest-oriented CLI commands receive repeated `--execution-source` flags.
 - Portfolio mode shares one equity ledger across the selected aliases and blocks only the new entries that would exceed the configured caps.
+
+## Latest Execution Additions
+
+- The parser now accepts `execution <alias> = exchange.market("SYMBOL")` as a top-level declaration.
+- `execution` shares the exchange-backed template surface with `source`, but does not create market-series bindings.
+- Order constructors now accept named arguments in addition to the legacy positional form.
+- `venue = <execution_alias>` binds an order role to a declared execution target.
+- Positional and named order arguments cannot be mixed in the same constructor call.

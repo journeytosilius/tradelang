@@ -7,7 +7,7 @@ use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerRefe
 use crate::position::{LastExitField, LastExitScope, PositionEventField, PositionField};
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
-use crate::{DeclaredMarketSource, MarketBinding, SourceIntervalRef};
+use crate::{DeclaredExecutionTarget, DeclaredMarketSource, MarketBinding, SourceIntervalRef};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -321,9 +321,10 @@ pub enum InputOptimizationDeclKind {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderDecl {
     pub role: SignalRole,
+    pub execution_alias: Option<String>,
     pub kind: OrderKind,
     pub tif: Option<TimeInForce>,
     pub post_only: bool,
@@ -398,9 +399,26 @@ pub struct Program {
     pub portfolio_groups: Vec<PortfolioGroupDecl>,
     pub base_interval: Option<crate::Interval>,
     pub declared_sources: Vec<DeclaredMarketSource>,
+    pub declared_executions: Vec<DeclaredExecutionTarget>,
     pub source_intervals: Vec<SourceIntervalRef>,
     pub history_capacity: usize,
     pub plot_count: usize,
+}
+
+impl Program {
+    pub fn execution_targets(&self) -> &[DeclaredExecutionTarget] {
+        if self.declared_executions.is_empty() {
+            &self.declared_sources
+        } else {
+            &self.declared_executions
+        }
+    }
+
+    pub fn find_execution_target(&self, alias: &str) -> Option<&DeclaredExecutionTarget> {
+        self.execution_targets()
+            .iter()
+            .find(|source| source.alias == alias)
+    }
 }
 
 impl LocalInfo {

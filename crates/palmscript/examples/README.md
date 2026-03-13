@@ -44,7 +44,7 @@ Representative files:
 - `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`: cross-exchange market-mode spread example mixing Bybit and Gate spot feeds
 - `crates/palmscript/examples/strategies/exchange_backed_sources.ps`: source-aware strategy with `use <alias> <interval>`
 - `crates/palmscript/examples/strategies/multi_strategy_backtest.ps`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
-- `crates/palmscript/examples/strategies/venue_orders_backtest.ps`: backtest strategy using explicit `order` declarations with `limit(...)` and `stop_market(...)`
+- `crates/palmscript/examples/strategies/venue_orders_backtest.ps`: backtest strategy using a separate `execution` declaration plus explicit `order` declarations with named-argument `limit(...)` and `stop_market(...)`
 
 For runnable public examples and workflow guidance, use the linked docs pages above.
 

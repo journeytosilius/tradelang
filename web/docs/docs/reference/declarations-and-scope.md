@@ -8,6 +8,7 @@ The following forms must appear only at the top level of a script:
 
 - `interval`
 - `source`
+- `execution`
 - `use`
 - `fn`
 - `const`
@@ -51,9 +52,28 @@ source bb = bybit.usdt_perps("BTCUSDT")
 Rules:
 
 - the alias must be an identifier
-- the alias must be unique across all declared sources
+- the alias must be unique across all declared sources and executions
 - the template must resolve to one of the supported source templates
 - the symbol argument must be a string literal
+
+## Execution Declarations
+
+An execution declaration names a venue target separately from the market data
+`source` bindings:
+
+```palmscript
+execution exec = bybit.usdt_perps("BTCUSDT")
+```
+
+Rules:
+
+- the alias must be an identifier
+- the alias must be unique across all declared sources and executions
+- the template must resolve to one of the supported exchange-backed templates
+- the symbol argument must be a string literal
+- `execution` declarations do not create market series bindings
+- orders may target a declared execution alias with `venue = <alias>`
+- scripts still require at least one declared `source` for market data
 
 ## `use` Declarations
 
@@ -146,20 +166,21 @@ Rules:
 
 ## Outputs
 
-`export`, `regime`, `trigger`, first-class strategy signals, declarative risk controls, and order-facing backtest declarations are top-level only:
+`export`, `regime`, `trigger`, `execution`, first-class strategy signals, declarative risk controls, and order-facing backtest declarations are top-level only:
 
 ```palmscript
 export trend = ema(spot.close, 20) > ema(spot.close, 50)
 regime trend_long = state(ema(spot.close, 20) > ema(spot.close, 50), ema(spot.close, 20) < ema(spot.close, 50))
+execution exec = binance.spot("BTCUSDT")
 portfolio_group "majors" = [spot, hedge]
 trigger long_entry = spot.close > spot.high[1]
 entry1 long = spot.close > spot.high[1]
 entry2 long = crossover(spot.close, ema(spot.close, 20))
-order entry1 long = limit(spot.close[1], tif.gtc, false)
-protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
-protect_after_target1 long = stop_market(position.entry_price, trigger_ref.last)
-target1 long = take_profit_market(position.entry_price + 4, trigger_ref.last)
-target2 long = take_profit_market(position.entry_price + 8, trigger_ref.last)
+order entry1 long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+protect long = stop_market(trigger_price = position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref = trigger_ref.last, venue = exec)
+protect_after_target1 long = stop_market(trigger_price = position.entry_price, trigger_ref = trigger_ref.last, venue = exec)
+target1 long = take_profit_market(trigger_price = position.entry_price + 4, trigger_ref = trigger_ref.last, venue = exec)
+target2 long = take_profit_market(trigger_price = position.entry_price + 8, trigger_ref = trigger_ref.last, venue = exec)
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
@@ -198,6 +219,9 @@ Rules:
 - portfolio groups require unique group names, at least one alias, and aliases that were declared by `source`
 - portfolio controls do not resize orders or force exits; they only block new entries that would exceed the configured caps
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role
+- order constructors accept the legacy positional argument form and a named-argument form
+- named order arguments may appear in any order but may not be mixed with positional arguments in the same constructor call
+- `venue = <execution_alias>` binds an order role to a declared `execution` alias
 - `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
 - `size entry1..3 long|short` optionally size a staged entry fill with either `capital_fraction(x)` / legacy bare numeric fraction semantics, or `risk_pct(pct, stop_price)` for risk-based entry sizing
 - `size target1..3 long|short` optionally size a staged `target` fill as a fraction of the open position

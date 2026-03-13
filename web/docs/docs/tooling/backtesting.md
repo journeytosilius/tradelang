@@ -5,7 +5,8 @@ source-aware runtime.
 
 The backtester runs a compiled script, consumes runtime trigger events plus
 compiled signal-role and order metadata, and simulates fills, orders, trades,
-and equity for one configured execution source.
+and equity for one configured execution target or shared-equity execution
+portfolio.
 
 PalmScript also exposes a walk-forward layer on top of the same deterministic
 backtester. Walk-forward reuses the existing fill semantics and venue rules,
@@ -53,7 +54,19 @@ Modes:
 - `--diagnostics summary` keeps the default compact diagnostics payload
 - `--diagnostics full-trace` adds one typed per-bar decision trace record for each execution bar
 
-When the script declares one source, the CLI uses it as the execution source automatically. For multiple sources, pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases.
+When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
+
+Execution-routed order example:
+
+```palmscript
+interval 1h
+source left = binance.spot("BTCUSDT")
+source right = bybit.spot("BTCUSDT")
+execution exec = bybit.spot("BTCUSDT")
+
+entry long = left.close > right.close
+order entry long = limit(price = right.close, tif = tif.gtc, post_only = false, venue = exec)
+```
 
 Portfolio mode example:
 
