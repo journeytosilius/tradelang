@@ -368,6 +368,30 @@ fn check_reports_compile_diagnostics() {
 }
 
 #[test]
+fn check_reports_missing_explicit_orders_for_execution_scripts() {
+    let dir = tempdir().expect("tempdir");
+    let script = dir.path().join("missing_orders.ps");
+    fs::write(
+        &script,
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = false
+plot(spot.close)",
+    )
+    .expect("writes test file");
+
+    palmscript_cmd()
+        .args(["check", script.to_str().unwrap()])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "signal declaration for `long_entry` requires a matching `order ...` declaration",
+        ));
+}
+
+#[test]
 fn check_reports_multiple_compile_diagnostics() {
     let dir = tempdir().expect("tempdir");
     let script = write_file(
@@ -1235,11 +1259,9 @@ plot(spot.close)",
     ]);
     cmd.assert()
         .failure()
+        .stderr(predicate::str::contains("signal declaration for `"))
         .stderr(predicate::str::contains(
-            "missing explicit order declaration for `",
-        ))
-        .stderr(predicate::str::contains(
-            "execution-oriented modes require explicit `order ...` declarations",
+            "requires a matching `order ...` declaration",
         ));
 }
 

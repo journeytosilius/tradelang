@@ -60,7 +60,8 @@ portfolio mode.
 Those execution-oriented commands also require explicit `order ...`
 declarations for each declared `entry` / `exit` signal role. The checked-in
 backtest and paper examples now declare those orders explicitly instead of
-depending on synthesized default orders.
+depending on synthesized default orders, and `palmscript check` rejects
+execution scripts that omit them.
 
 The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
 

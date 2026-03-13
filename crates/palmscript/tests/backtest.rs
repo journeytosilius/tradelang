@@ -214,7 +214,7 @@ fn rejects_when_required_backtest_signals_are_missing() {
 
 #[test]
 fn rejects_when_signal_roles_are_missing_explicit_order_declarations() {
-    let compiled = compile_script(
+    let err = compile_script(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 execution spot = binance.spot(\"BTCUSDT\")
@@ -224,18 +224,17 @@ exit long = false
 exit short = false
 plot(spot.close)",
     )
-    .expect("script should compile");
-    let runtime = SourceRuntimeConfig {
-        base_interval: Interval::Min1,
-        feeds: vec![SourceFeed {
-            source_id: 0,
-            interval: Interval::Min1,
-            bars: vec![bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0)],
-        }],
-    };
-    let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
-        .expect_err("expected missing order declaration error");
-    assert!(matches!(err, BacktestError::MissingOrderDeclaration { .. }));
+    .expect_err("expected compile-time missing order diagnostics");
+    assert!(err.diagnostics.iter().any(|diag| {
+        diag.message.contains(
+            "signal declaration for `long_entry` requires a matching `order ...` declaration",
+        )
+    }));
+    assert!(err.diagnostics.iter().any(|diag| {
+        diag.message.contains(
+            "signal declaration for `long_exit` requires a matching `order ...` declaration",
+        )
+    }));
 }
 
 #[test]

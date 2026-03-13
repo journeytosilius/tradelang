@@ -609,6 +609,12 @@ Attached position-aware exits:
 - `size target1 long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
 
+Execution-oriented modes no longer synthesize implicit `market()` orders for
+plain `entry` / `exit` signals. Declare `order entry ...` and `order exit ...`
+explicitly for every signal role you want backtest, walk-forward, optimize, or
+paper execution to use. When a script declares `execution` targets, `palmscript check`
+also rejects missing matching `order ...` declarations at compile time.
+
 Actual-fill anchor helpers:
 
 - `position_event.long_entry_fill`, `position_event.short_entry_fill`, `position_event.long_exit_fill`, and `position_event.short_exit_fill` expose aggregate real backtest fill events as `series<bool>`

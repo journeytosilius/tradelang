@@ -386,6 +386,44 @@ plot(left.close)",
 }
 
 #[test]
+fn execution_scripts_require_explicit_orders_at_compile_time() {
+    let missing_signal_order = compile_diagnostics(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > left.close[1]
+exit long = false
+plot(left.close)",
+    );
+    assert!(missing_signal_order.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag.1.contains(
+                "signal declaration for `long_entry` requires a matching `order ...` declaration",
+            )
+    }));
+    assert!(missing_signal_order.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag.1.contains(
+                "signal declaration for `long_exit` requires a matching `order ...` declaration",
+            )
+    }));
+
+    let legacy_trigger = compile_diagnostics(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+trigger long_entry = left.close > left.close[1]
+plot(left.close)",
+    );
+    assert!(legacy_trigger.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag.1.contains(
+                "signal declaration for `long_entry` requires a matching `order ...` declaration",
+            )
+    }));
+}
+
+#[test]
 fn named_order_arguments_reject_unexpected_fields() {
     let diagnostics = compile_diagnostics(
         "interval 1m

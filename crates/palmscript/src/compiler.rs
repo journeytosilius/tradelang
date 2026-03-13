@@ -314,6 +314,37 @@ impl<'a> Analyzer<'a> {
         for stmt in &ast.statements {
             self.analyze_stmt(stmt);
         }
+        if !self.analysis.declared_executions.is_empty() {
+            let mut declared_signal_spans = HashMap::new();
+            for stmt in &ast.statements {
+                match &stmt.kind {
+                    StmtKind::Signal { role, .. } => {
+                        declared_signal_spans
+                            .entry(compiled_signal_role(*role))
+                            .or_insert(stmt.span);
+                    }
+                    StmtKind::Trigger { name, .. } => {
+                        if let Some(role) = legacy_compiled_signal_role(name) {
+                            declared_signal_spans.entry(role).or_insert(stmt.span);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for (role, span) in declared_signal_spans {
+                if self.analysis.orders.iter().any(|order| order.role == role) {
+                    continue;
+                }
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!(
+                        "signal declaration for `{}` requires a matching `order ...` declaration when the script declares `execution` targets",
+                        role.canonical_name()
+                    ),
+                    span,
+                ));
+            }
+        }
         for role in self.analysis.order_size_decls.keys().copied() {
             if self.analysis.orders.iter().any(|order| order.role == role) {
                 continue;
@@ -5044,6 +5075,16 @@ fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
         AstSignalRole::TargetShort => CompiledSignalRole::TargetShort,
         AstSignalRole::TargetShort2 => CompiledSignalRole::TargetShort2,
         AstSignalRole::TargetShort3 => CompiledSignalRole::TargetShort3,
+    }
+}
+
+fn legacy_compiled_signal_role(name: &str) -> Option<CompiledSignalRole> {
+    match name {
+        "long_entry" => Some(CompiledSignalRole::LongEntry),
+        "long_exit" => Some(CompiledSignalRole::LongExit),
+        "short_entry" => Some(CompiledSignalRole::ShortEntry),
+        "short_exit" => Some(CompiledSignalRole::ShortExit),
+        _ => None,
     }
 }
 

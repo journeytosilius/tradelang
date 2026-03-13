@@ -607,7 +607,8 @@ Attached position-aware exits:
 Execution-oriented modes no longer synthesize implicit `market()` orders for
 plain `entry` / `exit` signals. Declare `order entry ...` and `order exit ...`
 explicitly for every signal role you want backtest, walk-forward, optimize, or
-paper execution to use.
+paper execution to use. When a script declares `execution` targets, `palmscript check`
+also rejects missing matching `order ...` declarations at compile time.
 
 Actual-fill anchor helpers:
 
