@@ -52,6 +52,10 @@ Os builtins tuple-valued executaveis atuais sao:
   [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - `aroon(high, low[, length=14])` documentado em
   [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md)
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])` documentado em
+  [Trend and Overlap](indicators-trend-and-overlap.md)
+- `donchian(high, low[, length=20])` documentado em
+  [Trend and Overlap](indicators-trend-and-overlap.md)
 
 Todos os resultados builtin tuple-valued precisam ser desestruturados
 imediatamente com `let (...) = ...` antes de qualquer outro uso.

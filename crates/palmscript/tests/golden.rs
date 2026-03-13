@@ -947,3 +947,67 @@ fn golden_ma_type_mama_shape_matches() {
     );
     assert!(json["plots"][0]["points"][59]["value"].is_number());
 }
+
+#[test]
+fn golden_supertrend_tuple_exports_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (line, bullish) = supertrend(high, low, close, 10, 3.0)\nexport supertrend_bullish = bullish\nplot(line)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("supertrend_bullish"));
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+    assert!(json["plots"][0]["points"].as_array().unwrap().len() == 20);
+}
+
+#[test]
+fn golden_donchian_tuple_exports_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let (upper, middle, lower) = donchian(high, low, 5)\nexport donchian_upper = upper\nexport donchian_middle = middle\nexport donchian_lower = lower\nplot(middle)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("donchian_upper"));
+    assert_eq!(json["exports"][2]["name"], json!("donchian_lower"));
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+    assert!(json["exports"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(5)
+        .any(|point| point["value"]["F64"].is_number()));
+}
+
+#[test]
+fn golden_anchored_vwap_shape_matches() {
+    let compiled = compile(&with_interval(
+        "let anchor = activated(close > close[1])\nplot(anchored_vwap(anchor, close, volume))",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["plots"][0]["points"].as_array().unwrap().len(), 20);
+    assert!(json["plots"][0]["points"][0]["value"].is_number());
+}
+
+#[test]
+fn golden_percentile_zscore_ulcer_shape_matches() {
+    let compiled = compile(&with_interval(
+        "export p90 = percentile(close, 5, 90)\nexport z = zscore(close, 5)\nexport ui = ulcer_index(close, 5)\nplot(p90)",
+    ))
+    .expect("compiles");
+    let outputs = run(&compiled, &fixture_bars(), VmLimits::default()).expect("runs");
+    let json = serde_json::to_value(outputs).expect("json");
+    assert_eq!(json["exports"][0]["name"], json!("p90"));
+    assert_eq!(json["exports"][1]["name"], json!("z"));
+    assert_eq!(json["exports"][2]["name"], json!("ui"));
+    assert_eq!(json["exports"][0]["points"][0]["value"], json!("NA"));
+    assert!(json["exports"][0]["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(5)
+        .any(|point| point["value"]["F64"].is_number()));
+}

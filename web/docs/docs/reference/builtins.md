@@ -36,6 +36,8 @@ The current executable tuple-valued builtins are:
 - `minmax(series[, length=30])` documented in [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - `minmaxindex(series[, length=30])` documented in [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - `aroon(high, low[, length=14])` documented in [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md)
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])` documented in [Trend and Overlap](indicators-trend-and-overlap.md)
+- `donchian(high, low[, length=20])` documented in [Trend and Overlap](indicators-trend-and-overlap.md)
 
 All tuple-valued builtin results must be destructured immediately with `let (...) = ...` before further use.
 

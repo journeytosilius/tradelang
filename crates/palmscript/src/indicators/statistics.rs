@@ -56,6 +56,78 @@ pub(crate) fn calculate_stddev(
     }
 }
 
+pub(crate) fn calculate_percentile(
+    buffer: &SeriesBuffer,
+    window: usize,
+    percentile: f64,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    let Some(mut values) = rolling_values(buffer, window, pc)? else {
+        return Ok(Value::NA);
+    };
+    values.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    let rank = percentile.clamp(0.0, 100.0) / 100.0 * (window.saturating_sub(1) as f64);
+    let lower_index = rank.floor() as usize;
+    let upper_index = rank.ceil() as usize;
+    if lower_index == upper_index {
+        return Ok(Value::F64(values[lower_index]));
+    }
+    let fraction = rank - lower_index as f64;
+    let lower = values[lower_index];
+    let upper = values[upper_index];
+    Ok(Value::F64(lower + (upper - lower) * fraction))
+}
+
+pub(crate) fn calculate_zscore(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    let Some((sum, sum_sq)) = rolling_moments(buffer, window, pc)? else {
+        return Ok(Value::NA);
+    };
+    let current = match buffer.get(0) {
+        Value::F64(value) => value,
+        Value::NA => return Ok(Value::NA),
+        other => {
+            return Err(RuntimeError::TypeMismatch {
+                pc,
+                expected: "f64",
+                found: other.type_name(),
+            });
+        }
+    };
+    let mean = sum / window as f64;
+    let variance = (sum_sq / window as f64) - mean * mean;
+    if variance <= 0.0 {
+        return Ok(Value::F64(0.0));
+    }
+    Ok(Value::F64((current - mean) / variance.sqrt()))
+}
+
+pub(crate) fn calculate_ulcer_index(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Value, RuntimeError> {
+    let Some(values) = rolling_values(buffer, window, pc)? else {
+        return Ok(Value::NA);
+    };
+
+    let mut peak = f64::NEG_INFINITY;
+    let mut sum_sq = 0.0;
+    for value in values {
+        peak = peak.max(value);
+        let drawdown_pct = if peak > 0.0 {
+            ((value / peak) - 1.0) * 100.0
+        } else {
+            0.0
+        };
+        sum_sq += drawdown_pct * drawdown_pct;
+    }
+    Ok(Value::F64((sum_sq / window as f64).sqrt()))
+}
+
 pub(crate) fn calculate_linear_regression(
     buffer: &SeriesBuffer,
     window: usize,
@@ -207,6 +279,32 @@ fn rolling_moments(
     Ok(Some((sum, sum_sq)))
 }
 
+fn rolling_values(
+    buffer: &SeriesBuffer,
+    window: usize,
+    pc: usize,
+) -> Result<Option<Vec<f64>>, RuntimeError> {
+    if buffer.len() < window {
+        return Ok(None);
+    }
+
+    let mut values = Vec::with_capacity(window);
+    for offset in (0..window).rev() {
+        match buffer.get(offset) {
+            Value::F64(value) => values.push(value),
+            Value::NA => return Ok(None),
+            other => {
+                return Err(RuntimeError::TypeMismatch {
+                    pc,
+                    expected: "f64",
+                    found: other.type_name(),
+                });
+            }
+        }
+    }
+    Ok(Some(values))
+}
+
 fn regression_coefficients(
     buffer: &SeriesBuffer,
     window: usize,
@@ -268,8 +366,8 @@ fn expect_buffer_f64(
 #[cfg(test)]
 mod tests {
     use super::{
-        calculate_beta, calculate_correl, calculate_linear_regression, calculate_stddev,
-        calculate_var, RegressionOutput,
+        calculate_beta, calculate_correl, calculate_linear_regression, calculate_percentile,
+        calculate_stddev, calculate_ulcer_index, calculate_var, calculate_zscore, RegressionOutput,
     };
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
@@ -372,5 +470,41 @@ mod tests {
             (beta - 1.0).abs() < 1e-12,
             "expected beta 1.0, found {beta}"
         );
+    }
+
+    #[test]
+    fn percentile_interpolates_sorted_window_values() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [1.0, 2.0, 3.0, 4.0, 100.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        let result = calculate_percentile(&buffer, 5, 90.0, 0).expect("percentile should compute");
+        assert_eq!(result, Value::F64(61.60000000000001));
+    }
+
+    #[test]
+    fn zscore_returns_zero_for_flat_window() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [5.0, 5.0, 5.0, 5.0, 5.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        let result = calculate_zscore(&buffer, 5, 0).expect("zscore should compute");
+        assert_eq!(result, Value::F64(0.0));
+    }
+
+    #[test]
+    fn ulcer_index_measures_drawdown_depth() {
+        let mut buffer = SeriesBuffer::new(8);
+        for value in [100.0, 110.0, 105.0, 90.0, 95.0] {
+            buffer.push(Value::F64(value));
+        }
+
+        let result = calculate_ulcer_index(&buffer, 5, 0).expect("ulcer index should compute");
+        match result {
+            Value::F64(value) => assert!(value > 0.0),
+            other => panic!("unexpected ulcer index value: {other:?}"),
+        }
     }
 }

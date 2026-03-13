@@ -143,3 +143,15 @@
 - 以降のサンプルは、現在 `high`、現在 `low`、前回 `close` に基づく TA-Lib true range セマンティクスを使う
 - 必要サンプルのいずれかが `na` の場合、結果は `na`
 - 結果型は `series<float>`
+
+## `anchored_vwap(anchor, price, volume)`
+
+Rules:
+
+- `anchor` must be `series<bool>`
+- `price` and `volume` must be `series<float>`
+- when the current `anchor` sample is `true`, the running VWAP resets on that same bar
+- the anchor bar is included in the new anchored accumulation window
+- if the current anchor, price, or volume sample is `na`, the current output sample is `na`
+- if cumulative anchored volume is `0`, the current output sample is `na`
+- the result type is `series<float>`

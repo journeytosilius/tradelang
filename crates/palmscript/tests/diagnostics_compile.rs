@@ -873,3 +873,27 @@ plot(src.close)",
         ],
     );
 }
+
+#[test]
+fn anchored_vwap_requires_boolean_anchor_series() {
+    assert_compile_diagnostics(
+        "type_anchored_vwap_requires_series_bool_anchor",
+        &with_interval("plot(anchored_vwap(close, close, volume))"),
+        &[expected(
+            DiagnosticKind::Type,
+            "anchored_vwap requires series<bool> as the first argument",
+        )],
+    );
+}
+
+#[test]
+fn percentile_requires_numeric_scalar_percentage() {
+    assert_compile_diagnostics(
+        "type_percentile_requires_numeric_percentage",
+        &with_interval("plot(percentile(close, 20, close))"),
+        &[expected(
+            DiagnosticKind::Type,
+            "percentile percentage must be a numeric scalar value",
+        )],
+    );
+}

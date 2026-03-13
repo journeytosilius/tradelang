@@ -4,6 +4,7 @@
 //! per-indicator logic stays modular and independently testable.
 
 pub(crate) mod advanced_ma;
+pub(crate) mod channels;
 pub(crate) mod cmo;
 pub(crate) mod cycle;
 pub(crate) mod directional;
@@ -26,6 +27,7 @@ pub(crate) mod wma;
 pub(crate) use advanced_ma::{
     AccbandsState, BbandsState, MavpState, MovingAverageState, T3State, TrixState,
 };
+pub(crate) use channels::{calculate_donchian, SupertrendState};
 pub(crate) use cmo::CmoState;
 pub(crate) use cycle::{
     HtDcPeriodState, HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState,
@@ -52,12 +54,12 @@ pub(crate) use rsi::RsiState;
 pub(crate) use sar::{SarConfig, SarState};
 pub(crate) use sma::SmaState;
 pub(crate) use statistics::{
-    calculate_beta, calculate_correl, calculate_linear_regression, calculate_stddev, calculate_var,
-    RegressionOutput,
+    calculate_beta, calculate_correl, calculate_linear_regression, calculate_percentile,
+    calculate_stddev, calculate_ulcer_index, calculate_var, calculate_zscore, RegressionOutput,
 };
 pub(crate) use stochastic::{StochFastState, StochRsiState, StochState};
 pub(crate) use volatility::calculate_trange;
-pub(crate) use volume::{AdOscState, AdState, ObvState};
+pub(crate) use volume::{AdOscState, AdState, AnchoredVwapState, ObvState};
 pub(crate) use wma::calculate as calculate_wma;
 
 #[derive(Clone, Debug)]
@@ -78,6 +80,7 @@ pub(crate) enum IndicatorState {
     AnchoredValueWhen(AnchoredValueWhenState),
     AnchoredCount(AnchoredCountState),
     Cum(CumState),
+    AnchoredVwap(AnchoredVwapState),
     Macd(MacdState),
     PriceOscillator(Box<PriceOscillatorState>),
     Obv(ObvState),
@@ -96,6 +99,7 @@ pub(crate) enum IndicatorState {
     StochFast(Box<StochFastState>),
     StochRsi(Box<StochRsiState>),
     Sar(Box<SarState>),
+    Supertrend(Box<SupertrendState>),
     HtDcPeriod(Box<HtDcPeriodState>),
     HtDcPhase(Box<HtDcPhaseState>),
     HtPhasor(Box<HtPhasorState>),

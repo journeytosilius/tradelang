@@ -10,18 +10,19 @@ use crate::bytecode::{Constant, Instruction, OpCode, Program};
 use crate::diagnostic::RuntimeError;
 use crate::indicators::{
     apply_unary_math, calculate_aroon, calculate_aroonosc, calculate_avgdev, calculate_beta,
-    calculate_bop, calculate_cci, calculate_correl, calculate_highest_bars, calculate_imi,
-    calculate_linear_regression, calculate_lowest_bars, calculate_max_index, calculate_mfi,
-    calculate_min_index, calculate_min_max, calculate_min_max_index, calculate_stddev,
-    calculate_sum, calculate_trange, calculate_var, calculate_willr, calculate_wma, AccbandsState,
-    AdOscState, AdState, AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState,
-    AnchoredValueWhenState, BarsSinceState, BbandsState, BoolEdgeMode, BoolEdgeState, CmoState,
+    calculate_bop, calculate_cci, calculate_correl, calculate_donchian, calculate_highest_bars,
+    calculate_imi, calculate_linear_regression, calculate_lowest_bars, calculate_max_index,
+    calculate_mfi, calculate_min_index, calculate_min_max, calculate_min_max_index,
+    calculate_percentile, calculate_stddev, calculate_sum, calculate_trange, calculate_ulcer_index,
+    calculate_var, calculate_willr, calculate_wma, calculate_zscore, AccbandsState, AdOscState,
+    AdState, AnchoredCountState, AnchoredExtremaMode, AnchoredExtremaState, AnchoredValueWhenState,
+    AnchoredVwapState, BarsSinceState, BbandsState, BoolEdgeMode, BoolEdgeState, CmoState,
     CumState, DirectionalKind, DirectionalState, DmKind, DmState, EmaState, FallingState,
     HighestState, HtDcPeriodState, HtDcPhaseState, HtPhasorState, HtSineState, HtTrendModeState,
     HtTrendlineState, IndicatorState, LowestState, MacdExtState, MacdState, MamaState, MavpState,
     MovingAverageState, ObvState, OscillatorKind, PersistentState, PriceOscillatorState,
     RegressionOutput, RisingState, RsiState, SarConfig, SarState, SmaState, StochFastState,
-    StochRsiState, StochState, TrixState, UnaryMathTransform, ValueWhenState,
+    StochRsiState, StochState, SupertrendState, TrixState, UnaryMathTransform, ValueWhenState,
 };
 use crate::output::{PlotPoint, StepOutput};
 use crate::runtime::Bar;
@@ -559,15 +560,20 @@ impl<'a> VmEngine<'a> {
             BuiltinId::HtTrendmode => self.call_ht_trendmode(callsite, arity, args, pc),
             BuiltinId::Mama => self.call_mama(callsite, arity, args, pc),
             BuiltinId::Obv => self.call_obv(callsite, arity, args, pc),
+            BuiltinId::AnchoredVwap => self.call_anchored_vwap(callsite, arity, args, pc),
             BuiltinId::Trange => self.call_trange(arity, args, pc),
             BuiltinId::Wma => self.call_wma(arity, args, pc),
             BuiltinId::Avgdev => self.call_avgdev(arity, args, pc),
+            BuiltinId::Percentile => self.call_percentile(arity, args, pc),
             BuiltinId::MaxIndex => self.call_max_index(arity, args, pc),
             BuiltinId::MinIndex => self.call_min_index(arity, args, pc),
             BuiltinId::MinMax => self.call_min_max(arity, args, pc),
             BuiltinId::MinMaxIndex => self.call_min_max_index(arity, args, pc),
+            BuiltinId::Donchian => self.call_donchian(arity, args, pc),
             BuiltinId::Stddev => self.call_stddev(arity, args, pc),
             BuiltinId::Var => self.call_var(arity, args, pc),
+            BuiltinId::Zscore => self.call_zscore(arity, args, pc),
+            BuiltinId::UlcerIndex => self.call_ulcer_index(arity, args, pc),
             BuiltinId::LinearReg => self.call_linearreg(arity, args, pc),
             BuiltinId::LinearRegAngle => self.call_linearreg_angle(arity, args, pc),
             BuiltinId::LinearRegIntercept => self.call_linearreg_intercept(arity, args, pc),
@@ -578,6 +584,7 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Willr => self.call_willr(arity, args, pc),
             BuiltinId::Aroon => self.call_aroon(arity, args, pc),
             BuiltinId::AroonOsc => self.call_aroonosc(arity, args, pc),
+            BuiltinId::Supertrend => self.call_supertrend(callsite, arity, args, pc),
             BuiltinId::Bop => self.call_bop(arity, args, pc),
             BuiltinId::Cci => self.call_cci(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
@@ -1940,6 +1947,21 @@ impl<'a> VmEngine<'a> {
         self.call_stateless_window_builtin("avgdev", arity, args, pc, calculate_avgdev)
     }
 
+    fn call_percentile(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_factor_builtin(
+            "percentile",
+            arity,
+            args,
+            pc,
+            calculate_percentile,
+        )
+    }
+
     fn call_max_index(
         &mut self,
         arity: usize,
@@ -1976,6 +1998,22 @@ impl<'a> VmEngine<'a> {
         self.call_stateless_window_builtin("minmaxindex", arity, args, pc, calculate_min_max_index)
     }
 
+    fn call_donchian(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_high_low_window_tuple_builtin(
+            "donchian",
+            arity,
+            args,
+            pc,
+            0,
+            calculate_donchian,
+        )
+    }
+
     fn call_stddev(
         &mut self,
         arity: usize,
@@ -1992,6 +2030,24 @@ impl<'a> VmEngine<'a> {
         pc: usize,
     ) -> Result<Value, RuntimeError> {
         self.call_stateless_window_factor_builtin("var", arity, args, pc, calculate_var)
+    }
+
+    fn call_zscore(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("zscore", arity, args, pc, calculate_zscore)
+    }
+
+    fn call_ulcer_index(
+        &mut self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        self.call_stateless_window_builtin("ulcer_index", arity, args, pc, calculate_ulcer_index)
     }
 
     fn call_linearreg(
@@ -2115,6 +2171,54 @@ impl<'a> VmEngine<'a> {
             1,
             calculate_aroonosc,
         )
+    }
+
+    fn call_supertrend(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 5 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "supertrend",
+                expected: 5,
+                found: arity,
+            });
+        }
+        let high_slot = series_ref(args[0].clone(), pc)?;
+        let low_slot = series_ref(args[1].clone(), pc)?;
+        let close_slot = series_ref(args[2].clone(), pc)?;
+        let window = expect_window(args[3].clone(), pc)?;
+        let multiplier = expect_f64(args[4].clone(), pc)?;
+        let key = (BuiltinId::Supertrend, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::Supertrend(Box::new(SupertrendState::new(
+                window, multiplier,
+            ))));
+        let result = match &mut state {
+            IndicatorState::Supertrend(state) => {
+                let high = self
+                    .series_values
+                    .get(high_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: high_slot })?;
+                let low = self
+                    .series_values
+                    .get(low_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: low_slot })?;
+                let close = self
+                    .series_values
+                    .get(close_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: close_slot })?;
+                state.update(high, low, close, pc)?
+            }
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
     }
 
     fn call_bop(
@@ -2751,6 +2855,50 @@ impl<'a> VmEngine<'a> {
             .unwrap_or(IndicatorState::Obv(ObvState::new()));
         let result = match &mut state {
             IndicatorState::Obv(state) => state.update(price, volume, pc)?,
+            _ => unreachable!(),
+        };
+        self.indicator_state.insert(key, state);
+        Ok(result)
+    }
+
+    fn call_anchored_vwap(
+        &mut self,
+        callsite: u16,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "anchored_vwap",
+                expected: 3,
+                found: arity,
+            });
+        }
+        let anchor_slot = series_ref(args[0].clone(), pc)?;
+        let price_slot = series_ref(args[1].clone(), pc)?;
+        let volume_slot = series_ref(args[2].clone(), pc)?;
+        let key = (BuiltinId::AnchoredVwap, callsite);
+        let mut state = self
+            .indicator_state
+            .remove(&key)
+            .unwrap_or(IndicatorState::AnchoredVwap(AnchoredVwapState::new()));
+        let result = match &mut state {
+            IndicatorState::AnchoredVwap(state) => {
+                let anchor = self
+                    .series_values
+                    .get(anchor_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: anchor_slot })?;
+                let price = self
+                    .series_values
+                    .get(price_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: price_slot })?;
+                let volume = self
+                    .series_values
+                    .get(volume_slot)
+                    .ok_or(RuntimeError::InvalidSeriesSlot { slot: volume_slot })?;
+                state.update(anchor, price, volume, pc)?
+            }
             _ => unreachable!(),
         };
         self.indicator_state.insert(key, state);

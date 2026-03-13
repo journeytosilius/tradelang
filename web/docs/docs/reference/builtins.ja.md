@@ -36,6 +36,8 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - [Math, Price, and Statistics](indicators-math-price-statistics.md) に記載された `minmax(series[, length=30])`
 - [Math, Price, and Statistics](indicators-math-price-statistics.md) に記載された `minmaxindex(series[, length=30])`
 - [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md) に記載された `aroon(high, low[, length=14])`
+- [Trend and Overlap](indicators-trend-and-overlap.md) に記載された `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])`
+- [Trend and Overlap](indicators-trend-and-overlap.md) に記載された `donchian(high, low[, length=20])`
 
 タプル値 builtin の結果は、さらに使う前に必ず `let (...) = ...` で即座に分解しなければなりません。
 

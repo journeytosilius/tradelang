@@ -38,11 +38,15 @@ pub enum BuiltinKind {
     RollingSingleInput,
     RollingSingleInputFactor,
     RollingSingleInputTuple,
+    RollingSingleInputPercentile,
     RollingDoubleInput,
     RollingHighLow,
     RollingHighLowTuple,
+    RollingHighLowBands,
     RollingHighLowClose,
+    RollingHighLowCloseTrendTuple,
     VolumeIndicator,
+    AnchoredPriceVolume,
     VolatilityIndicator,
     Relation2,
     Relation3,
@@ -218,10 +222,16 @@ pub enum BuiltinId {
     Activated = 132,
     Deactivated = 133,
     State = 134,
+    Supertrend = 135,
+    AnchoredVwap = 136,
+    Donchian = 137,
+    Percentile = 138,
+    Zscore = 139,
+    UlcerIndex = 140,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 135] = [
+    pub const RESERVED: [Self; 141] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -357,9 +367,15 @@ impl BuiltinId {
         Self::Activated,
         Self::Deactivated,
         Self::State,
+        Self::Supertrend,
+        Self::AnchoredVwap,
+        Self::Donchian,
+        Self::Percentile,
+        Self::Zscore,
+        Self::UlcerIndex,
     ];
 
-    pub const CALLABLE: [Self; 122] = [
+    pub const CALLABLE: [Self; 128] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -482,6 +498,12 @@ impl BuiltinId {
         Self::HtTrendline,
         Self::HtTrendmode,
         Self::Mama,
+        Self::Supertrend,
+        Self::AnchoredVwap,
+        Self::Donchian,
+        Self::Percentile,
+        Self::Zscore,
+        Self::UlcerIndex,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -621,6 +643,12 @@ impl BuiltinId {
             "ht_trendline" => Some(Self::HtTrendline),
             "ht_trendmode" => Some(Self::HtTrendmode),
             "mama" => Some(Self::Mama),
+            "supertrend" => Some(Self::Supertrend),
+            "anchored_vwap" => Some(Self::AnchoredVwap),
+            "donchian" => Some(Self::Donchian),
+            "percentile" => Some(Self::Percentile),
+            "zscore" => Some(Self::Zscore),
+            "ulcer_index" => Some(Self::UlcerIndex),
             _ => None,
         }
     }
@@ -762,6 +790,12 @@ impl BuiltinId {
             132 => Some(Self::Activated),
             133 => Some(Self::Deactivated),
             134 => Some(Self::State),
+            135 => Some(Self::Supertrend),
+            136 => Some(Self::AnchoredVwap),
+            137 => Some(Self::Donchian),
+            138 => Some(Self::Percentile),
+            139 => Some(Self::Zscore),
+            140 => Some(Self::UlcerIndex),
             _ => None,
         }
     }
@@ -903,6 +937,12 @@ impl BuiltinId {
             Self::HtTrendline => "ht_trendline",
             Self::HtTrendmode => "ht_trendmode",
             Self::Mama => "mama",
+            Self::Supertrend => "supertrend",
+            Self::AnchoredVwap => "anchored_vwap",
+            Self::Donchian => "donchian",
+            Self::Percentile => "percentile",
+            Self::Zscore => "zscore",
+            Self::UlcerIndex => "ulcer_index",
         }
     }
 
@@ -942,20 +982,26 @@ impl BuiltinId {
             }
             Self::Stddev | Self::Var => BuiltinKind::RollingSingleInputFactor,
             Self::MinMax | Self::MinMaxIndex => BuiltinKind::RollingSingleInputTuple,
+            Self::Percentile => BuiltinKind::RollingSingleInputPercentile,
             Self::LinearReg
             | Self::LinearRegAngle
             | Self::LinearRegIntercept
             | Self::LinearRegSlope
             | Self::Tsf
-            | Self::Cmo => BuiltinKind::RollingSingleInput,
+            | Self::Cmo
+            | Self::Zscore
+            | Self::UlcerIndex => BuiltinKind::RollingSingleInput,
             Self::Beta | Self::Correl => BuiltinKind::RollingDoubleInput,
             Self::Midprice => BuiltinKind::RollingHighLow,
             Self::Aroon => BuiltinKind::RollingHighLowTuple,
+            Self::Donchian => BuiltinKind::RollingHighLowBands,
             Self::AroonOsc => BuiltinKind::RollingHighLow,
             Self::Willr => BuiltinKind::RollingHighLowClose,
             Self::Cci => BuiltinKind::RollingHighLowClose,
             Self::Obv => BuiltinKind::VolumeIndicator,
+            Self::AnchoredVwap => BuiltinKind::AnchoredPriceVolume,
             Self::Trange => BuiltinKind::VolatilityIndicator,
+            Self::Supertrend => BuiltinKind::RollingHighLowCloseTrendTuple,
             Self::Above | Self::Below => BuiltinKind::Relation2,
             Self::Between | Self::Outside => BuiltinKind::Relation3,
             Self::Cross | Self::Crossover | Self::Crossunder => BuiltinKind::Cross,
@@ -1072,12 +1118,20 @@ impl BuiltinId {
             Self::Roc | Self::Mom | Self::Rocp | Self::Rocr | Self::Rocr100 => {
                 BuiltinArity::Range { min: 1, max: 2 }
             }
-            Self::Cmo | Self::Dema | Self::Tema | Self::Trima | Self::Kama | Self::Trix => {
-                BuiltinArity::Range { min: 1, max: 2 }
-            }
-            Self::Aroon | Self::AroonOsc | Self::PlusDm | Self::MinusDm | Self::Imi => {
-                BuiltinArity::Range { min: 2, max: 3 }
-            }
+            Self::Cmo
+            | Self::Dema
+            | Self::Tema
+            | Self::Trima
+            | Self::Kama
+            | Self::Trix
+            | Self::Zscore
+            | Self::UlcerIndex => BuiltinArity::Range { min: 1, max: 2 },
+            Self::Aroon
+            | Self::AroonOsc
+            | Self::PlusDm
+            | Self::MinusDm
+            | Self::Imi
+            | Self::Donchian => BuiltinArity::Range { min: 2, max: 3 },
             Self::Cci
             | Self::Atr
             | Self::Natr
@@ -1094,7 +1148,8 @@ impl BuiltinId {
             | Self::Between
             | Self::Outside
             | Self::ValueWhen
-            | Self::Trange => BuiltinArity::Exact(3),
+            | Self::Trange
+            | Self::AnchoredVwap => BuiltinArity::Exact(3),
             Self::ValueWhenSince => BuiltinArity::Exact(4),
             Self::Willr => BuiltinArity::Range { min: 3, max: 4 },
             Self::Macd => BuiltinArity::Exact(4),
@@ -1117,7 +1172,9 @@ impl BuiltinId {
             | Self::Tsf => BuiltinArity::Range { min: 1, max: 2 },
             Self::Beta | Self::Correl => BuiltinArity::Range { min: 2, max: 3 },
             Self::Apo | Self::Ppo => BuiltinArity::Range { min: 1, max: 4 },
-            Self::Stddev | Self::Var | Self::T3 => BuiltinArity::Range { min: 1, max: 3 },
+            Self::Stddev | Self::Var | Self::T3 | Self::Percentile => {
+                BuiltinArity::Range { min: 1, max: 3 }
+            }
             Self::Midprice => BuiltinArity::Range { min: 2, max: 3 },
             Self::Nz => BuiltinArity::Range { min: 1, max: 2 },
             Self::Macdfix => BuiltinArity::Range { min: 1, max: 2 },
@@ -1138,6 +1195,7 @@ impl BuiltinId {
             | Self::HtTrendline
             | Self::HtTrendmode => BuiltinArity::Exact(1),
             Self::Mama => BuiltinArity::Range { min: 1, max: 3 },
+            Self::Supertrend => BuiltinArity::Range { min: 3, max: 5 },
         }
     }
 
@@ -1221,6 +1279,14 @@ impl BuiltinId {
             Self::HtTrendline => "ht_trendline(series)",
             Self::HtTrendmode => "ht_trendmode(series)",
             Self::Mama => "mama(series[, fast_limit=0.5[, slow_limit=0.05]])",
+            Self::Supertrend => {
+                "supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])"
+            }
+            Self::AnchoredVwap => "anchored_vwap(anchor, price, volume)",
+            Self::Donchian => "donchian(high, low[, length=20])",
+            Self::Percentile => "percentile(series[, length=20[, percentage=50.0]])",
+            Self::Zscore => "zscore(series[, length=20])",
+            Self::UlcerIndex => "ulcer_index(series[, length=14])",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1422,6 +1488,12 @@ impl BuiltinId {
             Self::AroonOsc => "Aroon oscillator over a trailing high-low window.",
             Self::Bop => "Balance of power for the current bar.",
             Self::Cci => "Commodity channel index over a trailing high-low-close window.",
+            Self::Supertrend => "Supertrend tuple (line, bullish) using Wilder ATR bands.",
+            Self::AnchoredVwap => "Anchor-reset VWAP over price and volume.",
+            Self::Donchian => "Donchian tuple (upper, middle, lower) over a trailing channel window.",
+            Self::Percentile => "Rolling percentile over a trailing window with clamped 0..100 percentage.",
+            Self::Zscore => "Rolling z-score of the current value against its trailing window.",
+            Self::UlcerIndex => "Ulcer Index drawdown severity over a trailing window.",
         }
     }
 }

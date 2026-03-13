@@ -53,6 +53,10 @@ Les builtins executables a valeur tuple actuels sont :
   [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - `aroon(high, low[, length=14])` documente dans
   [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md)
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])` documente dans
+  [Trend and Overlap](indicators-trend-and-overlap.md)
+- `donchian(high, low[, length=20])` documente dans
+  [Trend and Overlap](indicators-trend-and-overlap.md)
 
 Tous les resultats builtin a valeur tuple doivent etre destructures
 immediatement avec `let (...) = ...` avant toute autre utilisation.

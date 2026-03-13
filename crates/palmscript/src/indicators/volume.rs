@@ -14,6 +14,68 @@ pub(crate) struct ObvState {
     cached_output: Value,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct AnchoredVwapState {
+    last_versions: (u64, u64, u64),
+    cumulative_price_volume: f64,
+    cumulative_volume: f64,
+    cached_output: Value,
+}
+
+impl AnchoredVwapState {
+    pub(crate) fn new() -> Self {
+        Self {
+            last_versions: (0, 0, 0),
+            cumulative_price_volume: 0.0,
+            cumulative_volume: 0.0,
+            cached_output: Value::NA,
+        }
+    }
+
+    pub(crate) fn update(
+        &mut self,
+        anchor: &SeriesBuffer,
+        price: &SeriesBuffer,
+        volume: &SeriesBuffer,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        let versions = (anchor.version(), price.version(), volume.version());
+        if versions == self.last_versions {
+            return Ok(self.cached_output.clone());
+        }
+        self.last_versions = versions;
+
+        let anchor = expect_buffer_bool(anchor, 0, pc)?;
+        if matches!(anchor, Some(true)) {
+            self.cumulative_price_volume = 0.0;
+            self.cumulative_volume = 0.0;
+        }
+
+        let Some(_anchor) = anchor else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+        let Some(price) = expect_buffer_value(price, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+        let Some(volume) = expect_buffer_value(volume, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+
+        self.cumulative_price_volume += price * volume;
+        self.cumulative_volume += volume;
+
+        if self.cumulative_volume == 0.0 {
+            self.cached_output = Value::NA;
+        } else {
+            self.cached_output = Value::F64(self.cumulative_price_volume / self.cumulative_volume);
+        }
+        Ok(self.cached_output.clone())
+    }
+}
+
 impl ObvState {
     pub(crate) fn new() -> Self {
         Self {
@@ -265,9 +327,25 @@ fn expect_buffer_value(
     }
 }
 
+fn expect_buffer_bool(
+    buffer: &SeriesBuffer,
+    offset: usize,
+    pc: usize,
+) -> Result<Option<bool>, RuntimeError> {
+    match buffer.get(offset) {
+        Value::Bool(value) => Ok(Some(value)),
+        Value::NA => Ok(None),
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "bool",
+            found: other.type_name(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AdOscState, AdState, ObvState};
+    use super::{AdOscState, AdState, AnchoredVwapState, ObvState};
     use crate::types::Value;
     use crate::vm::SeriesBuffer;
 
@@ -337,5 +415,33 @@ mod tests {
             state.update(&high, &low, &close, &volume, 0).unwrap(),
             Value::F64(_) | Value::NA
         ));
+    }
+
+    #[test]
+    fn anchored_vwap_resets_on_anchor_and_includes_anchor_bar() {
+        let mut anchor = SeriesBuffer::new(8);
+        let mut price = SeriesBuffer::new(8);
+        let mut volume = SeriesBuffer::new(8);
+        let mut state = AnchoredVwapState::new();
+
+        let anchors = [false, false, true, false];
+        let prices = [10.0, 12.0, 20.0, 22.0];
+        let volumes = [1.0, 1.0, 2.0, 2.0];
+        let mut outputs = Vec::new();
+        for index in 0..anchors.len() {
+            anchor.push(Value::Bool(anchors[index]));
+            price.push(Value::F64(prices[index]));
+            volume.push(Value::F64(volumes[index]));
+            outputs.push(
+                state
+                    .update(&anchor, &price, &volume, 0)
+                    .expect("anchored vwap should update"),
+            );
+        }
+
+        assert_eq!(outputs[0], Value::F64(10.0));
+        assert_eq!(outputs[1], Value::F64(11.0));
+        assert_eq!(outputs[2], Value::F64(20.0));
+        assert_eq!(outputs[3], Value::F64(21.0));
     }
 }

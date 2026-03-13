@@ -53,6 +53,10 @@ Los builtins ejecutables que hoy devuelven tuplas son:
   [Matematicas, Precio y Estadistica](indicators-math-price-statistics.md)
 - `aroon(high, low[, length=14])` documentado en
   [Momentum, Volumen y Volatilidad](indicators-momentum-volume-volatility.md)
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])` documentado en
+  [Tendencia y Superposicion](indicators-trend-and-overlap.md)
+- `donchian(high, low[, length=20])` documentado en
+  [Tendencia y Superposicion](indicators-trend-and-overlap.md)
 
 Todos los resultados builtin que devuelven tuplas deben destructurarse de
 inmediato con `let (...) = ...` antes de cualquier otro uso.

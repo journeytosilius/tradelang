@@ -221,3 +221,29 @@ Reglas:
 - `linearreg_slope` devuelve la pendiente ajustada
 - `tsf` devuelve el forecast de un paso hacia adelante
 - el tipo de resultado es `series<float>`
+
+## `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])`
+
+Rules:
+
+- the first three arguments must be `series<float>`
+- omitted `atr_length` defaults to `10`
+- omitted `multiplier` defaults to `3.0`
+- if provided, `atr_length` must be an integer literal greater than or equal to `1`
+- if provided, `multiplier` must be a numeric scalar
+- `supertrend` returns a 2-tuple `(line, bullish)`
+- `line` is the active carried band and `bullish` is the persistent regime direction
+- the ATR component uses Wilder smoothing and requires prior-close history, so the result is `na` until the lookback is satisfied
+- tuple-valued outputs must be destructured before further use
+
+## `donchian(high, low[, length=20])`
+
+Rules:
+
+- the first two arguments must be `series<float>`
+- omitted `length` defaults to `20`
+- if provided, `length` must be an integer literal greater than or equal to `1`
+- `donchian` returns a 3-tuple `(upper, middle, lower)`
+- `upper` is the trailing highest high, `lower` is the trailing lowest low, and `middle` is `(upper + lower) / 2`
+- if insufficient history exists, or any required sample is `na`, the current tuple is `(na, na, na)`
+- tuple-valued outputs must be destructured before further use

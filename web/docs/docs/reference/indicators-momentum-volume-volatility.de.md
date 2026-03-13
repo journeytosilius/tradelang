@@ -166,3 +166,15 @@ Regeln:
   aktuellem `high`, aktuellem `low` und vorherigem `close`
 - wenn irgendein benoetigtes Sample `na` ist, ist das Ergebnis `na`
 - der Ergebnistyp ist `series<float>`
+
+## `anchored_vwap(anchor, price, volume)`
+
+Rules:
+
+- `anchor` must be `series<bool>`
+- `price` and `volume` must be `series<float>`
+- when the current `anchor` sample is `true`, the running VWAP resets on that same bar
+- the anchor bar is included in the new anchored accumulation window
+- if the current anchor, price, or volume sample is `na`, the current output sample is `na`
+- if cumulative anchored volume is `0`, the current output sample is `na`
+- the result type is `series<float>`

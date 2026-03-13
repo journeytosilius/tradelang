@@ -41,6 +41,8 @@ Les indicateurs a valeur tuple actuels sont :
 - `minmax(series[, length=30])`
 - `minmaxindex(series[, length=30])`
 - `aroon(high, low[, length=14])`
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])`
+- `donchian(high, low[, length=20])`
 
 Ils doivent etre immediatement destructures :
 

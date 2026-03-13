@@ -45,6 +45,7 @@ fn referenced_docs_examples_compile() {
         "examples/strategies/signal_helpers.ps",
         "examples/strategies/event_memory.ps",
         "examples/strategies/macd_tuple.ps",
+        "examples/strategies/indicator_showcase.ps",
         "examples/strategies/weekly_bias.ps",
         "examples/strategies/cross_source_spread.ps",
         "examples/strategies/exchange_backed_sources.ps",
@@ -87,6 +88,7 @@ fn single_source_docs_examples_run_with_local_feeds() {
         "examples/strategies/signal_helpers.ps",
         "examples/strategies/event_memory.ps",
         "examples/strategies/macd_tuple.ps",
+        "examples/strategies/indicator_showcase.ps",
     ];
     let minute_bars = bars(JAN_1_2024_UTC_MS, MINUTE_MS, 80, 100.0);
 

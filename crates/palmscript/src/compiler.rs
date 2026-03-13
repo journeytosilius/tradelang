@@ -3544,6 +3544,8 @@ fn analyze_helper_builtin(
                         | BuiltinId::Trima
                         | BuiltinId::Kama
                         | BuiltinId::Trix
+                        | BuiltinId::Zscore
+                        | BuiltinId::UlcerIndex
                 ) {
                     1
                 } else {
@@ -3556,6 +3558,30 @@ fn analyze_helper_builtin(
                     minimum,
                     diagnostics,
                 );
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: series_info.update_mask,
+            }
+        }
+        BuiltinKind::RollingSingleInputPercentile => {
+            let series_info = arg_info[0];
+            if !series_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if args.len() >= 2 {
+                validate_min_window_literal(callee, &args[1], immutable_values, 1, diagnostics);
+            }
+            if args.len() == 3 && !arg_info[2].ty.is_scalar_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} percentage must be a numeric scalar value"),
+                    args[2].span,
+                ));
             }
             ExprInfo {
                 ty: InferredType::Concrete(Type::SeriesF64),
@@ -3636,6 +3662,31 @@ fn analyze_helper_builtin(
             }
             ExprInfo {
                 ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask: high_info.update_mask | low_info.update_mask,
+            }
+        }
+        BuiltinKind::RollingHighLowBands => {
+            let high_info = arg_info[0];
+            let low_info = arg_info[1];
+            if !high_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !low_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if args.len() == 3 {
+                validate_min_window_literal(callee, &args[2], immutable_values, 1, diagnostics);
+            }
+            ExprInfo {
+                ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
                 update_mask: high_info.update_mask | low_info.update_mask,
             }
         }
@@ -3882,6 +3933,43 @@ fn analyze_helper_builtin(
             }
             ExprInfo {
                 ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+                update_mask,
+            }
+        }
+        BuiltinKind::RollingHighLowCloseTrendTuple => {
+            let update_mask = arg_info
+                .iter()
+                .take(3)
+                .fold(0, |mask, info| mask | info.update_mask);
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).take(3).enumerate() {
+                if !info.ty.is_series_numeric() {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires series<float> as the {} argument",
+                            match index {
+                                0 => "first",
+                                1 => "second",
+                                2 => "third",
+                                _ => unreachable!(),
+                            }
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            if args.len() >= 4 {
+                validate_min_window_literal(callee, &args[3], immutable_values, 1, diagnostics);
+            }
+            if args.len() == 5 && !arg_info[4].ty.is_scalar_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} multiplier must be a numeric scalar value"),
+                    args[4].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesBool]),
                 update_mask,
             }
         }
@@ -4390,6 +4478,38 @@ fn analyze_helper_builtin(
                 update_mask: price_info.update_mask | volume_info.update_mask,
             }
         }
+        BuiltinKind::AnchoredPriceVolume => {
+            let anchor_info = arg_info[0];
+            let price_info = arg_info[1];
+            let volume_info = arg_info[2];
+            if !matches!(anchor_info.ty, InferredType::Concrete(Type::SeriesBool)) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<bool> as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !price_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the second argument"),
+                    args[1].span,
+                ));
+            }
+            if !volume_info.ty.is_series_numeric() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires series<float> as the third argument"),
+                    args[2].span,
+                ));
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::SeriesF64),
+                update_mask: anchor_info.update_mask
+                    | price_info.update_mask
+                    | volume_info.update_mask,
+            }
+        }
         BuiltinKind::VolatilityIndicator => {
             let high_info = arg_info[0];
             let low_info = arg_info[1];
@@ -4457,7 +4577,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         BuiltinKind::IndicatorTupleSignal
         | BuiltinKind::IndicatorTupleMa
         | BuiltinKind::Bands
-        | BuiltinKind::RollingHighLowCloseBands => ExprInfo {
+        | BuiltinKind::RollingHighLowCloseBands
+        | BuiltinKind::RollingHighLowBands => ExprInfo {
             ty: InferredType::Tuple3([Type::SeriesF64, Type::SeriesF64, Type::SeriesF64]),
             update_mask: 0,
         },
@@ -4473,6 +4594,10 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::RollingSingleInputTupleMa
         | BuiltinKind::AdaptiveCycleTuple => ExprInfo {
             ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesF64]),
+            update_mask: 0,
+        },
+        BuiltinKind::RollingHighLowCloseTrendTuple => ExprInfo {
+            ty: InferredType::Tuple2([Type::SeriesF64, Type::SeriesBool]),
             update_mask: 0,
         },
         BuiltinKind::UnaryMathTransform
@@ -4491,6 +4616,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::HighestBars
         | BuiltinKind::LowestBars
         | BuiltinKind::RollingSingleInput
+        | BuiltinKind::RollingSingleInputPercentile
         | BuiltinKind::RollingSingleInputFactor
         | BuiltinKind::RollingDoubleInput
         | BuiltinKind::RollingHighLow
@@ -4501,6 +4627,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::ParabolicSar
         | BuiltinKind::ParabolicSarExt
         | BuiltinKind::VolumeIndicator
+        | BuiltinKind::AnchoredPriceVolume
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
     }
@@ -5777,15 +5904,20 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Ma
             | BuiltinId::Macd
             | BuiltinId::Obv
+            | BuiltinId::AnchoredVwap
             | BuiltinId::Trange
             | BuiltinId::Wma
             | BuiltinId::Avgdev
+            | BuiltinId::Percentile
             | BuiltinId::MaxIndex
             | BuiltinId::MinIndex
             | BuiltinId::MinMax
             | BuiltinId::MinMaxIndex
+            | BuiltinId::Donchian
             | BuiltinId::Stddev
             | BuiltinId::Var
+            | BuiltinId::Zscore
+            | BuiltinId::UlcerIndex
             | BuiltinId::LinearReg
             | BuiltinId::LinearRegAngle
             | BuiltinId::LinearRegIntercept
@@ -5803,6 +5935,7 @@ impl<'a> Compiler<'a> {
             | BuiltinId::Willr
             | BuiltinId::Aroon
             | BuiltinId::AroonOsc
+            | BuiltinId::Supertrend
             | BuiltinId::Bop
             | BuiltinId::Cci
             | BuiltinId::Nz
@@ -6114,6 +6247,8 @@ impl<'a> Compiler<'a> {
                     BuiltinId::Wma | BuiltinId::MaxIndex | BuiltinId::MinIndex => 30,
                     BuiltinId::Avgdev => 14,
                     BuiltinId::Cmo => 14,
+                    BuiltinId::Zscore => 20,
+                    BuiltinId::UlcerIndex => 14,
                     BuiltinId::Dema
                     | BuiltinId::Tema
                     | BuiltinId::Trima
@@ -6185,6 +6320,31 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(arity)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingSingleInputPercentile => {
+                let default_window = 20usize;
+                let required_history = args
+                    .get(1)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(default_window);
+                self.emit_series_ref(&args[0], required_history.max(1), expr_info, user_calls);
+                if let Some(window) = args.get(1) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                if let Some(percentage) = args.get(2) {
+                    self.emit_expr(percentage, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(50.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );
@@ -6276,6 +6436,26 @@ impl<'a> Compiler<'a> {
                     self.emit_expr(window, expr_info, user_calls);
                 } else {
                     self.emit_f64_constant(14.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::RollingHighLowBands => {
+                let required_history = args
+                    .get(2)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(20);
+                self.emit_series_ref(&args[0], required_history.max(1), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(1), expr_info, user_calls);
+                if let Some(window) = args.get(2) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(20.0, expr.span);
                 }
                 self.emit(
                     Instruction::new(OpCode::CallBuiltin)
@@ -6705,6 +6885,34 @@ impl<'a> Compiler<'a> {
                     );
                 }
             }
+            BuiltinKind::RollingHighLowCloseTrendTuple => {
+                let default_window = 10usize;
+                let required_history = args
+                    .get(3)
+                    .and_then(|expr| literal_window(expr, &self.analysis.immutable_values))
+                    .unwrap_or(default_window)
+                    + 1;
+                self.emit_series_ref(&args[0], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[1], required_history.max(2), expr_info, user_calls);
+                self.emit_series_ref(&args[2], required_history.max(2), expr_info, user_calls);
+                if let Some(window) = args.get(3) {
+                    self.emit_expr(window, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(default_window as f64, expr.span);
+                }
+                if let Some(multiplier) = args.get(4) {
+                    self.emit_expr(multiplier, expr_info, user_calls);
+                } else {
+                    self.emit_f64_constant(3.0, expr.span);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(5)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinKind::RollingSingleInputTupleMa => {
                 let time_period = args
                     .get(1)
@@ -6961,6 +7169,18 @@ impl<'a> Compiler<'a> {
                     Instruction::new(OpCode::CallBuiltin)
                         .with_a(builtin as u16)
                         .with_b(2)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
+            BuiltinKind::AnchoredPriceVolume => {
+                self.emit_series_ref(&args[0], 1, expr_info, user_calls);
+                self.emit_series_ref(&args[1], 1, expr_info, user_calls);
+                self.emit_series_ref(&args[2], 1, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(3)
                         .with_c(callsite)
                         .with_span(expr.span),
                 );

@@ -32,6 +32,8 @@ The current tuple-valued indicators are:
 - `minmax(series[, length=30])`
 - `minmaxindex(series[, length=30])`
 - `aroon(high, low[, length=14])`
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])`
+- `donchian(high, low[, length=20])`
 
 These must be destructured immediately:
 

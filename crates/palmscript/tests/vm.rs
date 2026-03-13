@@ -982,6 +982,61 @@ fn valuewhen_preserves_bool_source_type() {
 }
 
 #[test]
+fn anchored_vwap_resets_from_anchor_bar_in_language_surface() {
+    let compiled = palmscript::compile(&with_interval(
+        "let anchor = activated(close > close[1])\nplot(anchored_vwap(anchor, close, volume))",
+    ))
+    .expect("script should compile");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0, 11.0]),
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    let values = outputs.plots[0]
+        .points
+        .iter()
+        .map(|point| point.value)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        values,
+        vec![
+            Some(10.0),
+            Some(11.0),
+            Some(11.500249625561658),
+            Some(11.333333333333334),
+        ]
+    );
+}
+
+#[test]
+fn supertrend_tuple_destructures_into_line_and_direction() {
+    let compiled = palmscript::compile(&with_interval(
+        "let (line, bullish) = supertrend(high, low, close, 3, 2.0)\nexport supertrend_bullish = bullish\nplot(line)",
+    ))
+    .expect("script should compile");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[9.5, 10.5, 11.5, 12.5, 13.5, 12.2, 11.2, 10.8],
+        ),
+        VmLimits::default(),
+    )
+    .expect("script should run");
+    assert_eq!(outputs.plots[0].points.len(), 8);
+    assert!(outputs.plots[0]
+        .points
+        .iter()
+        .any(|point| point.value.is_some()));
+    assert!(outputs.exports[0]
+        .points
+        .iter()
+        .any(|point| matches!(point.value, palmscript::OutputValue::Bool(_))));
+}
+
+#[test]
 fn position_event_namespace_is_false_outside_backtests() {
     let compiled = palmscript::compile(&with_interval(
         "export entry_fill = position_event.long_entry_fill

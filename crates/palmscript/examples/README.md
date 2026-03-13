@@ -38,6 +38,7 @@ Representative files:
 - `crates/palmscript/examples/strategies/sma_cross.ps`: single-source market-mode strategy
 - `crates/palmscript/examples/strategies/weekly_bias.ps`: single-source supplemental-interval strategy
 - `crates/palmscript/examples/strategies/macd_tuple.ps`: tuple destructuring and `ma_type`
+- `crates/palmscript/examples/strategies/indicator_showcase.ps`: single-source indicator showcase covering `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
 - `crates/palmscript/examples/strategies/cross_source_spread.ps`: cross-source market-mode strategy
 - `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`: cross-exchange market-mode spread example mixing Bybit and Gate spot feeds
 - `crates/palmscript/examples/strategies/exchange_backed_sources.ps`: source-aware strategy with `use <alias> <interval>`

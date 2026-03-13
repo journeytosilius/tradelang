@@ -55,6 +55,10 @@ Die aktuell ausfuehrbaren tupelwertigen Builtins sind:
   [Mathematik, Preis und Statistik](indicators-math-price-statistics.md)
 - `aroon(high, low[, length=14])` dokumentiert unter
   [Momentum, Volumen und Volatilitat](indicators-momentum-volume-volatility.md)
+- `supertrend(high, low, close[, atr_length=10[, multiplier=3.0]])` dokumentiert unter
+  [Trend und Uberlagerung](indicators-trend-and-overlap.md)
+- `donchian(high, low[, length=20])` dokumentiert unter
+  [Trend und Uberlagerung](indicators-trend-and-overlap.md)
 
 Alle tupelwertigen Builtin-Ergebnisse muessen unmittelbar mit `let (...) = ...`
 destrukturiert werden, bevor sie weiterverwendet werden.

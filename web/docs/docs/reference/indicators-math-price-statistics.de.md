@@ -142,3 +142,41 @@ Regeln:
 - der Ergebnistyp ist `series<float>`
 - wenn nicht genug Historie vorhanden ist, ist das aktuelle Sample `na`
 - wenn das benoetigte Fenster `na` enthaelt, ist das aktuelle Sample `na`
+
+## `percentile(series[, length=20[, percentage=50.0]])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- omitted `length` defaults to `20`
+- omitted `percentage` defaults to `50.0`
+- if provided, `length` must be an integer literal greater than or equal to `1`
+- if provided, `percentage` must be a numeric scalar
+- `percentage` is clamped into the inclusive `0..100` range
+- the trailing window is sorted and sampled with linear interpolation between adjacent ranks
+- if insufficient history exists, or any required sample is `na`, the result is `na`
+- the result type is `series<float>`
+
+## `zscore(series[, length=20])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- omitted `length` defaults to `20`
+- if provided, `length` must be an integer literal greater than or equal to `1`
+- `zscore` evaluates the current sample against the trailing-window mean and population standard deviation
+- if the trailing variance is `0`, `zscore` returns `0`
+- if insufficient history exists, or any required sample is `na`, the result is `na`
+- the result type is `series<float>`
+
+## `ulcer_index(series[, length=14])`
+
+Rules:
+
+- the first argument must be `series<float>`
+- omitted `length` defaults to `14`
+- if provided, `length` must be an integer literal greater than or equal to `1`
+- `ulcer_index` measures rolling drawdown severity in percentage terms over the trailing window
+- it tracks the running peak across the window from oldest to newest, squares percentage drawdowns, averages them, and returns the square root
+- if insufficient history exists, or any required sample is `na`, the result is `na`
+- the result type is `series<float>`
