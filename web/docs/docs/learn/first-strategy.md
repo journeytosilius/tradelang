@@ -15,6 +15,7 @@ entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
 order entry long = market()
+order exit long = market()
 ```
 
 ## What This Introduces
@@ -27,7 +28,7 @@ order entry long = market()
 - `export` emits a named output series
 - `entry long = ...` emits a long-entry signal
 - `exit long = ...` emits a long-exit signal
-- `order entry long = market()` tells the backtester how to fill the entry signal
+- `order entry long = market()` and `order exit long = market()` tell execution-oriented commands exactly how to fill the entry and exit signals
 
 ## Try It In The Browser IDE
 
@@ -46,6 +47,7 @@ export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
 order entry long = market()
+order exit long = market()
 ```
 
 For the exact rules behind `spot.1w.close`, first-class `entry` / `exit` signals, indexing, and no-lookahead behavior, see:

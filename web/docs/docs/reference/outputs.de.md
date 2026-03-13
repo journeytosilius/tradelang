@@ -153,7 +153,7 @@ Regeln:
 
 - Order-Deklarationen sind nur auf Top-Level erlaubt
 - pro Signalrolle darf es hoechstens eine `order`-Deklaration geben
-- fehlende `order`-Deklarationen verwenden standardmaessig `market()`
+- ausfuehrungsorientierte CLI-Modi verlangen eine explizite `order ...`-Deklaration fuer jede `entry`- / `exit`-Signalrolle
 - numerische Order-Felder wie `price`, `trigger_price` und `expire_time_ms`
   werden von der Runtime als versteckte interne Serien ausgewertet
 - `tif.<variant>` und `trigger_ref.<variant>` sind typisierte Enum-Literale,

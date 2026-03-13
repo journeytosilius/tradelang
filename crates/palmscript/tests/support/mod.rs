@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::collections::BTreeSet;
+
 use palmscript::{
     compile, run_with_sources, Bar, CompileError, CompiledProgram, DiagnosticKind, Interval,
     Outputs, SourceFeed, SourceRuntimeConfig, VmLimits,
@@ -59,6 +61,67 @@ pub fn mirror_execution_decls(source: &str) -> String {
         }
     }
     out.join("\n")
+}
+
+pub fn mirror_execution_and_order_decls(source: &str) -> String {
+    mirror_order_decls(&mirror_execution_decls(source))
+}
+
+fn mirror_order_decls(source: &str) -> String {
+    let mut declared_orders = BTreeSet::new();
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("order ") {
+            if let Some((role, _)) = rest.split_once('=') {
+                declared_orders.insert(role.trim().to_string());
+            }
+        }
+    }
+
+    let mut missing_orders = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if let Some(role) = signal_role_for_default_order(trimmed) {
+            if declared_orders.insert(role.to_string()) {
+                missing_orders.push(role);
+            }
+        }
+    }
+
+    if missing_orders.is_empty() {
+        return source.to_string();
+    }
+
+    let mut out = source.to_string();
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    for role in missing_orders {
+        out.push_str("order ");
+        out.push_str(role);
+        out.push_str(" = market()\n");
+    }
+    out
+}
+
+fn signal_role_for_default_order(trimmed: &str) -> Option<&'static str> {
+    match () {
+        _ if trimmed.starts_with("entry1 long =") => Some("entry1 long"),
+        _ if trimmed.starts_with("entry2 long =") => Some("entry2 long"),
+        _ if trimmed.starts_with("entry3 long =") => Some("entry3 long"),
+        _ if trimmed.starts_with("entry long =") => Some("entry long"),
+        _ if trimmed.starts_with("exit long =") => Some("exit long"),
+        _ if trimmed.starts_with("entry1 short =") => Some("entry1 short"),
+        _ if trimmed.starts_with("entry2 short =") => Some("entry2 short"),
+        _ if trimmed.starts_with("entry3 short =") => Some("entry3 short"),
+        _ if trimmed.starts_with("entry short =") => Some("entry short"),
+        _ if trimmed.starts_with("exit short =") => Some("exit short"),
+        _ if trimmed.starts_with("trigger long_entry =") => Some("entry long"),
+        _ if trimmed.starts_with("trigger long_exit =") => Some("exit long"),
+        _ if trimmed.starts_with("trigger short_entry =") => Some("entry short"),
+        _ if trimmed.starts_with("trigger short_exit =") => Some("exit short"),
+        _ => None,
+    }
 }
 
 pub fn with_single_source_interval(source: &str) -> String {

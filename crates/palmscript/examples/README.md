@@ -57,6 +57,11 @@ declare those execution aliases explicitly. If a script declares exactly one
 execution aliases, pass `--execution-source <alias>` or repeat that flag for
 portfolio mode.
 
+Those execution-oriented commands also require explicit `order ...`
+declarations for each declared `entry` / `exit` signal role. The checked-in
+backtest and paper examples now declare those orders explicitly instead of
+depending on synthesized default orders.
+
 The same checked-in strategies can also be queued into the local paper daemon with `run paper`:
 
 ```bash

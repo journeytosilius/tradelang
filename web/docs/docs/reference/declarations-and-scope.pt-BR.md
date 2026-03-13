@@ -197,7 +197,7 @@ Regras:
 - no maximo uma declaracao `order` e permitida por role de sinal
 - no maximo uma declaracao e permitida por role em estagio
 - se um role de sinal nao tiver declaracao `order` explicita, o backtester usa
-  implicitamente `market()`
+  exige uma declaracao explicita `order ...`
 - `size entry ...` e `size target ...` exigem uma declaracao correspondente
   `order ...` em estagio ou `target ...` anexado para o mesmo role
 - `risk_pct(...)` e valido apenas em declaracoes de tamanho de entrada em

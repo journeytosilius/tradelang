@@ -67,6 +67,9 @@ exit short = true
 
 order entry1 long = market()
 order entry2 long = market()
+order exit long = market()
+order entry short = market()
+order exit short = market()
 size entry1 long = 0.7
 size entry2 long = 0.5
 protect long = stop_market(chandelier_long, trigger_ref.mark)

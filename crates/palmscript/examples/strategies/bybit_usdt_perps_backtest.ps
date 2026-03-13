@@ -7,4 +7,7 @@ use bb 1h
 trigger long_entry = bb.close > bb.close[1] and bb.close > bb.1h.close
 trigger long_exit = bb.close < bb.close[1]
 
+order entry long = market()
+order exit long = market()
+
 plot(bb.close)

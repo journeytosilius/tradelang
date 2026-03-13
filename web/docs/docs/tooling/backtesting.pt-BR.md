@@ -588,7 +588,7 @@ Preferred v1 surface:
 - `target long = ...`
 - `target short = ...`
 
-Optional execution templates:
+Explicit execution templates for execution-oriented modes:
 
 - `order entry long = market()`
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`

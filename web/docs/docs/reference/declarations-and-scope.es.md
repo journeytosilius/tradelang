@@ -201,7 +201,7 @@ Reglas:
 - se permite como maximo una declaracion `order` por rol de senal
 - se permite como maximo una declaracion por rol escalonado
 - si un rol de senal no tiene una declaracion `order` explicita, el backtester
-  usa una orden implicita `market()`
+  requiere una declaracion explicita `order ...`
 - `size entry ...` y `size target ...` requieren una declaracion escalonada
   `order ...` o `target ...` adjunta correspondiente para el mismo rol
 - `risk_pct(...)` solo es valido en declaraciones de tamano de entrada

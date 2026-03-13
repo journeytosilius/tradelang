@@ -131,7 +131,7 @@ order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)
 
 - `order` 宣言はトップレベル専用
 - シグナルロールごとに `order` 宣言は最大一つ
-- `order` 宣言がなければ `market()` が既定値
+- 実行系 CLI モードでは、宣言した各 `entry` / `exit` シグナルロールごとに明示的な `order ...` 宣言が必要
 - `price`, `trigger_price`, `expire_time_ms` などの数値 order フィールドは、ランタイムで隠れた内部 series として評価される
 - `tif.<variant>` と `trigger_ref.<variant>` は、コンパイル時に型検査される typed enum literal
 - venue 固有の互換性検査は、実行 `source` に基づいてバックテスト開始時に実行される

@@ -652,6 +652,10 @@ pub enum BacktestError {
     Runtime(#[from] RuntimeError),
     #[error("backtest requires at least one declared `execution` target")]
     MissingExecutionDeclarations,
+    #[error(
+        "missing explicit order declaration for `{role}`; execution-oriented modes require explicit `order ...` declarations"
+    )]
+    MissingOrderDeclaration { role: String },
     #[error("execution source `{alias}` is not declared in the compiled program")]
     UnknownExecutionSource { alias: String },
     #[error("missing base feed for execution source `{alias}`")]

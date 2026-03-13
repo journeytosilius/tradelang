@@ -204,7 +204,7 @@ Regles :
 - une seule declaration `order` est autorisee par role de signal
 - une seule declaration est autorisee par role echelonne
 - si un role de signal n'a pas de declaration `order` explicite, le backtester
-  utilise implicitement `market()`
+  exige une declaration explicite `order ...`
 - `size entry ...` et `size target ...` exigent chacun une declaration
   `order ...` echelonnee ou `target ...` attachee correspondante pour le meme
   role

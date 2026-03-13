@@ -7,4 +7,7 @@ use gt 4h
 trigger long_entry = gt.close > gt.close[1] and gt.close > gt.4h.close
 trigger long_exit = gt.close < gt.close[1]
 
+order entry long = market()
+order exit long = market()
+
 plot(gt.close)

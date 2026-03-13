@@ -583,7 +583,7 @@ Preferred v1 surface:
 - `target long = ...`
 - `target short = ...`
 
-Optional execution templates:
+Explicit execution templates for execution-oriented modes:
 
 - `order entry long = market()`
 - `order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)`
@@ -603,6 +603,11 @@ Attached position-aware exits:
 - `target long = take_profit_market(position.entry_price + 4, trigger_ref.last)`
 - `size target1 long = 0.5`
 - `position.*` is valid only inside `protect` and `target`
+
+Execution-oriented modes no longer synthesize implicit `market()` orders for
+plain `entry` / `exit` signals. Declare `order entry ...` and `order exit ...`
+explicitly for every signal role you want backtest, walk-forward, optimize, or
+paper execution to use.
 
 Actual-fill anchor helpers:
 

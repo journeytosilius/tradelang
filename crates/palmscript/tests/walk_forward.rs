@@ -10,7 +10,7 @@ use palmscript::{
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
 
 fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
-    compile_script(&support::mirror_execution_decls(source))
+    compile_script(&support::mirror_execution_and_order_decls(source))
 }
 
 #[test]
@@ -127,7 +127,7 @@ exit short = true";
 
 #[test]
 fn walk_forward_sweep_ranks_input_candidates() {
-    let source = support::mirror_execution_decls(
+    let source = support::mirror_execution_and_order_decls(
         "interval 1m
 source spot = binance.spot(\"BTCUSDT\")
 input threshold = 0

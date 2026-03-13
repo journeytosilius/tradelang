@@ -13,7 +13,7 @@ use palmscript::{
 mod support;
 
 fn compile(source: &str) -> Result<CompiledProgram, CompileError> {
-    compile_script(&support::mirror_execution_decls(source))
+    compile_script(&support::mirror_execution_and_order_decls(source))
 }
 
 fn bar(time: i64, open: f64, close: f64) -> Bar {
@@ -210,6 +210,32 @@ fn rejects_when_required_backtest_signals_are_missing() {
     let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
         .expect_err("expected missing signals error");
     assert!(matches!(err, BacktestError::MissingSignalRoles { .. }));
+}
+
+#[test]
+fn rejects_when_signal_roles_are_missing_explicit_order_declarations() {
+    let compiled = compile_script(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0)],
+        }],
+    };
+    let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect_err("expected missing order declaration error");
+    assert!(matches!(err, BacktestError::MissingOrderDeclaration { .. }));
 }
 
 #[test]

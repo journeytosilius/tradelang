@@ -29,6 +29,9 @@ exit long = spread < spread[1]
 exit short = false
 
 order entry long = market()
+order exit long = market()
+order entry short = market()
+order exit short = market()
 size entry long = entry_size
 
 export spread_value = spread

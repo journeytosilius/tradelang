@@ -132,7 +132,7 @@ Rules:
 
 - order declarations are top-level only
 - there may be at most one `order` declaration per signal role
-- missing `order` declarations default to `market()`
+- execution-oriented CLI modes require an explicit `order ...` declaration for every declared `entry` / `exit` signal role
 - `execution` declarations are top-level venue bindings that keep execution routing separate from market-data `source` declarations
 - order constructors support the legacy positional form and the named-argument form
 - named order arguments may not be mixed with positional arguments in the same constructor call
@@ -147,8 +147,11 @@ Rules:
 PalmScript also exposes first-class attached exits that keep the discretionary `exit` signal free:
 
 ```palmscript
+execution exec = binance.spot("BTCUSDT")
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
+order entry long = market(venue = exec)
+order exit long = market(venue = exec)
 protect long = stop_market(position.entry_price - 2 * atr(spot.high, spot.low, spot.close, 14), trigger_ref.last)
 target long = take_profit_market(
     highest_since(position_event.long_entry_fill, spot.high) + 4,

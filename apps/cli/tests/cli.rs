@@ -28,9 +28,64 @@ fn mirror_execution_decls(contents: &str) -> String {
     out.join("\n")
 }
 
+fn mirror_execution_and_order_decls(contents: &str) -> String {
+    let with_execution = mirror_execution_decls(contents);
+    let mut declared_orders = std::collections::BTreeSet::new();
+    for line in with_execution.lines() {
+        let trimmed = line.trim_start();
+        if let Some(rest) = trimmed.strip_prefix("order ") {
+            if let Some((role, _)) = rest.split_once('=') {
+                declared_orders.insert(role.trim().to_string());
+            }
+        }
+    }
+
+    let mut missing_orders = Vec::new();
+    for line in with_execution.lines() {
+        let trimmed = line.trim_start();
+        let role = match () {
+            _ if trimmed.starts_with("entry1 long =") => Some("entry1 long"),
+            _ if trimmed.starts_with("entry2 long =") => Some("entry2 long"),
+            _ if trimmed.starts_with("entry3 long =") => Some("entry3 long"),
+            _ if trimmed.starts_with("entry long =") => Some("entry long"),
+            _ if trimmed.starts_with("exit long =") => Some("exit long"),
+            _ if trimmed.starts_with("entry1 short =") => Some("entry1 short"),
+            _ if trimmed.starts_with("entry2 short =") => Some("entry2 short"),
+            _ if trimmed.starts_with("entry3 short =") => Some("entry3 short"),
+            _ if trimmed.starts_with("entry short =") => Some("entry short"),
+            _ if trimmed.starts_with("exit short =") => Some("exit short"),
+            _ if trimmed.starts_with("trigger long_entry =") => Some("entry long"),
+            _ if trimmed.starts_with("trigger long_exit =") => Some("exit long"),
+            _ if trimmed.starts_with("trigger short_entry =") => Some("entry short"),
+            _ if trimmed.starts_with("trigger short_exit =") => Some("exit short"),
+            _ => None,
+        };
+        if let Some(role) = role {
+            if declared_orders.insert(role.to_string()) {
+                missing_orders.push(role);
+            }
+        }
+    }
+
+    if missing_orders.is_empty() {
+        return with_execution;
+    }
+
+    let mut out = with_execution;
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    for role in missing_orders {
+        out.push_str("order ");
+        out.push_str(role);
+        out.push_str(" = market()\n");
+    }
+    out
+}
+
 fn write_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
     let path = dir.join(name);
-    fs::write(&path, mirror_execution_decls(contents)).expect("writes test file");
+    fs::write(&path, mirror_execution_and_order_decls(contents)).expect("writes test file");
     path
 }
 
@@ -1149,6 +1204,43 @@ fn run_backtest_requires_execution_source_for_multi_source_scripts() {
     cmd.assert().failure().stderr(predicate::str::contains(
         "this mode requires --execution-source when the script declares multiple `execution` targets",
     ));
+}
+
+#[test]
+fn run_backtest_requires_explicit_order_declarations() {
+    let dir = tempdir().expect("tempdir");
+    let script = dir.path().join("backtest.ps");
+    fs::write(
+        &script,
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = false
+exit short = false
+plot(spot.close)",
+    )
+    .expect("writes test file");
+
+    let mut cmd = palmscript_cmd();
+    cmd.args([
+        "run",
+        "backtest",
+        script.to_str().unwrap(),
+        "--from",
+        "1704067200000",
+        "--to",
+        "1704067440000",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains(
+            "missing explicit order declaration for `",
+        ))
+        .stderr(predicate::str::contains(
+            "execution-oriented modes require explicit `order ...` declarations",
+        ));
 }
 
 #[test]

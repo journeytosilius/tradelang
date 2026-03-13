@@ -64,6 +64,11 @@ alias, the CLI selects it automatically. If the script declares multiple
 execution aliases, pass `--execution-source <alias>` to choose one or repeat
 that flag to activate portfolio mode.
 
+Execution-oriented commands also require explicit `order ...` declarations for
+each declared `entry` / `exit` signal role. PalmScript no longer synthesizes
+implicit `market()` orders for backtest, walk-forward, optimize, or paper
+execution.
+
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 
 Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates the same compiled strategy logic for each selected execution alias under one shared equity ledger, and top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.

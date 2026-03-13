@@ -153,7 +153,7 @@ Reglas:
 
 - las declaraciones `order` son solo de nivel superior
 - puede haber como maximo una declaracion `order` por rol de senal
-- las declaraciones `order` faltantes usan `market()` por defecto
+- los modos CLI orientados a ejecucion requieren una declaracion explicita `order ...` para cada rol de senal `entry` / `exit`
 - campos numericos de orden como `price`, `trigger_price` y `expire_time_ms` se
   evalúan en runtime como series internas ocultas
 - `tif.<variant>` y `trigger_ref.<variant>` son literales enum tipados

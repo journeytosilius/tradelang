@@ -21,6 +21,7 @@ entry long = above(fast, slow) and above(spot.close, breakout_high)
 exit long = below(spot.close, fast)
 
 order entry long = market()
+order exit long = market()
 size entry long = risk_pct(risk_budget_pct, initial_long_stop)
 protect long = stop_market(protect_base, trigger_ref.last)
 target long = take_profit_market(position.entry_price + 3 * atr_4h, trigger_ref.last)

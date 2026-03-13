@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
-use crate::backtest::{BacktestError, OrderKind};
+use crate::backtest::BacktestError;
 use crate::bytecode::{
     LastExitFieldDecl, OrderDecl, OutputKind, PortfolioControlDecl, PortfolioGroupDecl,
     PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, SignalRole,
@@ -97,12 +97,14 @@ pub(crate) fn prepare_backtest_for_aliases(
     executions: &[(String, SourceTemplate)],
 ) -> Result<PreparedBacktest, BacktestError> {
     let signal_roles = resolve_signals(compiled)?;
-    let mut order_templates = explicit_orders_by_role(compiled);
+    let order_templates = explicit_orders_by_role(compiled);
 
     for role in signal_roles.values().copied() {
-        order_templates
-            .entry(role)
-            .or_insert_with(|| default_market_order(role));
+        if !order_templates.contains_key(&role) {
+            return Err(BacktestError::MissingOrderDeclaration {
+                role: role.canonical_name().to_string(),
+            });
+        }
     }
 
     for (execution_alias, template) in executions {
@@ -240,23 +242,6 @@ fn resolve_signals(
         });
     }
     Ok(roles)
-}
-
-fn default_market_order(role: SignalRole) -> OrderDecl {
-    OrderDecl {
-        role,
-        execution_alias: None,
-        kind: OrderKind::Market,
-        tif: None,
-        post_only: false,
-        trigger_ref: None,
-        size_mode: None,
-        price_field_id: None,
-        trigger_price_field_id: None,
-        expire_time_field_id: None,
-        size_field_id: None,
-        risk_stop_field_id: None,
-    }
 }
 
 fn legacy_signal_role(name: &str) -> Option<SignalRole> {

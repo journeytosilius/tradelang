@@ -199,7 +199,7 @@ Regeln:
 - pro Signalrolle ist hoechstens eine `order`-Deklaration erlaubt
 - pro gestufter Rolle ist hoechstens eine Deklaration erlaubt
 - wenn eine Signalrolle keine explizite `order`-Deklaration hat, verwendet der
-  Backtester implizit `market()`
+  verlangt der Backtester eine explizite `order ...`-Deklaration
 - `size entry ...` und `size target ...` erfordern jeweils eine passende
   gestufte `order ...`- oder angehaengte `target ...`-Deklaration fuer dieselbe
   Rolle

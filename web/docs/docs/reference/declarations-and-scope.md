@@ -228,7 +228,7 @@ Rules:
 - `size target1..3 long|short` optionally size a staged `target` fill as a fraction of the open position
 - at most one `order` declaration is allowed per signal role
 - at most one declaration is allowed per staged role
-- if a signal role has no explicit `order` declaration, the backtester uses an implicit `market()` order
+- execution-oriented CLI modes require an explicit `order ...` declaration for each declared `entry` / `exit` signal role
 - `size entry ...` and `size target ...` each require a matching staged `order ...` or staged attached `target ...` declaration for the same role
 - `risk_pct(...)` is only valid on staged entry size declarations in v1
 - staged attached exits are sequential: only the next target stage and the current protect stage are active at once

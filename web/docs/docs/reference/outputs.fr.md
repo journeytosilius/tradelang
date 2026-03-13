@@ -155,7 +155,7 @@ Regles :
 
 - les declarations `order` sont reservees au top-level
 - il peut y avoir au plus une declaration `order` par role de signal
-- en l'absence de declaration `order`, `market()` est utilise par defaut
+- les modes CLI orientes execution exigent une declaration explicite `order ...` pour chaque role de signal `entry` / `exit`
 - les champs d'ordre numeriques comme `price`, `trigger_price` et
   `expire_time_ms` sont evalues par le runtime comme des series internes
   cachees

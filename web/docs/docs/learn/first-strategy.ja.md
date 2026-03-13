@@ -16,6 +16,7 @@ entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
 order entry long = market()
+order exit long = market()
 ```
 
 ## ここで導入されるもの
@@ -28,7 +29,7 @@ order entry long = market()
 - `export` は名前付き出力シリーズを公開します
 - `entry long = ...` はロングエントリーシグナルを出します
 - `exit long = ...` はロングイグジットシグナルを出します
-- `order entry long = market()` はバックテスターにエントリーシグナルの約定方法を伝えます
+- `order entry long = market()` と `order exit long = market()` は実行系コマンドにエントリーとイグジットの約定方法を伝えます
 
 ## ブラウザ IDE で試す
 
@@ -50,6 +51,7 @@ export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
 order entry long = market()
+order exit long = market()
 ```
 
 `spot.1w.close`、第一級の `entry` / `exit` シグナル、インデックス、

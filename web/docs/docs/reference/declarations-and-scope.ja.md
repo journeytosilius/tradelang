@@ -175,7 +175,7 @@ size target1 long = 0.5
 - `size target1..3 long|short` は、段階付き `target` fill を open position の比率として任意指定できる
 - 各シグナルロールにつき `order` 宣言は最大一つ
 - 各段階ロールにつき宣言は最大一つ
-- あるシグナルロールに明示的な `order` 宣言がなければ、バックテスタは暗黙の `market()` order を使う
+- 実行系 CLI モードでは、各 `entry` / `exit` シグナルロールごとに明示的な `order ...` 宣言が必要
 - `size entry ...` と `size target ...` は、それぞれ同じロールに対応する段階付き `order ...` または段階付き attached `target ...` 宣言を必要とする
 - v1 では `risk_pct(...)` は段階付き entry size 宣言でのみ有効
 - 段階付き attached exit は順次的であり、一度に有効なのは次の target 段階と現在の protect 段階だけ
