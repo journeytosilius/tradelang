@@ -140,6 +140,10 @@ pub struct WalkForwardRunArgs {
     pub test_bars: usize,
     #[arg(long)]
     pub step_bars: Option<usize>,
+    #[arg(long)]
+    pub min_trades: Option<usize>,
+    #[arg(long)]
+    pub max_zero_trade_segments: Option<usize>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]
     pub format: OutputFormat,
     #[arg(long, value_enum, default_value_t = DiagnosticsDetailArg::Summary)]
@@ -230,6 +234,16 @@ pub struct OptimizeRunArgs {
     pub holdout_bars: Option<usize>,
     #[arg(long, default_value_t = false, conflicts_with = "holdout_bars")]
     pub no_holdout: bool,
+    #[arg(long)]
+    pub min_trades: Option<usize>,
+    #[arg(long)]
+    pub min_holdout_trades: Option<usize>,
+    #[arg(long, default_value_t = false)]
+    pub require_positive_holdout: bool,
+    #[arg(long)]
+    pub max_zero_trade_segments: Option<usize>,
+    #[arg(long)]
+    pub min_holdout_pass_rate: Option<f64>,
     #[arg(long = "param")]
     pub params: Vec<String>,
     #[arg(long, value_enum, default_value_t = OptimizeRunnerArg::WalkForward)]

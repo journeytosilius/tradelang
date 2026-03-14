@@ -14,7 +14,8 @@ use crate::backtest::{
     average, execution_bars, run_backtest_with_sources_internal, BacktestCaptureSummary,
     BacktestConfig, BacktestDiagnosticSummary, BacktestError, BaselineComparisonSummary,
     CohortDiagnostics, DiagnosticsDetailMode, DrawdownDiagnostics, ExportDiagnosticSummary,
-    ImprovementHint, OverfittingRiskSummary,
+    ImprovementHint, OverfittingRiskSummary, ValidationConstraintConfig, ValidationConstraintKind,
+    ValidationConstraintSummary, ValidationConstraintViolation,
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
@@ -28,6 +29,8 @@ pub struct WalkForwardConfig {
     pub train_bars: usize,
     pub test_bars: usize,
     pub step_bars: usize,
+    #[serde(default)]
+    pub constraints: ValidationConstraintConfig,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -118,6 +121,8 @@ pub struct WalkForwardResult {
     pub segments: Vec<WalkForwardSegmentResult>,
     pub stitched_equity_curve: Vec<WalkForwardEquityPoint>,
     pub stitched_summary: WalkForwardStitchedSummary,
+    #[serde(default)]
+    pub constraints: ValidationConstraintSummary,
     #[serde(default)]
     pub overfitting_risk: OverfittingRiskSummary,
 }
@@ -232,6 +237,7 @@ pub fn run_walk_forward_with_sources(
     );
     apply_segment_drift_flags(&mut segments, &stitched_summary);
 
+    let constraints = build_walk_forward_constraint_summary(&config.constraints, &segments);
     let overfitting_risk = build_walk_forward_overfitting_risk(&segments, &stitched_summary);
 
     Ok(WalkForwardResult {
@@ -239,6 +245,7 @@ pub fn run_walk_forward_with_sources(
         segments,
         stitched_equity_curve,
         stitched_summary,
+        constraints,
         overfitting_risk,
     })
 }
@@ -266,7 +273,47 @@ fn validate_walk_forward_config(config: &WalkForwardConfig) -> Result<(), Backte
             value: config.step_bars,
         });
     }
+    if config.constraints.min_trade_count == Some(0) {
+        return Err(BacktestError::InvalidWalkForwardMinTradeCount { value: 0 });
+    }
     crate::backtest::validate_config(&config.backtest)
+}
+
+fn build_walk_forward_constraint_summary(
+    constraints: &ValidationConstraintConfig,
+    segments: &[WalkForwardSegmentResult],
+) -> ValidationConstraintSummary {
+    let mut violations = Vec::new();
+    let trade_count = segments
+        .iter()
+        .map(|segment| segment.out_of_sample.trade_count)
+        .sum::<usize>();
+    if let Some(required) = constraints.min_trade_count {
+        if trade_count < required {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinTradeCount,
+                actual: Some(trade_count as f64),
+                required: Some(required as f64),
+            });
+        }
+    }
+    if let Some(required) = constraints.max_zero_trade_segments {
+        let zero_trade_segments = segments
+            .iter()
+            .filter(|segment| segment.out_of_sample.trade_count == 0)
+            .count();
+        if zero_trade_segments > required {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MaxZeroTradeSegments,
+                actual: Some(zero_trade_segments as f64),
+                required: Some(required as f64),
+            });
+        }
+    }
+    ValidationConstraintSummary {
+        passed: violations.is_empty(),
+        violations,
+    }
 }
 
 fn build_segment_ranges(

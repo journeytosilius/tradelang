@@ -46,11 +46,12 @@ pub use backtest::{
     OrderEndReason, OrderRecord, OrderStatus, OverfittingRiskLevel, OverfittingRiskReason,
     OverfittingRiskReasonKind, OverfittingRiskSummary, PerpBacktestConfig, PerpBacktestContext,
     PerpBacktestMetadata, PerpMarginMode, PositionSnapshot, SideDiagnosticSummary, Trade,
-    TradeDiagnostic, TradeExitClassification, WalkForwardConfig, WalkForwardEquityPoint,
-    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardSegmentResult,
-    WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary, WalkForwardSweepConfig,
-    WalkForwardSweepError, WalkForwardSweepObjective, WalkForwardSweepResult,
-    WalkForwardWindowSummary,
+    TradeDiagnostic, TradeExitClassification, ValidationConstraintConfig, ValidationConstraintKind,
+    ValidationConstraintSummary, ValidationConstraintViolation, WalkForwardConfig,
+    WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
+    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    WalkForwardSweepResult, WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};

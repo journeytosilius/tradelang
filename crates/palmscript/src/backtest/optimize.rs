@@ -13,9 +13,10 @@ use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
     bridge, run_backtest_with_sources_internal, run_walk_forward_with_sources,
     BacktestCaptureSummary, BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode,
-    ImprovementHint, ImprovementHintKind, OverfittingRiskSummary, WalkForwardConfig,
-    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary,
-    WalkForwardWindowSummary,
+    ImprovementHint, ImprovementHintKind, OverfittingRiskSummary, ValidationConstraintConfig,
+    ValidationConstraintKind, ValidationConstraintSummary, ValidationConstraintViolation,
+    WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -176,6 +177,8 @@ pub struct OptimizeConfig {
     pub workers: usize,
     pub top_n: usize,
     pub base_input_overrides: BTreeMap<String, f64>,
+    #[serde(default)]
+    pub constraints: ValidationConstraintConfig,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -191,6 +194,8 @@ pub struct OptimizeHoldoutResult {
     pub summary: WalkForwardWindowSummary,
     pub diagnostics: WalkForwardSegmentDiagnostics,
     pub drift: HoldoutDriftSummary,
+    #[serde(default)]
+    pub constraints: ValidationConstraintSummary,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -225,6 +230,8 @@ pub struct OptimizeCandidateSummary {
     pub input_overrides: BTreeMap<String, f64>,
     pub objective_score: f64,
     pub summary: OptimizeEvaluationSummary,
+    #[serde(default)]
+    pub constraints: ValidationConstraintSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -295,6 +302,8 @@ pub struct OptimizePreset {
     pub diagnostics_detail: DiagnosticsDetailMode,
     #[serde(default)]
     pub holdout: Option<OptimizeHoldoutConfig>,
+    #[serde(default)]
+    pub constraints: ValidationConstraintConfig,
     pub parameter_space: Vec<OptimizeParamSpace>,
     pub best_input_overrides: BTreeMap<String, f64>,
     pub top_candidates: Vec<OptimizeCandidateSummary>,
@@ -312,6 +321,8 @@ pub struct OptimizeResult {
     #[serde(default)]
     pub robustness: OptimizationRobustnessSummary,
     #[serde(default)]
+    pub constraints: ValidationConstraintSummary,
+    #[serde(default)]
     pub hints: Vec<ImprovementHint>,
     #[serde(default)]
     pub overfitting_risk: OverfittingRiskSummary,
@@ -324,6 +335,8 @@ pub struct HoldoutCandidateEvaluation {
     pub passed: bool,
     pub summary: WalkForwardWindowSummary,
     pub drift: HoldoutDriftSummary,
+    #[serde(default)]
+    pub constraints: ValidationConstraintSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -347,6 +360,7 @@ pub struct OptimizationRobustnessSummary {
     pub holdout_return_min: Option<f64>,
     pub holdout_return_max: Option<f64>,
     pub holdout_return_mean: Option<f64>,
+    pub holdout_pass_rate: Option<f64>,
     pub evaluations: Vec<HoldoutCandidateEvaluation>,
     pub parameter_stability: Vec<ParameterRobustnessSummary>,
 }
@@ -369,6 +383,14 @@ pub enum OptimizeError {
     InvalidTopN { value: usize },
     #[error("optimize holdout `bars` must be > 0, found {value}")]
     InvalidHoldoutBars { value: usize },
+    #[error("optimize `min_trade_count` must be > 0 when set, found {value}")]
+    InvalidMinTradeCount { value: usize },
+    #[error("optimize `min_holdout_trade_count` must be > 0 when set, found {value}")]
+    InvalidMinHoldoutTradeCount { value: usize },
+    #[error("optimize `min_holdout_pass_rate` must be finite and in [0, 1], found {value}")]
+    InvalidMinHoldoutPassRate { value: f64 },
+    #[error("optimize constraint `{name}` requires holdout validation to be enabled")]
+    HoldoutConstraintRequiresHoldout { name: String },
     #[error("optimize trial count {count} exceeds max supported {limit}")]
     TooManyTrials { count: usize, limit: usize },
     #[error("optimize holdout requires fewer reserved bars than the available execution bars; requested {requested}, available {available}")]
@@ -575,6 +597,7 @@ pub fn run_optimize_with_source_resume(
                     summary: evaluation.summary.clone(),
                     diagnostics: detailed_holdout.diagnostics,
                     drift: evaluation.drift.clone(),
+                    constraints: evaluation.constraints.clone(),
                 })
             } else {
                 None
@@ -592,6 +615,12 @@ pub fn run_optimize_with_source_resume(
         }
         None => (None, OptimizationRobustnessSummary::default()),
     };
+    let constraints = build_optimize_constraint_summary(
+        &config.constraints,
+        &best_candidate,
+        holdout.as_ref(),
+        &robustness,
+    );
     let hints = build_optimize_hints(&best_candidate, holdout.as_ref(), &robustness);
     let overfitting_risk =
         build_optimize_overfitting_risk(&config, &best_candidate, holdout.as_ref(), &robustness);
@@ -603,6 +632,7 @@ pub fn run_optimize_with_source_resume(
         top_candidates,
         holdout,
         robustness,
+        constraints,
         hints,
         overfitting_risk,
     })
@@ -942,6 +972,33 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
             });
         }
     }
+    if config.constraints.min_trade_count == Some(0) {
+        return Err(OptimizeError::InvalidMinTradeCount { value: 0 });
+    }
+    if config.constraints.min_holdout_trade_count == Some(0) {
+        return Err(OptimizeError::InvalidMinHoldoutTradeCount { value: 0 });
+    }
+    if let Some(rate) = config.constraints.min_holdout_pass_rate {
+        if !rate.is_finite() || !(0.0..=1.0).contains(&rate) {
+            return Err(OptimizeError::InvalidMinHoldoutPassRate { value: rate });
+        }
+    }
+    if config.holdout.is_none()
+        && (config.constraints.min_holdout_trade_count.is_some()
+            || config.constraints.require_positive_holdout
+            || config.constraints.min_holdout_pass_rate.is_some())
+    {
+        let name = if config.constraints.min_holdout_trade_count.is_some() {
+            "min_holdout_trade_count"
+        } else if config.constraints.require_positive_holdout {
+            "require_positive_holdout"
+        } else {
+            "min_holdout_pass_rate"
+        };
+        return Err(OptimizeError::HoldoutConstraintRequiresHoldout {
+            name: name.to_string(),
+        });
+    }
     if matches!(config.runner, OptimizeRunner::WalkForward) && config.walk_forward.is_none() {
         return Err(OptimizeError::MissingParams);
     }
@@ -984,6 +1041,109 @@ fn validate_optimize_config(config: &OptimizeConfig) -> Result<(), OptimizeError
     }
 
     Ok(())
+}
+
+fn build_candidate_constraint_summary(
+    constraints: &ValidationConstraintConfig,
+    summary: &OptimizeEvaluationSummary,
+) -> ValidationConstraintSummary {
+    let mut violations = Vec::new();
+    let trade_count = candidate_trade_count(summary);
+    if let Some(required) = constraints.min_trade_count {
+        if trade_count < required {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinTradeCount,
+                actual: Some(trade_count as f64),
+                required: Some(required as f64),
+            });
+        }
+    }
+    if let (Some(required), Some(actual)) = (
+        constraints.max_zero_trade_segments,
+        candidate_zero_trade_segment_count(summary),
+    ) {
+        if actual > required {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MaxZeroTradeSegments,
+                actual: Some(actual as f64),
+                required: Some(required as f64),
+            });
+        }
+    }
+    ValidationConstraintSummary {
+        passed: violations.is_empty(),
+        violations,
+    }
+}
+
+fn build_holdout_constraint_summary(
+    constraints: &ValidationConstraintConfig,
+    summary: &WalkForwardWindowSummary,
+) -> ValidationConstraintSummary {
+    let mut violations = Vec::new();
+    if let Some(required) = constraints.min_holdout_trade_count {
+        if summary.trade_count < required {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinHoldoutTradeCount,
+                actual: Some(summary.trade_count as f64),
+                required: Some(required as f64),
+            });
+        }
+    }
+    if constraints.require_positive_holdout && summary.total_return <= 0.0 {
+        violations.push(ValidationConstraintViolation {
+            kind: ValidationConstraintKind::RequirePositiveHoldout,
+            actual: Some(summary.total_return),
+            required: Some(0.0),
+        });
+    }
+    ValidationConstraintSummary {
+        passed: violations.is_empty(),
+        violations,
+    }
+}
+
+fn build_optimize_constraint_summary(
+    constraints: &ValidationConstraintConfig,
+    best_candidate: &OptimizeCandidateSummary,
+    holdout: Option<&OptimizeHoldoutResult>,
+    robustness: &OptimizationRobustnessSummary,
+) -> ValidationConstraintSummary {
+    let mut violations = best_candidate.constraints.violations.clone();
+    if let Some(holdout) = holdout {
+        violations.extend(holdout.constraints.violations.iter().cloned());
+    }
+    if let Some(required_rate) = constraints.min_holdout_pass_rate {
+        let actual_rate = robustness.holdout_pass_rate.unwrap_or(0.0);
+        if actual_rate + crate::backtest::EPSILON < required_rate {
+            violations.push(ValidationConstraintViolation {
+                kind: ValidationConstraintKind::MinHoldoutPassRate,
+                actual: Some(actual_rate),
+                required: Some(required_rate),
+            });
+        }
+    }
+    ValidationConstraintSummary {
+        passed: violations.is_empty(),
+        violations,
+    }
+}
+
+fn candidate_trade_count(summary: &OptimizeEvaluationSummary) -> usize {
+    match summary {
+        OptimizeEvaluationSummary::WalkForward { trade_count, .. } => *trade_count,
+        OptimizeEvaluationSummary::Backtest { summary, .. } => summary.trade_count,
+    }
+}
+
+fn candidate_zero_trade_segment_count(summary: &OptimizeEvaluationSummary) -> Option<usize> {
+    match summary {
+        OptimizeEvaluationSummary::WalkForward {
+            zero_trade_segment_count,
+            ..
+        } => Some(*zero_trade_segment_count),
+        OptimizeEvaluationSummary::Backtest { .. } => None,
+    }
 }
 
 fn prepare_holdout_plan(
@@ -1087,6 +1247,7 @@ fn evaluate_holdout(
         result.equity_curve.len(),
         summary.total_return,
     );
+    let constraints = build_holdout_constraint_summary(&config.constraints, &summary);
     Ok(OptimizeHoldoutResult {
         bars: plan.bars,
         from: plan.from,
@@ -1094,6 +1255,7 @@ fn evaluate_holdout(
         summary,
         diagnostics,
         drift: HoldoutDriftSummary::default(),
+        constraints,
     })
 }
 
@@ -1116,14 +1278,17 @@ fn evaluate_top_candidate_holdouts(
             &candidate.input_overrides,
         )?;
         let drift = build_holdout_drift(&candidate.summary, &holdout.summary);
+        let constraints = holdout.constraints.clone();
         evaluations.push(HoldoutCandidateEvaluation {
             trial_id: candidate.trial_id,
             input_overrides: candidate.input_overrides.clone(),
-            passed: holdout.summary.trade_count > 0
+            passed: constraints.passed
+                && holdout.summary.trade_count > 0
                 && holdout.summary.total_return > 0.0
                 && holdout.summary.win_rate >= 0.5,
             summary: holdout.summary,
             drift,
+            constraints,
         });
     }
     Ok(evaluations)
@@ -1173,6 +1338,11 @@ fn build_robustness_summary(
         .iter()
         .map(|evaluation| evaluation.summary.total_return)
         .collect::<Vec<_>>();
+    let holdout_pass_rate = if evaluations.is_empty() {
+        None
+    } else {
+        Some(holdout_pass_count as f64 / evaluations.len() as f64)
+    };
     OptimizationRobustnessSummary {
         top_candidate_count: top_candidates.len(),
         holdout_evaluated_count: evaluations.len(),
@@ -1190,6 +1360,7 @@ fn build_robustness_summary(
         } else {
             Some(holdout_returns.iter().sum::<f64>() / holdout_returns.len() as f64)
         },
+        holdout_pass_rate,
         parameter_stability: build_parameter_stability(
             &config.params,
             all_candidates,
@@ -1353,12 +1524,14 @@ fn evaluate_candidate(
             }
         }
     };
+    let constraints = build_candidate_constraint_summary(&config.constraints, &summary);
     let objective_score = score_candidate(config.objective, &summary);
     Ok(OptimizeCandidateSummary {
         trial_id,
         input_overrides: overrides,
         objective_score,
         summary,
+        constraints,
     })
 }
 
@@ -1715,9 +1888,15 @@ fn compare_candidates(
     right: &OptimizeCandidateSummary,
 ) -> Ordering {
     right
-        .objective_score
-        .partial_cmp(&left.objective_score)
-        .unwrap_or(Ordering::Equal)
+        .constraints
+        .passed
+        .cmp(&left.constraints.passed)
+        .then_with(|| {
+            right
+                .objective_score
+                .partial_cmp(&left.objective_score)
+                .unwrap_or(Ordering::Equal)
+        })
         .then_with(|| {
             candidate_ending_equity(&right.summary)
                 .partial_cmp(&candidate_ending_equity(&left.summary))
@@ -1758,4 +1937,58 @@ fn closest_choice(values: &[f64], target: f64) -> f64 {
                 .unwrap_or(Ordering::Equal)
         })
         .unwrap_or(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn backtest_candidate(
+        trial_id: usize,
+        objective_score: f64,
+        ending_equity: f64,
+        constraints_passed: bool,
+    ) -> OptimizeCandidateSummary {
+        OptimizeCandidateSummary {
+            trial_id,
+            input_overrides: BTreeMap::new(),
+            objective_score,
+            summary: OptimizeEvaluationSummary::Backtest {
+                summary: BacktestSummary {
+                    starting_equity: 1_000.0,
+                    ending_equity,
+                    realized_pnl: ending_equity - 1_000.0,
+                    unrealized_pnl: 0.0,
+                    total_return: (ending_equity - 1_000.0) / 1_000.0,
+                    sharpe_ratio: None,
+                    trade_count: 1,
+                    winning_trade_count: usize::from(ending_equity >= 1_000.0),
+                    losing_trade_count: usize::from(ending_equity < 1_000.0),
+                    win_rate: if ending_equity >= 1_000.0 { 1.0 } else { 0.0 },
+                    max_drawdown: 0.0,
+                    max_gross_exposure: 0.0,
+                    max_net_exposure: 0.0,
+                    peak_open_position_count: 1,
+                },
+                capture_summary: BacktestCaptureSummary::default(),
+            },
+            constraints: ValidationConstraintSummary {
+                passed: constraints_passed,
+                violations: Vec::new(),
+            },
+        }
+    }
+
+    #[test]
+    fn compare_candidates_prefers_constraint_passing_entries() {
+        let mut candidates = [
+            backtest_candidate(1, 10.0, 1_100.0, false),
+            backtest_candidate(2, 5.0, 1_050.0, true),
+        ];
+
+        candidates.sort_by(compare_candidates);
+
+        assert_eq!(candidates[0].trial_id, 2);
+        assert_eq!(candidates[1].trial_id, 1);
+    }
 }

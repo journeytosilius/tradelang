@@ -442,6 +442,49 @@ pub struct DatePerturbationDiagnostics {
     pub outperformed_execution_asset_count: usize,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ValidationConstraintConfig {
+    pub min_trade_count: Option<usize>,
+    pub min_holdout_trade_count: Option<usize>,
+    #[serde(default)]
+    pub require_positive_holdout: bool,
+    pub max_zero_trade_segments: Option<usize>,
+    pub min_holdout_pass_rate: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ValidationConstraintKind {
+    MinTradeCount,
+    MinHoldoutTradeCount,
+    RequirePositiveHoldout,
+    MaxZeroTradeSegments,
+    MinHoldoutPassRate,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ValidationConstraintViolation {
+    pub kind: ValidationConstraintKind,
+    pub actual: Option<f64>,
+    pub required: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ValidationConstraintSummary {
+    pub passed: bool,
+    #[serde(default)]
+    pub violations: Vec<ValidationConstraintViolation>,
+}
+
+impl Default for ValidationConstraintSummary {
+    fn default() -> Self {
+        Self {
+            passed: true,
+            violations: Vec::new(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OpportunityEventKind {
     ExportActivated,
@@ -823,6 +866,8 @@ pub enum BacktestError {
     InvalidWalkForwardTestBars { value: usize },
     #[error("walk-forward step_bars must be > 0, found {value}")]
     InvalidWalkForwardStepBars { value: usize },
+    #[error("walk-forward min_trade_count must be > 0 when set, found {value}")]
+    InvalidWalkForwardMinTradeCount { value: usize },
     #[error("walk-forward requires at least {required} execution bars, but only {available} were available")]
     InsufficientWalkForwardBars { available: usize, required: usize },
 }

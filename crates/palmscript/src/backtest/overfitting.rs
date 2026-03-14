@@ -547,6 +547,7 @@ mod tests {
                 train_bars: 10,
                 test_bars: 5,
                 step_bars: 5,
+                constraints: crate::backtest::ValidationConstraintConfig::default(),
             }),
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: Some(OptimizeHoldoutConfig { bars: 5 }),
@@ -563,6 +564,7 @@ mod tests {
             workers: 1,
             top_n: 5,
             base_input_overrides: BTreeMap::new(),
+            constraints: crate::backtest::ValidationConstraintConfig::default(),
         };
         let risk = build_optimize_overfitting_risk(
             &config,
@@ -593,6 +595,7 @@ mod tests {
                     losing_trade_count: 2,
                     win_rate: 0.66,
                 },
+                constraints: crate::backtest::ValidationConstraintSummary::default(),
             },
             Some(&OptimizeHoldoutResult {
                 bars: 5,
@@ -617,12 +620,14 @@ mod tests {
                     win_rate_delta: -0.66,
                     max_drawdown_delta: 10.0,
                 },
+                constraints: crate::backtest::ValidationConstraintSummary::default(),
             }),
             &OptimizationRobustnessSummary {
                 top_candidate_count: 5,
                 holdout_evaluated_count: 5,
                 holdout_pass_count: 1,
                 holdout_fail_count: 4,
+                holdout_pass_rate: Some(0.2),
                 best_candidate_holdout_rank: None,
                 holdout_return_min: Some(-0.10),
                 holdout_return_max: Some(0.02),

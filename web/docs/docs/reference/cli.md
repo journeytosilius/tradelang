@@ -84,6 +84,7 @@ Additional diagnostics flag:
 ```bash
 palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
   --train-bars <N> --test-bars <N> [--step-bars <N>] \
+  [--min-trades <N>] [--max-zero-trade-segments <N>] \
   [--execution-source <alias>]... \
   [--initial-capital <N>] \
   --maker-fee-bps <N> --taker-fee-bps <N> \
@@ -96,6 +97,8 @@ palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
 Additional diagnostics flag:
 
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
+- `--min-trades <N>`: require at least `N` out-of-sample trades across stitched walk-forward segments
+- `--max-zero-trade-segments <N>`: fail validation when more than `N` out-of-sample segments produce zero trades
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
@@ -116,6 +119,11 @@ palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--step-bars <N>] \
   [--holdout-bars <N>] \
   [--no-holdout] \
+  [--min-trades <N>] \
+  [--min-holdout-trades <N>] \
+  [--require-positive-holdout] \
+  [--max-zero-trade-segments <N>] \
+  [--min-holdout-pass-rate <0..1>] \
   [--param int:name=low:high[:step]] \
   [--param float:name=low:high[:step]] \
   [--param choice:name=v1,v2,v3] \
@@ -147,6 +155,11 @@ Arguments and flags:
 - `--step-bars <N>`: segment advance size; defaults to `test-bars`
 - `--holdout-bars <N>`: reserve the final `N` execution bars as a final untouched holdout
 - `--no-holdout`: explicitly disable the default untouched holdout reservation
+- `--min-trades <N>`: require at least `N` stitched candidate trades before a candidate can pass validation
+- `--min-holdout-trades <N>`: require at least `N` trades in the final untouched holdout summary
+- `--require-positive-holdout`: require the final untouched holdout return to stay above `0`
+- `--max-zero-trade-segments <N>`: reject walk-forward candidates that produce more than `N` zero-trade OOS segments
+- `--min-holdout-pass-rate <0..1>`: require at least that fraction of evaluated top-candidate holdout reruns to pass
 - `--param ...`: search-space declaration; repeat for multiple tuned inputs, with optional integer/float step support
 - `--objective ...`: ranking objective; defaults to `robust-return`
 - `--trials <N>`: total bounded trial budget
@@ -169,7 +182,7 @@ Default safety behavior:
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
-- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
+- the final JSON/text result also carries validation-constraint summaries, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
 
 ## `palmscript run paper`
 

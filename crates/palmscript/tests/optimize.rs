@@ -7,7 +7,8 @@ use palmscript::{
     BacktestConfig, DiagnosticsDetailMode, Interval, OptimizeCandidateSummary, OptimizeConfig,
     OptimizeError, OptimizeEvaluationSummary, OptimizeHoldoutConfig, OptimizeObjective,
     OptimizeParamSpace, OptimizeProgressEvent, OptimizeProgressListener, OptimizeProgressState,
-    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, VmLimits, WalkForwardConfig,
+    OptimizeResumeState, OptimizeRunner, OptimizeScheduledBatch, ValidationConstraintConfig,
+    VmLimits, WalkForwardConfig,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -75,6 +76,7 @@ fn backtest_optimize_config() -> OptimizeConfig {
         workers: 2,
         top_n: 2,
         base_input_overrides: BTreeMap::new(),
+        constraints: ValidationConstraintConfig::default(),
     }
 }
 
@@ -143,6 +145,7 @@ fn optimize_walk_forward_ranks_candidates() {
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,
+                constraints: ValidationConstraintConfig::default(),
             }),
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: None,
@@ -157,6 +160,7 @@ fn optimize_walk_forward_ranks_candidates() {
             workers: 2,
             top_n: 3,
             base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect("optimize should succeed");
@@ -181,6 +185,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
             train_bars: 2,
             test_bars: 2,
             step_bars: 2,
+            constraints: ValidationConstraintConfig::default(),
         }),
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         holdout: None,
@@ -203,6 +208,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
         workers: 1,
         top_n: 4,
         base_input_overrides: BTreeMap::new(),
+        constraints: ValidationConstraintConfig::default(),
     };
     let err = run_optimize_with_source(
         &optimize_source(),
@@ -270,6 +276,7 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
             workers: 2,
             top_n: 2,
             base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect("optimize should succeed");
@@ -327,6 +334,7 @@ order exit short = market(venue = spot)",
             workers: 2,
             top_n: 2,
             base_input_overrides: BTreeMap::from([(String::from("offset"), 0.0)]),
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect("optimize with stepped param spaces should succeed");
@@ -371,6 +379,7 @@ fn optimize_rejects_missing_walk_forward_config() {
             workers: 1,
             top_n: 1,
             base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect_err("missing walk-forward config should fail");
@@ -392,6 +401,7 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,
+                constraints: ValidationConstraintConfig::default(),
             }),
             diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
             holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
@@ -406,6 +416,7 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
             workers: 2,
             top_n: 3,
             base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect("optimize with holdout should succeed");
@@ -511,4 +522,175 @@ fn optimize_resume_from_completed_candidates_matches_fresh_run() {
 
     assert_eq!(resumed.best_candidate, baseline.best_candidate);
     assert_eq!(resumed.top_candidates, baseline.top_candidates);
+}
+
+#[test]
+fn optimize_prefers_constraint_passing_candidate_over_better_scored_failure() {
+    let source = support::mirror_execution_decls(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+input threshold = 0
+entry long = spot.close > spot.close[1] + threshold
+entry short = false
+exit long = spot.close < spot.close[1]
+exit short = true
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)",
+    );
+    let runtime = source_runtime_config(
+        Interval::Min1,
+        flat_bars(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 10.0, 11.0, 10.0, 11.0, 10.0, 11.0],
+        ),
+        vec![],
+    );
+    let result = run_optimize_with_source(
+        &source,
+        runtime,
+        VmLimits::default(),
+        OptimizeConfig {
+            runner: OptimizeRunner::Backtest,
+            backtest: optimize_backtest_config(),
+            walk_forward: None,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            holdout: None,
+            params: vec![OptimizeParamSpace::Choice {
+                name: "threshold".to_string(),
+                values: vec![0.0, 100.0],
+            }],
+            objective: OptimizeObjective::EndingEquity,
+            trials: 8,
+            startup_trials: 8,
+            seed: 3,
+            workers: 2,
+            top_n: 2,
+            base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig {
+                min_trade_count: Some(1),
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+            },
+        },
+    )
+    .expect("optimize should succeed");
+
+    assert_eq!(
+        result.best_candidate.input_overrides.get("threshold"),
+        Some(&0.0)
+    );
+    assert!(result.best_candidate.constraints.passed);
+    assert!(result
+        .top_candidates
+        .iter()
+        .all(|candidate| candidate.constraints.passed
+            || candidate.trial_id != result.best_candidate.trial_id));
+}
+
+#[test]
+fn optimize_reports_holdout_constraint_failures() {
+    let result = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            runner: OptimizeRunner::WalkForward,
+            backtest: optimize_backtest_config(),
+            walk_forward: Some(WalkForwardConfig {
+                backtest: optimize_backtest_config(),
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                train_bars: 2,
+                test_bars: 2,
+                step_bars: 2,
+                constraints: ValidationConstraintConfig::default(),
+            }),
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
+            params: vec![OptimizeParamSpace::Choice {
+                name: "threshold".to_string(),
+                values: vec![0.0, 100.0],
+            }],
+            objective: OptimizeObjective::TotalReturn,
+            trials: 8,
+            startup_trials: 8,
+            seed: 7,
+            workers: 2,
+            top_n: 3,
+            base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_holdout_trade_count: Some(2),
+                require_positive_holdout: true,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: Some(1.0),
+            },
+        },
+    )
+    .expect("optimize with holdout constraints should succeed");
+
+    assert!(result.holdout.is_some());
+    assert!(!result.constraints.passed);
+    assert!(result
+        .constraints
+        .violations
+        .iter()
+        .any(|violation| violation.kind
+            == palmscript::ValidationConstraintKind::MinHoldoutTradeCount));
+}
+
+#[test]
+fn optimize_rejects_holdout_constraints_without_holdout_window() {
+    let err = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_holdout_trade_count: Some(1),
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect_err("holdout constraints without holdout should fail");
+
+    assert!(matches!(
+        err,
+        OptimizeError::HoldoutConstraintRequiresHoldout { ref name }
+            if name == "min_holdout_trade_count"
+    ));
+}
+
+#[test]
+fn optimize_rejects_invalid_min_holdout_pass_rate() {
+    let err = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            holdout: Some(OptimizeHoldoutConfig { bars: 2 }),
+            constraints: ValidationConstraintConfig {
+                min_trade_count: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: Some(1.5),
+            },
+            ..backtest_optimize_config()
+        },
+    )
+    .expect_err("invalid min holdout pass rate should fail");
+
+    assert!(matches!(
+        err,
+        OptimizeError::InvalidMinHoldoutPassRate { value } if value == 1.5
+    ));
 }

@@ -7,7 +7,8 @@ use palmscript::{
     BacktestResult, CompiledProgram, ExecutionDaemonStatus, ExportDiagnosticSummary, Fill,
     OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeResult, OrderRecord, OrderStatus,
     OutputKind, OutputValue, Outputs, PaperSessionExport, PaperSessionLogEvent,
-    PaperSessionManifest, PaperSessionSnapshot, PositionSide, PositionSnapshot, SignalRole, Value,
+    PaperSessionManifest, PaperSessionSnapshot, PositionSide, PositionSnapshot, SignalRole,
+    ValidationConstraintConfig, ValidationConstraintKind, ValidationConstraintSummary, Value,
     VenueRiskSnapshot, WalkForwardResult, WalkForwardSweepResult,
 };
 
@@ -841,6 +842,9 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         "execution_source={}",
         result.config.backtest.execution_source_alias
     );
+    if has_configured_constraints(&result.config.constraints) || !result.constraints.passed {
+        render_constraint_summary_text(&mut out, "Validation Constraints", &result.constraints);
+    }
     render_overfitting_risk_text(&mut out, "Overfitting Risk", &result.overfitting_risk);
 
     if !result.segments.is_empty() {
@@ -989,6 +993,9 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
     if let Some(path) = preset_out {
         let _ = writeln!(out, "preset_out={}", path.display());
     }
+    if has_configured_constraints(&result.config.constraints) || !result.constraints.passed {
+        render_constraint_summary_text(&mut out, "Validation Constraints", &result.constraints);
+    }
 
     out.push_str("Best Candidate\n");
     let _ = writeln!(out, "trial_id={}", result.best_candidate.trial_id);
@@ -1081,6 +1088,9 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
             "opportunity_cost_return_pct={:.2}",
             holdout.diagnostics.capture_summary.opportunity_cost_return * 100.0
         );
+        if !holdout.constraints.passed || !holdout.constraints.violations.is_empty() {
+            render_constraint_summary_text(&mut out, "Holdout Constraints", &holdout.constraints);
+        }
         out.push_str("Holdout Drift\n");
         let _ = writeln!(
             out,
@@ -1126,6 +1136,11 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "na".to_string())
         );
+        let _ = writeln!(
+            out,
+            "holdout_pass_rate={}",
+            fmt_opt_f64(result.robustness.holdout_pass_rate)
+        );
     }
 
     render_overfitting_risk_text(&mut out, "Overfitting Risk", &result.overfitting_risk);
@@ -1152,6 +1167,14 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
         "overrides={}",
         fmt_input_overrides(&candidate.input_overrides)
     );
+    let _ = writeln!(out, "constraints_passed={}", candidate.constraints.passed);
+    if !candidate.constraints.violations.is_empty() {
+        let _ = writeln!(
+            out,
+            "constraint_violations={}",
+            fmt_constraint_violations(&candidate.constraints)
+        );
+    }
     match &candidate.summary {
         OptimizeEvaluationSummary::WalkForward {
             stitched_summary,
@@ -1198,6 +1221,53 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
                 capture_summary.execution_asset_return * 100.0
             );
         }
+    }
+}
+
+fn has_configured_constraints(config: &ValidationConstraintConfig) -> bool {
+    config.min_trade_count.is_some()
+        || config.min_holdout_trade_count.is_some()
+        || config.require_positive_holdout
+        || config.max_zero_trade_segments.is_some()
+        || config.min_holdout_pass_rate.is_some()
+}
+
+fn render_constraint_summary_text(
+    out: &mut String,
+    heading: &str,
+    summary: &ValidationConstraintSummary,
+) {
+    out.push_str(heading);
+    out.push('\n');
+    let _ = writeln!(out, "passed={}", summary.passed);
+    if !summary.violations.is_empty() {
+        let _ = writeln!(out, "violations={}", fmt_constraint_violations(summary));
+    }
+}
+
+fn fmt_constraint_violations(summary: &ValidationConstraintSummary) -> String {
+    summary
+        .violations
+        .iter()
+        .map(|violation| {
+            format!(
+                "{}(actual={},required={})",
+                fmt_constraint_kind(violation.kind),
+                fmt_opt_f64(violation.actual),
+                fmt_opt_f64(violation.required)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn fmt_constraint_kind(kind: ValidationConstraintKind) -> &'static str {
+    match kind {
+        ValidationConstraintKind::MinTradeCount => "min_trade_count",
+        ValidationConstraintKind::MinHoldoutTradeCount => "min_holdout_trade_count",
+        ValidationConstraintKind::RequirePositiveHoldout => "require_positive_holdout",
+        ValidationConstraintKind::MaxZeroTradeSegments => "max_zero_trade_segments",
+        ValidationConstraintKind::MinHoldoutPassRate => "min_holdout_pass_rate",
     }
 }
 

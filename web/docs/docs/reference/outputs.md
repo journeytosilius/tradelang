@@ -254,8 +254,10 @@ When `--diagnostics full-trace` is enabled, PalmScript also records one `per_bar
 Walk-forward and optimize outputs reuse the same diagnostics model and add:
 
 - per-segment drift flags
+- typed validation-constraint summaries for stitched walk-forward results
 - final holdout drift summaries
 - optimizer robustness summaries across the top ranked candidates
+- optimize holdout pass rate plus best-candidate and holdout constraint summaries
 - parameter stability, baseline-comparison, overfitting-risk, and Sharpe summaries
 
 ## Output Time And Bar Index

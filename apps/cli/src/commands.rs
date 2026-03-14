@@ -14,8 +14,8 @@ use palmscript::{
     ExecutionDaemonConfig, ExecutionError, FeeSchedule, InputSweepDefinition, OptimizeConfig,
     OptimizeError, OptimizeHoldoutConfig, OptimizeObjective, OptimizeParamSpace, OptimizePreset,
     OptimizeResult, OptimizeRunner, PaperSessionConfig, PerpBacktestConfig, PerpMarginMode,
-    RuntimeError, SourceTemplate, SubmitPaperSession, VmLimits, WalkForwardConfig,
-    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
+    RuntimeError, SourceTemplate, SubmitPaperSession, ValidationConstraintConfig, VmLimits,
+    WalkForwardConfig, WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
 };
 use sha2::{Digest, Sha256};
 
@@ -238,6 +238,13 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
             train_bars: args.train_bars,
             test_bars: args.test_bars,
             step_bars: args.step_bars.unwrap_or(args.test_bars),
+            constraints: ValidationConstraintConfig {
+                min_trade_count: args.min_trades,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: args.max_zero_trade_segments,
+                min_holdout_pass_rate: None,
+            },
         },
     )
     .map_err(|err| format!("walk-forward mode error: {err}"))?;
@@ -311,6 +318,7 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
                 train_bars: args.train_bars,
                 test_bars: args.test_bars,
                 step_bars: args.step_bars.unwrap_or(args.test_bars),
+                constraints: ValidationConstraintConfig::default(),
             },
             inputs: parse_input_sweep_definitions(&args.sets)?,
             objective: map_sweep_objective(args.objective),
@@ -398,6 +406,13 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
                 args.test_bars
                     .expect("validated optimize walk-forward test_bars")
             }),
+            constraints: ValidationConstraintConfig {
+                min_trade_count: args.min_trades,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: args.max_zero_trade_segments,
+                min_holdout_pass_rate: None,
+            },
         }),
         OptimizeRunner::Backtest => None,
     };
@@ -427,6 +442,13 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             workers,
             top_n: args.top,
             base_input_overrides: preset_overrides,
+            constraints: ValidationConstraintConfig {
+                min_trade_count: args.min_trades,
+                min_holdout_trade_count: args.min_holdout_trades,
+                require_positive_holdout: args.require_positive_holdout,
+                max_zero_trade_segments: args.max_zero_trade_segments,
+                min_holdout_pass_rate: args.min_holdout_pass_rate,
+            },
         },
     )
     .map_err(format_optimize_error)?;
@@ -1165,6 +1187,7 @@ pub(crate) fn write_optimize_preset(
         walk_forward: result.config.walk_forward.clone(),
         diagnostics_detail: result.config.diagnostics_detail,
         holdout: result.config.holdout.clone(),
+        constraints: result.config.constraints.clone(),
         parameter_space: result.config.params.clone(),
         best_input_overrides: result.best_candidate.input_overrides.clone(),
         top_candidates: result.top_candidates.clone(),

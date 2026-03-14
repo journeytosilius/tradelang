@@ -3,8 +3,8 @@ mod support;
 use palmscript::{
     compile as compile_script, run_walk_forward_sweep_with_source, run_walk_forward_with_sources,
     BacktestConfig, BacktestError, CompileError, CompiledProgram, DiagnosticsDetailMode,
-    InputSweepDefinition, Interval, VmLimits, WalkForwardConfig, WalkForwardSweepConfig,
-    WalkForwardSweepObjective,
+    InputSweepDefinition, Interval, ValidationConstraintConfig, VmLimits, WalkForwardConfig,
+    WalkForwardSweepConfig, WalkForwardSweepObjective,
 };
 
 use crate::support::{flat_bars, source_runtime_config, JAN_1_2024_UTC_MS, MINUTE_MS};
@@ -60,6 +60,7 @@ plot(spot.close)";
             train_bars: 2,
             test_bars: 2,
             step_bars: 2,
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect("walk-forward should succeed");
@@ -142,6 +143,7 @@ order exit short = market(venue = spot)";
             train_bars: 0,
             test_bars: 2,
             step_bars: 2,
+            constraints: ValidationConstraintConfig::default(),
         },
     )
     .expect_err("zero train_bars should fail");
@@ -198,6 +200,7 @@ order exit short = market(venue = spot)",
                 train_bars: 2,
                 test_bars: 2,
                 step_bars: 2,
+                constraints: ValidationConstraintConfig::default(),
             },
             inputs: vec![InputSweepDefinition {
                 name: "threshold".to_string(),
@@ -220,4 +223,65 @@ order exit short = market(venue = spot)",
         result.top_candidates[0].stitched_summary.total_return
             >= result.top_candidates[1].stitched_summary.total_return
     );
+}
+
+#[test]
+fn walk_forward_reports_constraint_failures() {
+    let source = "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+entry long = false
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)";
+    let compiled = compile(source).expect("script compiles");
+    let runtime = source_runtime_config(
+        Interval::Min1,
+        flat_bars(
+            JAN_1_2024_UTC_MS,
+            MINUTE_MS,
+            &[10.0, 11.0, 12.0, 11.0, 12.0, 13.0, 12.0, 13.0],
+        ),
+        vec![],
+    );
+
+    let result = run_walk_forward_with_sources(
+        &compiled,
+        runtime,
+        VmLimits::default(),
+        WalkForwardConfig {
+            backtest: BacktestConfig {
+                execution_source_alias: "spot".to_string(),
+                portfolio_execution_aliases: Vec::new(),
+                activation_time_ms: None,
+                initial_capital: 1_000.0,
+                maker_fee_bps: 0.0,
+                taker_fee_bps: 0.0,
+                execution_fee_schedules: std::collections::BTreeMap::new(),
+                slippage_bps: 0.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                perp: None,
+                perp_context: None,
+                portfolio_perp_contexts: std::collections::BTreeMap::new(),
+            },
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            train_bars: 2,
+            test_bars: 2,
+            step_bars: 2,
+            constraints: ValidationConstraintConfig {
+                min_trade_count: Some(1),
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: Some(0),
+                min_holdout_pass_rate: None,
+            },
+        },
+    )
+    .expect("walk-forward should succeed");
+
+    assert!(!result.constraints.passed);
+    assert_eq!(result.constraints.violations.len(), 2);
 }

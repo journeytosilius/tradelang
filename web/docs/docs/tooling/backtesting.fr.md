@@ -122,7 +122,9 @@ palmscript run walk-forward strategy.ps \
   --taker-fee-bps 5 \
   --train-bars 252 \
   --test-bars 63 \
-  --step-bars 63
+  --step-bars 63 \
+  --min-trades 30 \
+  --max-zero-trade-segments 1
 ```
 
 V1 notes:
@@ -130,6 +132,7 @@ V1 notes:
 - walk-forward uses the same deterministic order/fill engine as ordinary backtests
 - each segment uses the leading `train-bars` as in-sample context and reports the trailing `test-bars` as out-of-sample
 - `step-bars` controls how far each segment advances
+- `--min-trades` and `--max-zero-trade-segments` let you reject stitched results that are too sparse or too inactive
 - v1 does not optimize parameters automatically; it evaluates the fixed script and inputs you passed in
 
 Run a bounded walk-forward sweep:
@@ -168,6 +171,11 @@ palmscript run optimize strategy.ps \
   --train-bars 252 \
   --test-bars 63 \
   --step-bars 63 \
+  --min-trades 30 \
+  --min-holdout-trades 10 \
+  --require-positive-holdout \
+  --max-zero-trade-segments 1 \
+  --min-holdout-pass-rate 0.5 \
   --objective robust-return \
   --trials 50 \
   --top 5 \
@@ -182,12 +190,13 @@ V1 optimizer notes:
 - scripts can declare search metadata directly with `optimize(int, ...)`, `optimize(float, ...)`, or `optimize(choice, ...)` on numeric `input`s
 - walk-forward is the default runner; `--runner backtest` is optional
 - by default, walk-forward optimize reserves a final untouched holdout window equal to `test-bars`; use `--holdout-bars <N>` to change it or `--no-holdout` to disable it explicitly
+- `--min-trades`, `--min-holdout-trades`, `--require-positive-holdout`, `--max-zero-trade-segments`, and `--min-holdout-pass-rate` let you reject fragile candidates before they can rank as survivors
 - the search is seeded and deterministic for the same script, seed, and search space
 - `--workers` only controls bounded parallel evaluation
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
-- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
+- the final optimize result now also reports validation-constraint summaries, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 
@@ -272,6 +281,7 @@ Backtest, walk-forward, and optimize results now expose richer machine-readable 
 - baseline comparisons against flat cash and execution-asset buy-and-hold, plus bounded date-perturbation reruns on top-level backtests
 - source alignment diagnostics that show degraded bars and synthetic supplemental updates
 - deterministic overfitting-risk summaries and improvement hints such as `too_few_trades`, `holdout_collapse`, and `signal_quality_weak`
+- typed validation-constraint summaries for walk-forward and optimize runs, including best-candidate, holdout, and top-level aggregate constraint status
 - optional per-bar decision traces when `--diagnostics full-trace` is enabled
 
 ## Declarative Risk Controls
