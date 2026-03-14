@@ -12,12 +12,14 @@ definidas nos capitulos de referencia posteriores.
 program                ::= separator* item* EOF
 item                   ::= interval_decl
                          | source_decl
+                         | execution_decl
                          | use_decl
                          | function_decl
                          | stmt
 
 interval_decl          ::= "interval" interval
 source_decl            ::= "source" ident "=" source_template "(" string_literal ")"
+execution_decl         ::= "execution" ident "=" source_template "(" string_literal ")"
 source_template        ::= ident "." ident
 use_decl               ::= "use" interval
                          | "use" ident interval
@@ -37,6 +39,7 @@ stmt                   ::= let_stmt
                          | risk_control_stmt
                          | signal_stmt
                          | attached_exit_stmt
+                         | order_template_stmt
                          | order_stmt
                          | if_stmt
                          | expr_stmt
@@ -54,9 +57,11 @@ signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
+order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
 signal_side            ::= "long" | "short"
-order_spec             ::= "market" "(" ")"
+order_spec             ::= ident
+                         | "market" "(" ")"
                          | "limit" "(" expr "," expr "," expr ")"
                          | "stop_market" "(" expr "," expr ")"
                          | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"

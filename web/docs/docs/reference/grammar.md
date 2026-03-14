@@ -39,6 +39,7 @@ stmt                   ::= let_stmt
                          | portfolio_group_stmt
                          | signal_stmt
                          | attached_exit_stmt
+                         | order_template_stmt
                          | order_stmt
                          | if_stmt
                          | expr_stmt
@@ -66,9 +67,11 @@ signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
+order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
 signal_side            ::= "long" | "short"
-order_spec             ::= "market" "(" order_args? ")"
+order_spec             ::= ident
+                         | "market" "(" order_args? ")"
                          | "limit" "(" order_args ")"
                          | "stop_market" "(" order_args ")"
                          | "stop_limit" "(" order_args ")"
@@ -153,7 +156,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `execution`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `execution`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order_template`, `order`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`

@@ -224,6 +224,7 @@ struct Analysis {
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
     resolved_order_field_slots: HashMap<NodeId, ResolvedOrderFieldSlots>,
+    resolved_order_specs: HashMap<NodeId, OrderSpec>,
     order_size_decls: HashMap<CompiledSignalRole, ResolvedOrderSizeDecl>,
     immutable_slots: HashMap<NodeId, u16>,
     immutable_bindings: HashMap<String, ExprInfo>,
@@ -262,6 +263,11 @@ struct ResolvedOrderSizeDecl {
     risk_stop_field_id: Option<u16>,
 }
 
+#[derive(Clone)]
+struct CollectedOrderTemplate {
+    spec: OrderSpec,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct AnalysisSnapshot {
     pub(crate) expr_info: HashMap<NodeId, ExprInfo>,
@@ -285,6 +291,7 @@ struct Analyzer<'a> {
     analysis: Analysis,
     functions_by_name: HashMap<String, &'a FunctionDecl>,
     functions_by_id: HashMap<NodeId, &'a FunctionDecl>,
+    order_templates: HashMap<String, CollectedOrderTemplate>,
     active_specializations: HashSet<FunctionSpecializationKey>,
     active_attached_role: Option<CompiledSignalRole>,
 }
@@ -297,12 +304,14 @@ impl<'a> Analyzer<'a> {
             analysis: Analysis::default(),
             functions_by_name: HashMap::new(),
             functions_by_id: HashMap::new(),
+            order_templates: HashMap::new(),
             active_specializations: HashSet::new(),
             active_attached_role: None,
         };
 
         analyzer.validate_strategy_intervals(ast);
         analyzer.collect_functions(ast);
+        analyzer.collect_order_templates(ast);
         analyzer.collect_source_series(ast);
         analyzer.collect_immutable_bindings(ast);
         analyzer.validate_function_bodies();
@@ -315,6 +324,7 @@ impl<'a> Analyzer<'a> {
             self.analyze_stmt(stmt);
         }
         let mut declared_signal_spans = HashMap::new();
+        let mut declared_order_roles = HashSet::new();
         let mut first_executable_span = None;
         for stmt in &ast.statements {
             match &stmt.kind {
@@ -324,7 +334,11 @@ impl<'a> Analyzer<'a> {
                         .entry(compiled_signal_role(*role))
                         .or_insert(stmt.span);
                 }
-                StmtKind::Order { .. } | StmtKind::OrderSize { .. } => {
+                StmtKind::Order { role, .. } => {
+                    first_executable_span.get_or_insert(stmt.span);
+                    declared_order_roles.insert(compiled_signal_role(*role));
+                }
+                StmtKind::OrderSize { .. } => {
                     first_executable_span.get_or_insert(stmt.span);
                 }
                 _ => {}
@@ -340,7 +354,7 @@ impl<'a> Analyzer<'a> {
                 ));
             }
             for (role, span) in declared_signal_spans {
-                if self.analysis.orders.iter().any(|order| order.role == role) {
+                if declared_order_roles.contains(&role) {
                     continue;
                 }
                 self.diagnostics.push(Diagnostic::new(
@@ -354,7 +368,7 @@ impl<'a> Analyzer<'a> {
             }
         }
         for role in self.analysis.order_size_decls.keys().copied() {
-            if self.analysis.orders.iter().any(|order| order.role == role) {
+            if declared_order_roles.contains(&role) {
                 continue;
             }
             self.diagnostics.push(Diagnostic::new(
@@ -370,6 +384,33 @@ impl<'a> Analyzer<'a> {
             Ok(self.analysis)
         } else {
             Err(CompileError::new(self.diagnostics))
+        }
+    }
+
+    fn collect_order_templates(&mut self, ast: &'a Ast) {
+        for stmt in &ast.statements {
+            let StmtKind::OrderTemplate {
+                name,
+                name_span,
+                spec,
+            } = &stmt.kind
+            else {
+                continue;
+            };
+            if self.order_templates.contains_key(name) {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("duplicate order template `{name}`"),
+                    *name_span,
+                ));
+                continue;
+            }
+            self.order_templates.insert(
+                name.clone(),
+                CollectedOrderTemplate {
+                    spec: (**spec).clone(),
+                },
+            );
         }
     }
 
@@ -1370,6 +1411,7 @@ impl<'a> Analyzer<'a> {
             StmtKind::Signal { role, expr } => {
                 self.analyze_signal_stmt(stmt, *role, expr);
             }
+            StmtKind::OrderTemplate { .. } => {}
             StmtKind::Order { role, spec } => {
                 self.analyze_order_stmt(stmt, *role, spec);
             }
@@ -1515,6 +1557,10 @@ impl<'a> Analyzer<'a> {
             return;
         }
 
+        let Some(spec) = self.resolve_order_template_spec(spec, &mut Vec::new()) else {
+            return;
+        };
+
         let mut resolved = ResolvedOrderFieldSlots::default();
         let size_decl = self.analysis.order_size_decls.get(&role).copied();
         let mut order = OrderDecl {
@@ -1550,6 +1596,7 @@ impl<'a> Analyzer<'a> {
         }
 
         match &spec.kind {
+            OrderSpecKind::TemplateRef(_) => unreachable!("order templates are resolved first"),
             OrderSpecKind::Market => {}
             OrderSpecKind::Limit {
                 price,
@@ -1750,9 +1797,51 @@ impl<'a> Analyzer<'a> {
         }
 
         self.analysis
+            .resolved_order_specs
+            .insert(stmt.id, spec.clone());
+        self.analysis
             .resolved_order_field_slots
             .insert(stmt.id, resolved);
         self.analysis.orders.push(order);
+    }
+
+    fn resolve_order_template_spec(
+        &mut self,
+        spec: &OrderSpec,
+        active_templates: &mut Vec<String>,
+    ) -> Option<OrderSpec> {
+        let OrderSpecKind::TemplateRef(binding) = &spec.kind else {
+            return Some(spec.clone());
+        };
+
+        if active_templates.iter().any(|name| name == &binding.name) {
+            let cycle = active_templates
+                .iter()
+                .cloned()
+                .chain(std::iter::once(binding.name.clone()))
+                .collect::<Vec<_>>()
+                .join(" -> ");
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("cyclic order template reference `{cycle}`"),
+                binding.span,
+            ));
+            return None;
+        }
+
+        let Some(template) = self.order_templates.get(&binding.name).cloned() else {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("unknown order template `{}`", binding.name),
+                binding.span,
+            ));
+            return None;
+        };
+
+        active_templates.push(binding.name.clone());
+        let resolved = self.resolve_order_template_spec(&template.spec, active_templates);
+        active_templates.pop();
+        resolved
     }
 
     fn analyze_order_size_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {
@@ -3044,6 +3133,7 @@ fn collect_source_series_stmt(
         | StmtKind::RiskControl { expr, .. }
         | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
+        StmtKind::OrderTemplate { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
         StmtKind::PortfolioGroup { .. } => {}
@@ -3068,6 +3158,7 @@ fn collect_order_spec_series_refs(
     refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
 ) {
     match &spec.kind {
+        OrderSpecKind::TemplateRef(_) => {}
         OrderSpecKind::Market => {}
         OrderSpecKind::Limit { price, .. } => collect_source_series_refs(price, refs),
         OrderSpecKind::StopMarket { trigger_price, .. }
@@ -3168,6 +3259,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::RiskControl { expr, .. }
         | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
+        StmtKind::OrderTemplate { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
         StmtKind::PortfolioGroup { .. } => None,
@@ -3197,6 +3289,7 @@ fn order_spec_source_ref_span(
     target: Option<Interval>,
 ) -> Option<Span> {
     match &spec.kind {
+        OrderSpecKind::TemplateRef(_) => None,
         OrderSpecKind::Market => None,
         OrderSpecKind::Limit { price, .. } => expr_source_ref_span(price, source, target),
         OrderSpecKind::StopMarket { trigger_price, .. }
@@ -5814,11 +5907,18 @@ impl<'a> Compiler<'a> {
                         .with_span(stmt.span),
                 );
             }
-            StmtKind::Order { spec, .. } => {
+            StmtKind::OrderTemplate { .. } => {}
+            StmtKind::Order { .. } => {
+                let Some(spec) = self.resolved_order_spec(stmt.id, stmt.span) else {
+                    return;
+                };
                 let Some(resolved) = self.resolved_order_field_slots(stmt.id, stmt.span) else {
                     return;
                 };
                 match &spec.kind {
+                    OrderSpecKind::TemplateRef(_) => {
+                        unreachable!("order templates are resolved before emission")
+                    }
                     OrderSpecKind::Market => {}
                     OrderSpecKind::Limit { price, .. } => {
                         if let Some(slot) = resolved.price_slot {
@@ -7946,6 +8046,21 @@ impl<'a> Compiler<'a> {
                     format!("missing resolved order field slots for statement {stmt_id}"),
                     span,
                 );
+                None
+            })
+    }
+
+    fn resolved_order_spec(&mut self, stmt_id: NodeId, span: Span) -> Option<OrderSpec> {
+        self.analysis
+            .resolved_order_specs
+            .get(&stmt_id)
+            .cloned()
+            .or_else(|| {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Compile,
+                    format!("missing resolved order spec for statement {stmt_id}"),
+                    span,
+                ));
                 None
             })
     }

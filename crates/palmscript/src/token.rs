@@ -14,6 +14,7 @@ pub enum TokenKind {
     Const,
     Input,
     Order,
+    OrderTemplate,
     IntervalKw,
     Source,
     Execution,

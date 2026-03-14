@@ -7,7 +7,8 @@ use bb 1h
 entry long = bb.close > bb.close[1] and bb.close > bb.1h.close
 exit long = bb.close < bb.close[1]
 
-order entry long = market()
-order exit long = market()
+order_template market_order = market()
+order entry long = market_order
+order exit long = market_order
 
 plot(bb.close)

@@ -69,6 +69,16 @@ PalmScript no longer synthesizes implicit `market()` orders for trading scripts
 in `check`, `run market`, `run backtest`, `run walk-forward`,
 `run walk-forward-sweep`, `run optimize`, or `run paper`.
 
+Trading scripts can also declare reusable top-level `order_template` bindings
+and reference them from `order ...` declarations. For example:
+
+```palmscript
+execution perp = binance.usdm("BTCUSDT")
+order_template market_order = market(venue = perp)
+order entry long = market_order
+order exit long = market_order
+```
+
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 
 Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates the same compiled strategy logic for each selected execution alias under one shared equity ledger, and top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.

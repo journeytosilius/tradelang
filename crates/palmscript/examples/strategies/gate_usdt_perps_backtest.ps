@@ -7,7 +7,8 @@ use gt 4h
 entry long = gt.close > gt.close[1] and gt.close > gt.4h.close
 exit long = gt.close < gt.close[1]
 
-order entry long = market()
-order exit long = market()
+order_template market_order = market()
+order entry long = market_order
+order exit long = market_order
 
 plot(gt.close)

@@ -328,6 +328,16 @@ impl<'a> Parser<'a> {
             }
             return self.parse_order_stmt();
         }
+        if self.matches_keyword(&TokenKind::OrderTemplate) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "order template declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_order_template_stmt();
+        }
         if self.matches_keyword(&TokenKind::If) {
             return self.parse_if_stmt();
         }
@@ -1011,6 +1021,25 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_order_template_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let (name, name_span) = self.expect_ident("expected identifier after `order_template`")?;
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::Assign),
+            "expected `=` after order template name",
+        )?;
+        let spec = self.parse_order_spec()?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::OrderTemplate {
+                name,
+                name_span,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
     fn parse_attached_order_stmt(&mut self, protect: bool) -> Option<Stmt> {
         let start = self.previous().span;
         let role = if protect {
@@ -1115,6 +1144,16 @@ impl<'a> Parser<'a> {
                 return None;
             }
         };
+        if !matches!(self.peek_kind(), TokenKind::LeftParen) {
+            return Some(OrderSpec {
+                span: callee_span,
+                execution: None,
+                kind: OrderSpecKind::TemplateRef(BindingName {
+                    name: callee,
+                    span: callee_span,
+                }),
+            });
+        }
         self.expect_kind(
             |kind| matches!(kind, TokenKind::LeftParen),
             "expected `(` after order constructor",

@@ -154,6 +154,7 @@ pub struct OrderSpec {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum OrderSpecKind {
+    TemplateRef(BindingName),
     Market,
     Limit {
         price: Expr,
@@ -249,6 +250,11 @@ pub enum StmtKind {
     Signal {
         role: SignalRole,
         expr: Expr,
+    },
+    OrderTemplate {
+        name: String,
+        name_span: Span,
+        spec: Box<OrderSpec>,
     },
     Order {
         role: SignalRole,

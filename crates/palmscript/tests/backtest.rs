@@ -99,6 +99,49 @@ fn trace_config(alias: &str) -> BacktestConfig {
     config
 }
 
+#[test]
+fn backtest_accepts_reusable_order_templates() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution perp = binance.spot(\"BTCUSDT\")
+order_template market_entry = market(venue = perp)
+order_template market_exit = market_entry
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market_entry
+order exit long = market_exit
+plot(spot.close)",
+    )
+    .expect("script with order templates should compile");
+
+    let bars = vec![
+        bar(0, 100.0, 101.0),
+        bar(60_000, 101.0, 103.0),
+        bar(120_000, 103.0, 102.0),
+        bar(180_000, 102.0, 100.0),
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("perp"))
+        .expect("backtest should run");
+    assert_eq!(result.summary.trade_count, 1);
+}
+
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),

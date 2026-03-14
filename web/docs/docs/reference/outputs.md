@@ -121,20 +121,25 @@ PalmScript also exposes top-level order declarations that parameterize how a sig
 
 ```palmscript
 execution exec = binance.spot("BTCUSDT")
+order_template maker_entry = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order_template stop_exit = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
 
-order entry long = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
-order exit long = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)
+order entry long = maker_entry
+order exit long = stop_exit
 ```
 
 Rules:
 
 - order declarations are top-level only
+- `order_template` declarations are top-level only and define reusable named order specs
 - there may be at most one `order` declaration per signal role
 - any script that declares trading signal roles requires an explicit `order ...` declaration for every declared `entry` / `exit` signal role
+- `order ... = <template_name>` reuses a previously declared `order_template`
+- templates may reference another template, but cyclic references are rejected
 - `execution` declarations are top-level venue bindings that keep execution routing separate from market-data `source` declarations
-- order constructors support the legacy positional form and the named-argument form
+- order constructors support the legacy positional form and the named-argument form, and inline constructor calls remain valid anywhere `order_spec` is accepted
 - named order arguments may not be mixed with positional arguments in the same constructor call
 - `venue = <execution_alias>` binds that order role to a declared execution alias
 - numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series

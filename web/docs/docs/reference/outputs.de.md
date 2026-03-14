@@ -142,18 +142,24 @@ PalmScript stellt ausserdem Top-Level-`order`-Deklarationen bereit, die
 parametrisieren, wie eine Signalrolle ausgefuehrt wird:
 
 ```palmscript
+execution exec = binance.spot("BTCUSDT")
+order_template maker_entry = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order_template stop_exit = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
 
-order entry long = limit(spot.close[1], tif.gtc, false)
-order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)
+order entry long = maker_entry
+order exit long = stop_exit
 ```
 
 Regeln:
 
 - Order-Deklarationen sind nur auf Top-Level erlaubt
+- `order_template` ist ebenfalls nur auf Top-Level erlaubt und definiert wiederverwendbare Spezifikationen
 - pro Signalrolle darf es hoechstens eine `order`-Deklaration geben
 - ausfuehrungsorientierte CLI-Modi verlangen eine explizite `order ...`-Deklaration fuer jede `entry`- / `exit`-Signalrolle
+- `order ... = <template_name>` verwendet ein zuvor deklariertes `order_template`
+- Templates duerfen ein anderes Template referenzieren, zyklische Referenzen werden aber abgelehnt
 - numerische Order-Felder wie `price`, `trigger_price` und `expire_time_ms`
   werden von der Runtime als versteckte interne Serien ausgewertet
 - `tif.<variant>` und `trigger_ref.<variant>` sind typisierte Enum-Literale,

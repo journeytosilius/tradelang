@@ -120,18 +120,24 @@ exit short = spot.close > ema(spot.close, 20)
 PalmScript は、シグナルロールの実行方法を指定するトップレベル `order` 宣言も公開します。
 
 ```palmscript
+execution exec = binance.spot("BTCUSDT")
+order_template maker_entry = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order_template stop_exit = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
 
-order entry long = limit(spot.close[1], tif.gtc, false)
-order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)
+order entry long = maker_entry
+order exit long = stop_exit
 ```
 
 ルール:
 
 - `order` 宣言はトップレベル専用
+- `order_template` もトップレベル専用で、再利用可能な注文定義を作る
 - シグナルロールごとに `order` 宣言は最大一つ
 - 実行系 CLI モードでは、宣言した各 `entry` / `exit` シグナルロールごとに明示的な `order ...` 宣言が必要
+- `order ... = <template_name>` は事前に宣言した `order_template` を再利用する
+- template は別の template を参照できるが、循環参照は拒否される
 - `price`, `trigger_price`, `expire_time_ms` などの数値 order フィールドは、ランタイムで隠れた内部 series として評価される
 - `tif.<variant>` と `trigger_ref.<variant>` は、コンパイル時に型検査される typed enum literal
 - venue 固有の互換性検査は、実行 `source` に基づいてバックテスト開始時に実行される

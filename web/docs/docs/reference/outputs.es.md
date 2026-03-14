@@ -142,18 +142,24 @@ PalmScript tambien expone declaraciones `order` de nivel superior que
 parametrizan como se ejecuta un rol de senal:
 
 ```palmscript
+execution exec = binance.spot("BTCUSDT")
+order_template maker_entry = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)
+order_template stop_exit = stop_market(trigger_price = lowest(spot.low, 5)[1], trigger_ref = trigger_ref.last, venue = exec)
 entry long = spot.close > spot.high[1]
 exit long = spot.close < ema(spot.close, 20)
 
-order entry long = limit(spot.close[1], tif.gtc, false)
-order exit long = stop_market(lowest(spot.low, 5)[1], trigger_ref.last)
+order entry long = maker_entry
+order exit long = stop_exit
 ```
 
 Reglas:
 
 - las declaraciones `order` son solo de nivel superior
+- `order_template` tambien es solo de nivel superior y define especificaciones reutilizables
 - puede haber como maximo una declaracion `order` por rol de senal
 - los modos CLI orientados a ejecucion requieren una declaracion explicita `order ...` para cada rol de senal `entry` / `exit`
+- `order ... = <template_name>` reutiliza un `order_template` declarado antes
+- los templates pueden referenciar otro template, pero los ciclos se rechazan
 - campos numericos de orden como `price`, `trigger_price` y `expire_time_ms` se
   evalúan en runtime como series internas ocultas
 - `tif.<variant>` y `trigger_ref.<variant>` son literales enum tipados

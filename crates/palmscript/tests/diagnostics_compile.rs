@@ -424,6 +424,54 @@ plot(left.close)",
 }
 
 #[test]
+fn order_templates_must_be_declared_and_acyclic() {
+    let unknown_template = compile_diagnostics(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+entry long = left.close > left.close[1]
+exit long = false
+order entry long = missing_template
+order exit long = market(venue = exec)
+plot(left.close)",
+    );
+    assert!(unknown_template.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag.1.contains("unknown order template `missing_template`")
+    }));
+
+    let duplicate_template = compile_diagnostics(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+order_template entry_order = market()
+order_template entry_order = market()
+plot(left.close)",
+    );
+    assert!(duplicate_template.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type && diag.1.contains("duplicate order template `entry_order`")
+    }));
+
+    let cyclic_template = compile_diagnostics(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+order_template first = second
+order_template second = first
+entry long = left.close > left.close[1]
+exit long = false
+order entry long = first
+order exit long = market(venue = exec)
+plot(left.close)",
+    );
+    assert!(cyclic_template.iter().any(|diag| {
+        diag.0 == DiagnosticKind::Type
+            && diag
+                .1
+                .contains("cyclic order template reference `first -> second -> first`")
+    }));
+}
+
+#[test]
 fn named_order_arguments_reject_unexpected_fields() {
     let diagnostics = compile_diagnostics(
         "interval 1m

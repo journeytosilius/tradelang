@@ -252,6 +252,28 @@ plot(left.close)",
 }
 
 #[test]
+fn parses_reusable_order_templates() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+execution exec = bybit.usdt_perps(\"BTCUSDT\")
+order_template maker_entry = limit(
+    price = left.close[1],
+    tif = tif.gtc,
+    post_only = true,
+    venue = exec
+)
+order_template maker_exit = maker_entry
+entry long = left.close > left.close[1]
+exit long = left.close < left.close[1]
+order entry long = maker_entry
+order exit long = maker_exit
+plot(left.close)",
+    )
+    .expect("order templates should compile");
+}
+
+#[test]
 fn parses_named_order_arguments_for_all_order_constructors() {
     compile(
         "interval 1m
@@ -455,6 +477,14 @@ fn rejects_order_declarations_inside_blocks() {
         "if true { order entry long = market() } else { plot(0) }",
     ));
     assert!(message.contains("order declarations are only allowed at the top level"));
+}
+
+#[test]
+fn rejects_order_template_declarations_inside_blocks() {
+    let message = compile_err(&with_interval(
+        "if true { order_template market_entry = market() } else { plot(0) }",
+    ));
+    assert!(message.contains("order template declarations are only allowed at the top level"));
 }
 
 #[test]

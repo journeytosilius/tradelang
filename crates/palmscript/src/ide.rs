@@ -23,13 +23,14 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 23] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 24] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("execution", "Declare a named execution venue"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
+    ("order_template", "Declare a reusable named order template"),
     ("optimize", "Attach optimizer metadata to an input"),
     ("export", "Publish a named output series"),
     ("regime", "Declare a named persistent regime series"),
@@ -96,6 +97,7 @@ pub enum SymbolKind {
     Let,
     Export,
     Trigger,
+    OrderTemplate,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -423,6 +425,33 @@ fn build_semantic_document(context: &mut ResolutionContext<'_>, ast: &Ast) {
         resolve_function(context, function);
     }
 
+    for stmt in &ast.statements {
+        let StmtKind::OrderTemplate {
+            name,
+            name_span,
+            spec,
+        } = &stmt.kind
+        else {
+            continue;
+        };
+        let index = push_definition(
+            context,
+            DefinitionTarget {
+                name: name.clone(),
+                kind: SymbolKind::OrderTemplate,
+                span: stmt.span,
+                selection_span: *name_span,
+                detail: Some(format!(
+                    "order_template {} = {}",
+                    name,
+                    format_order_spec(spec)
+                )),
+                navigable: true,
+            },
+        );
+        context.root_symbols.insert(name.clone(), index);
+    }
+
     let mut root_scope = context.root_symbols.clone();
     for stmt in &ast.statements {
         resolve_stmt(context, stmt, &mut root_scope);
@@ -596,6 +625,7 @@ fn resolve_stmt(
         StmtKind::Signal { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
+        StmtKind::OrderTemplate { spec, .. } => resolve_order_spec(context, spec, scope),
         StmtKind::Order { spec, .. } => {
             resolve_order_spec(context, spec, scope);
         }
@@ -834,6 +864,18 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             span: stmt.span,
             selection_span: *name_span,
             detail: Some("series<bool>".to_string()),
+            children: Vec::new(),
+        }),
+        StmtKind::OrderTemplate {
+            name,
+            name_span,
+            spec,
+        } => context.document_symbols.push(DocumentSymbolInfo {
+            name: name.clone(),
+            kind: SymbolKind::OrderTemplate,
+            span: stmt.span,
+            selection_span: *name_span,
+            detail: Some(format_order_spec(spec)),
             children: Vec::new(),
         }),
         StmtKind::Signal { .. } => {}
@@ -1303,6 +1345,7 @@ pub(crate) fn classify_highlight(
         | TokenKind::Const
         | TokenKind::Input
         | TokenKind::Order
+        | TokenKind::OrderTemplate
         | TokenKind::IntervalKw
         | TokenKind::Source
         | TokenKind::Execution
@@ -1344,9 +1387,10 @@ pub(crate) fn classify_highlight(
                     | SymbolKind::Execution
                     | SymbolKind::UseInterval
                     | SymbolKind::Interval => HighlightKind::Namespace,
-                    SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => {
-                        HighlightKind::Variable
-                    }
+                    SymbolKind::Let
+                    | SymbolKind::Export
+                    | SymbolKind::Trigger
+                    | SymbolKind::OrderTemplate => HighlightKind::Variable,
                 })
                 .or(Some(HighlightKind::Variable))
         }
@@ -1570,6 +1614,12 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Trigger { name, expr, .. } => {
             lines.push(format!("{prefix}trigger {name} = {}", format_expr(expr, 0)));
         }
+        StmtKind::OrderTemplate { name, spec, .. } => {
+            lines.push(format!(
+                "{prefix}order_template {name} = {}",
+                format_order_spec(spec)
+            ));
+        }
         StmtKind::Signal { role, expr } => {
             let header = match role {
                 crate::ast::SignalRole::LongEntry => "entry long",
@@ -1776,6 +1826,17 @@ fn resolve_order_spec(
     spec: &crate::ast::OrderSpec,
     scope: &HashMap<String, usize>,
 ) {
+    if let crate::ast::OrderSpecKind::TemplateRef(binding) = &spec.kind {
+        let definition_index = scope.get(&binding.name).copied();
+        context.references.push(Reference {
+            span: binding.span,
+            definition_index,
+            hover: definition_index
+                .map(|index| definition_hover(&context.definitions[index]))
+                .unwrap_or_else(|| format!("`{}`", binding.name)),
+        });
+        return;
+    }
     if let Some(execution) = &spec.execution {
         if let Some(definition_index) = scope.get(&execution.name).copied() {
             let hover = context
@@ -1791,6 +1852,7 @@ fn resolve_order_spec(
         }
     }
     match &spec.kind {
+        crate::ast::OrderSpecKind::TemplateRef(_) => unreachable!("handled above"),
         crate::ast::OrderSpecKind::Market => {}
         crate::ast::OrderSpecKind::Limit {
             price,
@@ -1839,11 +1901,15 @@ fn resolve_order_spec(
 }
 
 fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
+    if let crate::ast::OrderSpecKind::TemplateRef(binding) = &spec.kind {
+        return binding.name.clone();
+    }
     let execution_arg = spec
         .execution
         .as_ref()
         .map(|execution| format!("venue = {}", execution.name));
     let mut args = match &spec.kind {
+        crate::ast::OrderSpecKind::TemplateRef(_) => unreachable!("handled above"),
         crate::ast::OrderSpecKind::Market => Vec::new(),
         crate::ast::OrderSpecKind::Limit {
             price,
@@ -1902,13 +1968,14 @@ fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
     if let Some(execution_arg) = execution_arg {
         args.push(execution_arg);
     }
-    let callee = match spec.kind {
+    let callee = match &spec.kind {
         crate::ast::OrderSpecKind::Market => "market",
         crate::ast::OrderSpecKind::Limit { .. } => "limit",
         crate::ast::OrderSpecKind::StopMarket { .. } => "stop_market",
         crate::ast::OrderSpecKind::StopLimit { .. } => "stop_limit",
         crate::ast::OrderSpecKind::TakeProfitMarket { .. } => "take_profit_market",
         crate::ast::OrderSpecKind::TakeProfitLimit { .. } => "take_profit_limit",
+        crate::ast::OrderSpecKind::TemplateRef(_) => unreachable!(),
     };
     if args.is_empty() {
         format!("{callee}()")

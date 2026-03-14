@@ -501,9 +501,11 @@ fn document_symbol(symbol: DocumentSymbolInfo) -> DocumentSymbol {
             | SymbolKind::Execution
             | SymbolKind::UseInterval => LspSymbolKind::NAMESPACE,
             SymbolKind::Function => LspSymbolKind::FUNCTION,
-            SymbolKind::Parameter | SymbolKind::Let | SymbolKind::Export | SymbolKind::Trigger => {
-                LspSymbolKind::VARIABLE
-            }
+            SymbolKind::Parameter
+            | SymbolKind::Let
+            | SymbolKind::Export
+            | SymbolKind::Trigger
+            | SymbolKind::OrderTemplate => LspSymbolKind::VARIABLE,
         },
         tags: None,
         deprecated: None,

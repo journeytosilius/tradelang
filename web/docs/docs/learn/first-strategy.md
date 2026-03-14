@@ -14,8 +14,9 @@ export trend = fast > slow
 entry long = crossover(fast, slow)
 exit long = crossunder(fast, slow)
 
-order entry long = market()
-order exit long = market()
+order_template market_order = market()
+order entry long = market_order
+order exit long = market_order
 ```
 
 ## What This Introduces
@@ -28,7 +29,8 @@ order exit long = market()
 - `export` emits a named output series
 - `entry long = ...` emits a long-entry signal
 - `exit long = ...` emits a long-exit signal
-- `order entry long = market()` and `order exit long = market()` tell trading scripts exactly how to fill the entry and exit signals in every executable mode
+- `order_template market_order = market()` declares one reusable order spec
+- `order entry long = market_order` and `order exit long = market_order` reuse that explicit order config in every executable mode
 
 ## Try It In The Browser IDE
 
@@ -46,8 +48,9 @@ let weekly_basis = ema(spot.1w.close, 8)
 export bullish = spot.close > weekly_basis
 entry long = bullish and crossover(spot.close, weekly_basis)
 exit long = crossunder(spot.close, weekly_basis)
-order entry long = market()
-order exit long = market()
+order_template market_order = market()
+order entry long = market_order
+order exit long = market_order
 ```
 
 For the exact rules behind `spot.1w.close`, first-class `entry` / `exit` signals, indexing, and no-lookahead behavior, see:
