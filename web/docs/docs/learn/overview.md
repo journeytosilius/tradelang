@@ -36,7 +36,7 @@ Current backtest-oriented outputs include:
 - bounded opportunity events
 - cohort summaries and drawdown-path summaries
 - source-alignment summaries for missing or synthetic feed updates
-- deterministic improvement hints
+- deterministic overfitting-risk summaries, plus improvement hints, that stay conservative when no out-of-sample evidence exists
 - optional per-bar decision traces with `--diagnostics full-trace`
 
 PalmScript also now includes a local execution daemon for paper sessions. The daemon reuses the same compiled VM and order simulator as backtest mode, drives them from live exchange-backed closed bars under a persistent local paper ledger, and surfaces shared top-of-book / last / mark quote snapshots so agents can inspect live paper-session valuation and feed health directly from the CLI.

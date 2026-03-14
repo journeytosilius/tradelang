@@ -285,6 +285,11 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         result.diagnostics.drawdown.average_recovery_bars
     );
     let _ = writeln!(out, "portfolio_mode={}", result.diagnostics.portfolio_mode);
+    render_overfitting_risk_text(
+        &mut out,
+        "Overfitting Risk",
+        &result.diagnostics.overfitting_risk,
+    );
 
     if !result.diagnostics.blocked_portfolio_entries.is_empty() {
         out.push_str("Portfolio Blocks\n");
@@ -728,6 +733,7 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         "execution_source={}",
         result.config.backtest.execution_source_alias
     );
+    render_overfitting_risk_text(&mut out, "Overfitting Risk", &result.overfitting_risk);
 
     if !result.segments.is_empty() {
         out.push_str("Recent Segments\n");
@@ -999,6 +1005,8 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
         );
     }
 
+    render_overfitting_risk_text(&mut out, "Overfitting Risk", &result.overfitting_risk);
+
     if !result.hints.is_empty() {
         out.push_str("Hints\n");
         for hint in &result.hints {
@@ -1163,6 +1171,26 @@ fn fmt_opt_f64(value: Option<f64>) -> String {
     match value {
         Some(value) => value.to_string(),
         None => "na".to_string(),
+    }
+}
+
+fn render_overfitting_risk_text(
+    out: &mut String,
+    title: &str,
+    risk: &palmscript::OverfittingRiskSummary,
+) {
+    out.push_str(title);
+    out.push('\n');
+    let _ = writeln!(out, "level={:?}", risk.level);
+    let _ = writeln!(out, "score={:.2}", risk.score);
+    for reason in &risk.reasons {
+        let _ = writeln!(
+            out,
+            "reason={:?} metric={} value={}",
+            reason.kind,
+            reason.metric.as_deref().unwrap_or("na"),
+            fmt_opt_f64(reason.value)
+        );
     }
 }
 
@@ -1520,6 +1548,15 @@ mod tests {
                 drawdown: palmscript::DrawdownDiagnostics::default(),
                 source_alignment: palmscript::runtime::SourceAlignmentDiagnostics::default(),
                 hints: vec![],
+                overfitting_risk: palmscript::OverfittingRiskSummary {
+                    level: palmscript::OverfittingRiskLevel::Unknown,
+                    score: 0.0,
+                    reasons: vec![palmscript::OverfittingRiskReason {
+                        kind: palmscript::OverfittingRiskReasonKind::NoOutOfSampleValidation,
+                        metric: None,
+                        value: None,
+                    }],
+                },
                 portfolio_mode: false,
                 blocked_portfolio_entries: vec![],
             },
@@ -1535,6 +1572,8 @@ mod tests {
         assert!(rendered.contains("placed_count=1"));
         assert!(rendered.contains("Diagnostics Summary"));
         assert!(rendered.contains("order_fill_rate_pct=100.00"));
+        assert!(rendered.contains("Overfitting Risk"));
+        assert!(rendered.contains("level=Unknown"));
         assert!(rendered.contains("execution_asset_return_pct=10.00"));
         assert!(rendered.contains("Top Export States"));
         assert!(rendered.contains("Recent Opportunity Events"));

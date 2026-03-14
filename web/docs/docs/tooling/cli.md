@@ -110,6 +110,7 @@ The optimize result now also reports:
 - holdout drift versus the stitched optimization summary
 - holdout checks for the top ranked candidates, not only the winner
 - parameter stability ranges across the ranked and holdout-passing candidates
+- explicit overfitting-risk summaries with typed reasons and scores
 - deterministic machine-readable improvement hints
 
 Optimizer parameter-space precedence is:

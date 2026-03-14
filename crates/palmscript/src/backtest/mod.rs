@@ -9,6 +9,7 @@ mod diagnostics;
 mod engine;
 mod optimize;
 mod orders;
+mod overfitting;
 mod venue;
 mod walk_forward;
 mod walk_forward_sweep;
@@ -593,6 +594,46 @@ pub struct ImprovementHint {
     pub value: Option<f64>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OverfittingRiskLevel {
+    #[default]
+    Unknown,
+    Low,
+    Moderate,
+    High,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OverfittingRiskReasonKind {
+    NoOutOfSampleValidation,
+    TooFewTrades,
+    ZeroTradeSegments,
+    NegativeOutOfSampleSegments,
+    SegmentReturnInstability,
+    HoldoutReturnCollapse,
+    LargeHoldoutReturnDrop,
+    WeakHoldoutPassRate,
+    BestCandidateNotRobust,
+    NarrowParameterStability,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OverfittingRiskReason {
+    pub kind: OverfittingRiskReasonKind,
+    pub metric: Option<String>,
+    pub value: Option<f64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct OverfittingRiskSummary {
+    pub level: OverfittingRiskLevel,
+    pub score: f64,
+    #[serde(default)]
+    pub reasons: Vec<OverfittingRiskReason>,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct BacktestDiagnosticSummary {
     pub order_fill_rate: f64,
@@ -627,6 +668,8 @@ pub struct BacktestDiagnostics {
     pub source_alignment: crate::runtime::SourceAlignmentDiagnostics,
     #[serde(default)]
     pub hints: Vec<ImprovementHint>,
+    #[serde(default)]
+    pub overfitting_risk: OverfittingRiskSummary,
     #[serde(default)]
     pub portfolio_mode: bool,
     #[serde(default)]

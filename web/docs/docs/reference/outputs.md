@@ -237,6 +237,7 @@ Always-on summary diagnostics include:
 - cohort summaries
 - drawdown duration and stagnation metrics
 - source alignment diagnostics
+- deterministic overfitting-risk summaries with typed risk reasons and scores
 - deterministic improvement hints
 
 When `--diagnostics full-trace` is enabled, PalmScript also records one `per_bar_trace` record for each execution bar. Each trace includes:
@@ -252,7 +253,7 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - per-segment drift flags
 - final holdout drift summaries
 - optimizer robustness summaries across the top ranked candidates
-- parameter stability summaries
+- parameter stability plus overfitting-risk summaries
 
 ## Output Time And Bar Index
 

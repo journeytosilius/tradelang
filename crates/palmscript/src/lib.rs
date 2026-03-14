@@ -42,12 +42,13 @@ pub use backtest::{
     OptimizeParamSpace, OptimizePreset, OptimizeProgressEvent, OptimizeProgressListener,
     OptimizeProgressState, OptimizeResult, OptimizeResumeState, OptimizeRunner,
     OptimizeScheduledBatch, OptimizeScheduledTrial, OrderDiagnostic, OrderEndReason, OrderRecord,
-    OrderStatus, PerpBacktestConfig, PerpBacktestContext, PerpBacktestMetadata, PerpMarginMode,
-    PositionSnapshot, SideDiagnosticSummary, Trade, TradeDiagnostic, TradeExitClassification,
-    WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
-    WalkForwardSweepConfig, WalkForwardSweepError, WalkForwardSweepObjective,
-    WalkForwardSweepResult, WalkForwardWindowSummary,
+    OrderStatus, OverfittingRiskLevel, OverfittingRiskReason, OverfittingRiskReasonKind,
+    OverfittingRiskSummary, PerpBacktestConfig, PerpBacktestContext, PerpBacktestMetadata,
+    PerpMarginMode, PositionSnapshot, SideDiagnosticSummary, Trade, TradeDiagnostic,
+    TradeExitClassification, WalkForwardConfig, WalkForwardEquityPoint, WalkForwardResult,
+    WalkForwardSegmentDiagnostics, WalkForwardSegmentResult, WalkForwardStitchedSummary,
+    WalkForwardSweepCandidateSummary, WalkForwardSweepConfig, WalkForwardSweepError,
+    WalkForwardSweepObjective, WalkForwardSweepResult, WalkForwardWindowSummary,
 };
 pub use bytecode::{OutputDecl, OutputKind, SignalRole};
 pub use compiler::{compile, compile_with_input_overrides, CompiledProgram};

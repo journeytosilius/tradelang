@@ -188,7 +188,7 @@ V1 optimizer notes:
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
-- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, and machine-readable improvement hints
+- the final optimize result now also reports holdout drift, top-candidate holdout robustness, parameter stability ranges, explicit overfitting-risk summaries, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 
@@ -271,7 +271,7 @@ Backtest, walk-forward, and optimize results now expose richer machine-readable 
 - cohort summaries by side, exit classification, weekday/hour UTC, holding-time bucket, and active exported bool state
 - drawdown duration and stagnation diagnostics
 - source alignment diagnostics that show degraded bars and synthetic supplemental updates
-- deterministic improvement hints such as `too_few_trades`, `holdout_collapse`, and `signal_quality_weak`
+- deterministic overfitting-risk summaries and improvement hints such as `too_few_trades`, `holdout_collapse`, and `signal_quality_weak`
 - optional per-bar decision traces when `--diagnostics full-trace` is enabled
 
 ## Declarative Risk Controls

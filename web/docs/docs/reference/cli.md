@@ -169,7 +169,7 @@ Default safety behavior:
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
-- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
+- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
 
 ## `palmscript run paper`
 

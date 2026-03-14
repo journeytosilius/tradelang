@@ -14,6 +14,7 @@ use crate::backtest::orders::{
     FillExecutionContext, OpenTrade, PositionFillContext, PositionState, TradeEntryContext,
     WorkingState, ROLE_COUNT, ROLE_PRIORITY,
 };
+use crate::backtest::overfitting::build_backtest_overfitting_risk;
 use crate::backtest::{
     BacktestCaptureSummary, BacktestConfig, BacktestDiagnostics, BacktestError, BacktestResult,
     BacktestSummary, DecisionReason, DiagnosticsDetailMode, EquityPoint, FeatureSnapshot, Fill,
@@ -1032,6 +1033,7 @@ pub(crate) fn simulate_backtest(
             .max()
             .unwrap_or(0),
     };
+    let overfitting_risk = build_backtest_overfitting_risk(&summary);
 
     Ok(BacktestResult {
         outputs,
@@ -1050,6 +1052,7 @@ pub(crate) fn simulate_backtest(
             drawdown,
             source_alignment,
             hints,
+            overfitting_risk,
             portfolio_mode: false,
             blocked_portfolio_entries: Vec::new(),
         },
@@ -2032,6 +2035,7 @@ pub(crate) fn simulate_portfolio_backtest(
     let cohorts = build_cohort_diagnostics(&trade_diagnostics, &export_summaries);
     let drawdown = build_drawdown_diagnostics(&equity_curve);
     let mut hints = build_backtest_hints(&summary, &diagnostics_summary, &cohorts, &drawdown);
+    let overfitting_risk = build_backtest_overfitting_risk(&summary);
     let blocked_portfolio_entries = blocked_counts
         .into_iter()
         .map(
@@ -2062,6 +2066,7 @@ pub(crate) fn simulate_portfolio_backtest(
             drawdown,
             source_alignment,
             hints,
+            overfitting_risk,
             portfolio_mode: true,
             blocked_portfolio_entries,
         },

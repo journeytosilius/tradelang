@@ -172,7 +172,7 @@ Default safety behavior:
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
-- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, and deterministic improvement hints
+- the final JSON/text result also carries holdout drift, top-candidate holdout robustness, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
 
 ## `palmscript run paper`
 

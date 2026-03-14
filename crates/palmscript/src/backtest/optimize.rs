@@ -9,11 +9,12 @@ use rand_distr::{Distribution, Normal};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
     bridge, run_backtest_with_sources, run_walk_forward_with_sources, BacktestCaptureSummary,
     BacktestConfig, BacktestError, BacktestSummary, DiagnosticsDetailMode, ImprovementHint,
-    ImprovementHintKind, WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    ImprovementHintKind, OverfittingRiskSummary, WalkForwardConfig, WalkForwardResult,
+    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -311,6 +312,8 @@ pub struct OptimizeResult {
     pub robustness: OptimizationRobustnessSummary,
     #[serde(default)]
     pub hints: Vec<ImprovementHint>,
+    #[serde(default)]
+    pub overfitting_risk: OverfittingRiskSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -589,6 +592,8 @@ pub fn run_optimize_with_source_resume(
         None => (None, OptimizationRobustnessSummary::default()),
     };
     let hints = build_optimize_hints(&best_candidate, holdout.as_ref(), &robustness);
+    let overfitting_risk =
+        build_optimize_overfitting_risk(&config, &best_candidate, holdout.as_ref(), &robustness);
     Ok(OptimizeResult {
         candidate_count: config.trials,
         completed_trials: all_candidates.len(),
@@ -598,6 +603,7 @@ pub fn run_optimize_with_source_resume(
         holdout,
         robustness,
         hints,
+        overfitting_risk,
     })
 }
 

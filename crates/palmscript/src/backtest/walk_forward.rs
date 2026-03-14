@@ -5,10 +5,11 @@ use crate::backtest::diagnostics::{
     build_backtest_hints, build_cohort_diagnostics, build_diagnostics_summary,
     build_drawdown_diagnostics, snapshot_from_step, DiagnosticsAccumulator,
 };
+use crate::backtest::overfitting::build_walk_forward_overfitting_risk;
 use crate::backtest::{
     average, execution_bars, run_backtest_with_sources, BacktestCaptureSummary, BacktestConfig,
     BacktestDiagnosticSummary, BacktestError, CohortDiagnostics, DiagnosticsDetailMode,
-    DrawdownDiagnostics, ExportDiagnosticSummary, ImprovementHint,
+    DrawdownDiagnostics, ExportDiagnosticSummary, ImprovementHint, OverfittingRiskSummary,
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
@@ -108,6 +109,8 @@ pub struct WalkForwardResult {
     pub segments: Vec<WalkForwardSegmentResult>,
     pub stitched_equity_curve: Vec<WalkForwardEquityPoint>,
     pub stitched_summary: WalkForwardStitchedSummary,
+    #[serde(default)]
+    pub overfitting_risk: OverfittingRiskSummary,
 }
 
 pub fn run_walk_forward_with_sources(
@@ -214,11 +217,14 @@ pub fn run_walk_forward_with_sources(
     );
     apply_segment_drift_flags(&mut segments, &stitched_summary);
 
+    let overfitting_risk = build_walk_forward_overfitting_risk(&segments, &stitched_summary);
+
     Ok(WalkForwardResult {
         config,
         segments,
         stitched_equity_curve,
         stitched_summary,
+        overfitting_risk,
     })
 }
 
