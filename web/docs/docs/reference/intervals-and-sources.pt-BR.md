@@ -66,6 +66,7 @@ Restricoes operacionais de busca tambem dependem do template:
 - Bybit usa simbolos nativos da venue como `BTCUSDT`
 - Gate usa simbolos nativos da venue como `BTC_USDT`
 - os klines REST da Bybit chegam em ordem decrescente e o PalmScript os reordena antes das verificacoes de alinhamento
+- timestamps de kline spot e perp da Bybit podem chegar como inteiros JSON ou strings com formato inteiro; o PalmScript aceita ambas as formas diretamente
 - as APIs de candles da Gate usam Unix seconds e o PalmScript as normaliza para Unix milliseconds UTC
 - a paginacao de Gate spot e futures usa janelas de tempo porque a API publica nao permite `limit` junto com `from` / `to`
 - as requisicoes de Gate spot e futures sao limitadas a 1000 candles por chamada HTTP para evitar `400 Bad Request` causados por janelas amplas demais

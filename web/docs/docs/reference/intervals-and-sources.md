@@ -64,6 +64,7 @@ Operational fetch constraints are also template-specific:
 - Bybit uses venue-native symbols such as `BTCUSDT`
 - Gate uses venue-native symbols such as `BTC_USDT`
 - Bybit REST klines arrive reverse-sorted and PalmScript reorders them before runtime alignment checks
+- Bybit spot and perp kline timestamps may arrive as JSON integers or integer-like strings; PalmScript accepts both forms directly
 - Gate candlestick APIs use Unix seconds and PalmScript normalizes them into Unix milliseconds UTC
 - Gate spot and futures pagination is windowed by time because the public API does not allow `limit` with `from` / `to`
 - Gate spot and futures requests are capped at 1000 candles per HTTP call so venue range limits do not produce avoidable `400 Bad Request` failures

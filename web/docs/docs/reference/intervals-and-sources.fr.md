@@ -71,6 +71,7 @@ Les contraintes operationnelles de recuperation dependent aussi du template :
 - Bybit utilise des symboles natifs du venue comme `BTCUSDT`
 - Gate utilise des symboles natifs du venue comme `BTC_USDT`
 - les klines REST Bybit arrivent en ordre decroissant et PalmScript les reordonne avant la validation d'alignement
+- les horodatages de kline spot et perp Bybit peuvent arriver comme entiers JSON ou comme chaines entieres ; PalmScript accepte directement les deux formes
 - les API de chandeliers Gate utilisent des secondes Unix et PalmScript les normalise en millisecondes Unix UTC
 - la pagination Gate spot et futures est decoupee par fenetres temporelles, car l'API publique n'autorise pas `limit` avec `from` / `to`
 - les requetes Gate spot et futures sont limitees a 1000 chandeliers par appel HTTP afin d'eviter des `400 Bad Request` causes par des plages trop larges

@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{interval_text, spot::fetch_bybit_bars};
 use crate::exchange::common::{
-    decode_json_response, deserialize_f64_text, deserialize_option_f64_text, http_status_message,
-    malformed_response, no_data, normalize_margin_percent, now_ms, parse_text_f64,
-    push_bar_if_in_window, request_failed,
+    decode_json_response, deserialize_f64_text, deserialize_i64_text, deserialize_option_f64_text,
+    http_status_message, malformed_response, no_data, normalize_margin_percent, now_ms,
+    parse_text_f64, push_bar_if_in_window, request_failed,
 };
 use crate::exchange::{ExchangeEndpoints, ExchangeFetchError, RiskTier};
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -81,6 +81,9 @@ impl<'de> Deserialize<'de> for BybitMarkPriceKlineRow {
     where
         D: Deserializer<'de>,
     {
+        #[derive(Deserialize)]
+        struct I64TextValue(#[serde(deserialize_with = "deserialize_i64_text")] i64);
+
         struct BybitMarkPriceKlineRowVisitor;
 
         impl<'de> Visitor<'de> for BybitMarkPriceKlineRowVisitor {
@@ -96,6 +99,7 @@ impl<'de> Deserialize<'de> for BybitMarkPriceKlineRow {
             {
                 let start_time_ms = seq
                     .next_element()?
+                    .map(|value: I64TextValue| value.0)
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 let open = seq
                     .next_element()?
@@ -408,6 +412,23 @@ mod tests {
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
+        assert_eq!(bar.close, 100.5);
+        assert_eq!(bar.volume, 0.0);
+    }
+
+    #[test]
+    fn bybit_mark_price_row_accepts_string_timestamps() {
+        let source = DeclaredMarketSource {
+            id: 0,
+            alias: "src".to_string(),
+            template: SourceTemplate::BybitUsdtPerps,
+            symbol: "BTCUSDT".to_string(),
+        };
+        let row: BybitMarkPriceKlineRow =
+            serde_json::from_value(json!(["1704067200000", "100.0", "101.0", "99.0", "100.5"]))
+                .expect("row deserializes");
+        let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
+        assert_eq!(bar.time, 1704067200000_f64);
         assert_eq!(bar.close, 100.5);
         assert_eq!(bar.volume, 0.0);
     }

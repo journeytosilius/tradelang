@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use super::interval_text;
 use crate::exchange::common::{
-    decode_json_response, http_status_message, malformed_response, no_data, parse_text_f64,
-    push_bar_if_in_window, request_failed,
+    decode_json_response, deserialize_i64_text, http_status_message, malformed_response, no_data,
+    parse_text_f64, push_bar_if_in_window, request_failed,
 };
 use crate::exchange::ExchangeFetchError;
 use crate::interval::{DeclaredMarketSource, Interval};
@@ -68,6 +68,9 @@ impl<'de> Deserialize<'de> for BybitKlineRow {
     where
         D: Deserializer<'de>,
     {
+        #[derive(Deserialize)]
+        struct I64TextValue(#[serde(deserialize_with = "deserialize_i64_text")] i64);
+
         struct BybitKlineRowVisitor;
 
         impl<'de> Visitor<'de> for BybitKlineRowVisitor {
@@ -83,6 +86,7 @@ impl<'de> Deserialize<'de> for BybitKlineRow {
             {
                 let start_time_ms = seq
                     .next_element()?
+                    .map(|value: I64TextValue| value.0)
                     .ok_or_else(|| de::Error::invalid_length(0, &self))?;
                 let open = seq
                     .next_element()?
@@ -250,6 +254,30 @@ mod tests {
         ]))
         .expect("row deserializes");
         let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
+        assert_eq!(bar.close, 1.5);
+        assert_eq!(bar.volume, 10.0);
+    }
+
+    #[test]
+    fn bybit_kline_row_accepts_string_timestamps() {
+        let source = DeclaredMarketSource {
+            id: 0,
+            alias: "src".to_string(),
+            template: SourceTemplate::BybitSpot,
+            symbol: "BTCUSDT".to_string(),
+        };
+        let row: BybitKlineRow = serde_json::from_value(json!([
+            "1704067200000",
+            "1.0",
+            "2.0",
+            "0.5",
+            "1.5",
+            "10.0",
+            "15.0"
+        ]))
+        .expect("row deserializes");
+        let bar = row.to_bar(&source, Interval::Min1).expect("row maps");
+        assert_eq!(bar.time, 1704067200000_f64);
         assert_eq!(bar.close, 1.5);
         assert_eq!(bar.volume, 10.0);
     }

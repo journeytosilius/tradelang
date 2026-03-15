@@ -64,6 +64,7 @@ PalmScript は現在、次の第一級テンプレートをサポートします
 - Bybit は `BTCUSDT` のような venue ネイティブシンボルを使う
 - Gate は `BTC_USDT` のような venue ネイティブシンボルを使う
 - Bybit REST の kline は降順で返るため、PalmScript はランタイム整列検証の前に並べ替える
+- Bybit の spot / perp kline タイムスタンプは JSON 整数または整数風文字列で返る場合があり、PalmScript はその両方を直接受け付ける
 - Gate のローソク足 API は Unix 秒を使い、PalmScript はそれを UTC の Unix ミリ秒に正規化する
 - Gate spot / futures のページングは、公開 API が `limit` と `from` / `to` を同時に許可しないため時間窓単位で行う
 - Gate spot / futures への HTTP リクエストは 1 回あたり 1000 本のローソク足に制限され、広すぎる範囲による `400 Bad Request` を避ける

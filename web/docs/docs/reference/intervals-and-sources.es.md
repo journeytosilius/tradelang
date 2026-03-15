@@ -68,6 +68,7 @@ Las restricciones operativas de carga tambien dependen del template:
 - Bybit usa simbolos nativos del venue como `BTCUSDT`
 - Gate usa simbolos nativos del venue como `BTC_USDT`
 - las klines REST de Bybit llegan en orden descendente y PalmScript las reordena antes de validar la alineacion
+- los timestamps de kline spot y perp de Bybit pueden llegar como enteros JSON o cadenas con forma de entero; PalmScript acepta ambas formas directamente
 - las APIs de velas de Gate usan Unix seconds y PalmScript las normaliza a Unix milliseconds UTC
 - la paginacion de Gate spot y futures se hace por ventanas de tiempo porque la API publica no permite `limit` junto con `from` / `to`
 - las solicitudes de Gate spot y futures se limitan a 1000 velas por llamada HTTP para evitar `400 Bad Request` provocados por rangos demasiado amplios
