@@ -158,6 +158,7 @@ Regles :
 - chaque role d'entree peut avoir au plus une etiquette
 - les noms de module doivent aussi etre uniques
 - `size module <name> = expr` reutilise la meme semantique de dimensionnement d'entree echelonnee pour le role d'entree lie a ce module
+- `size module <name> = expr` accepte les memes expressions numeriques que les autres declarations de taille, de sorte que les bindings de regime et les ternaires puissent piloter la taille du module quand la demande d'ordre est capturee
 - les diagnostics de backtest exposent cette etiquette comme `entry_module`
   sur les trades et dans les cohortes
 
@@ -225,8 +226,10 @@ Regles :
 - `size module <name>` est un raccourci pour dimensionner le role d'entree echelonne lie par cette declaration `module`
 - le dimensionnement des entrees echelonnees prend en charge :
   - une fraction numerique nue historique telle que `0.5`
-  - `capital_fraction(x)`
-  - `risk_pct(pct, stop_price)`
+- `capital_fraction(x)`
+- `risk_pct(pct, stop_price)`
+- le dimensionnement de module sensible au regime peut utiliser des expressions numeriques ordinaires comme `size module breakout = strong ? 0.4 : 0.15` ou `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)`
+- comme les autres champs d'ordre, cette taille est figee au moment ou la demande d'ordre est produite et n'est pas recalculee depuis des barres futures
 - les valeurs `capital_fraction(...)` doivent s'evaluer en une fraction finie
   dans `(0, 1]`
 - une fraction de taille d'entree inferieure a `1` laisse du cash pour des

@@ -156,6 +156,7 @@ Reglas:
 - cada rol de entrada puede tener como maximo una etiqueta de modulo
 - los nombres de modulo tambien deben ser unicos
 - `size module <name> = expr` reutiliza la misma semantica de tamanio de entrada escalonada para el rol de entrada enlazado al modulo
+- `size module <name> = expr` acepta las mismas expresiones numericas que otras declaraciones `size`, asi que los bindings de regime y los ternarios pueden gobernar el tamanio del modulo cuando se captura la solicitud de orden
 - los diagnosticos orientados a backtest exponen la etiqueta como `entry_module`
   en las operaciones y en los cohortes
 
@@ -221,8 +222,10 @@ Reglas:
 - `size module <name>` es un atajo para dimensionar el rol de entrada escalonada enlazado por esa declaracion `module`
 - el tamanio de entradas escalonadas soporta:
   - una fraccion numerica legacy como `0.5`
-  - `capital_fraction(x)`
-  - `risk_pct(pct, stop_price)`
+- `capital_fraction(x)`
+- `risk_pct(pct, stop_price)`
+- el tamanio de modulo dependiente del regime puede usar expresiones numericas ordinarias como `size module breakout = strong ? 0.4 : 0.15` o `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)`
+- como otros campos de orden, ese tamanio se congela cuando se produce la solicitud de orden y no se vuelve a calcular a partir de barras futuras
 - los valores `capital_fraction(...)` deben evaluar a una fraccion finita en
   `(0, 1]`
 - una fraccion de tamanio de entrada menor que `1` deja efectivo disponible

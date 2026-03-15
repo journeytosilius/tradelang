@@ -155,6 +155,7 @@ Regeln:
 - jede Entry-Rolle darf hoechstens ein Modul-Label haben
 - Modulnamen muessen ebenfalls eindeutig sein
 - `size module <name> = expr` verwendet dieselbe gestufte Entry-Sizing-Semantik fuer die an das Modul gebundene Entry-Rolle wieder
+- `size module <name> = expr` akzeptiert dieselben numerischen Ausdruecke wie andere Size-Deklarationen, sodass Regime-Bindings und Ternary-Ausdruecke die Modul-Groesse beim Erfassen der Order-Anfrage steuern koennen
 - backtest-orientierte Diagnostik gibt das Label als `entry_module` auf Trades
   und in Kohorten-Zusammenfassungen aus
 
@@ -220,8 +221,10 @@ Regeln:
 - `size module <name>` ist eine Kurzform fuer das Sizing der gestuften Entry-Rolle, die von dieser `module`-Deklaration gebunden wird
 - gestufte Entry-Groessen unterstuetzen:
   - eine nackte Legacy-Fraction wie `0.5`
-  - `capital_fraction(x)`
-  - `risk_pct(pct, stop_price)`
+- `capital_fraction(x)`
+- `risk_pct(pct, stop_price)`
+- regimebewusstes Modul-Sizing kann gewoehnliche numerische Ausdruecke verwenden, zum Beispiel `size module breakout = strong ? 0.4 : 0.15` oder `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)`
+- wie andere Order-Felder wird diese Groesse beim Erzeugen der Order-Anfrage eingefroren und nicht spaeter noch anhand zukuenftiger Balken neu berechnet
 - `capital_fraction(...)` muss zu einer endlichen Fraction in `(0, 1]`
   auswerten
 - eine Entry-Size-Fraction unter `1` laesst Kapital fuer spaetere gleichseitige

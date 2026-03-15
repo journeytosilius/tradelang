@@ -134,6 +134,7 @@ Rules:
 - each entry role may have at most one module label
 - module names must also be unique
 - `size module <name> = expr` reuses the existing staged entry sizing semantics for the module's bound entry role
+- `size module <name> = expr` accepts the same numeric expressions as other size declarations, so regime bindings and ternary expressions can drive module sizing when the order request is captured
 - backtest-oriented diagnostics expose the label as `entry_module` on trades and in cohort summaries
 
 ## Order Declarations
@@ -199,6 +200,8 @@ Rules:
   - a legacy bare numeric fraction such as `0.5`
   - `capital_fraction(x)`
   - `risk_pct(pct, stop_price)`
+- regime-aware module sizing can use ordinary numeric expressions such as `size module breakout = strong ? 0.4 : 0.15` or `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)`
+- like other order fields, that size is snapped when the order request is produced rather than recomputed from future bars after the order is already queued
 - `capital_fraction(...)` values must evaluate to a finite fraction in `(0, 1]`
 - an entry size fraction below `1` leaves cash available for later same-side scale-ins on later staged entries
 - `risk_pct(...)` is entry-only in v1 and sizes from actual fill price and stop distance at fill time

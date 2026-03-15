@@ -717,7 +717,9 @@ The backtester stays intentionally simple and deterministic:
 - `size module <name> = <expr>` applies that same entry sizing to the staged entry role bound by `module <name> = entry...`
 - `size entry1..3 long|short = capital_fraction(x)` uses a finite fraction in `(0, 1]` of current cash or free collateral at fill time
 - `size entry1..3 long|short = risk_pct(pct, stop_price)` sizes from actual fill price and stop distance so the requested loss at `stop_price` is `pct` of current equity, then clamps to capital or margin limits
+- module sizing can already be regime-aware at signal time, for example `size module breakout = strong ? 0.4 : 0.15`
 - entry size expressions are evaluated as hidden numeric series like other order fields
+- queued orders keep the captured size expression result from the bar that created the order request; they do not resize themselves from later bars automatically
 - valid `capital_fraction(...)` values are finite values in `(0, 1]`
 - valid `risk_pct(...)` values are finite values `> 0`
 - opposite entry reverses on the same eligible open by closing first and then

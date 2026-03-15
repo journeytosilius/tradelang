@@ -155,6 +155,7 @@ Regras:
 - cada papel de entrada pode ter no maximo um rotulo
 - nomes de modulo tambem precisam ser unicos
 - `size module <name> = expr` reutiliza a mesma semantica de dimensionamento de entrada em estagio para o papel de entrada ligado a esse modulo
+- `size module <name> = expr` aceita as mesmas expressoes numericas que outras declaracoes de tamanho, entao bindings de regime e ternarios podem dirigir o tamanho do modulo quando a solicitacao de ordem e capturada
 - os diagnosticos de backtest expoem o rotulo como `entry_module` nas trades e
   nos resumos de coorte
 
@@ -220,8 +221,10 @@ Regras:
 - `size module <name>` e um atalho para dimensionar o papel de entrada em estagio ligado por aquela declaracao `module`
 - o dimensionamento de entradas em estagio suporta:
   - uma fracao numerica nua legada como `0.5`
-  - `capital_fraction(x)`
-  - `risk_pct(pct, stop_price)`
+- `capital_fraction(x)`
+- `risk_pct(pct, stop_price)`
+- o dimensionamento de modulo orientado por regime pode usar expressoes numericas comuns como `size module breakout = strong ? 0.4 : 0.15` ou `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)`
+- como outros campos de ordem, esse tamanho fica congelado quando a solicitacao de ordem e produzida e nao e recalculado automaticamente a partir de barras futuras
 - valores `capital_fraction(...)` devem se avaliar como uma fracao finita em
   `(0, 1]`
 - uma fracao de entrada abaixo de `1` deixa caixa para scale-ins posteriores no

@@ -1789,6 +1789,43 @@ plot(spot.close)"
 }
 
 #[test]
+fn entry_module_size_can_follow_signal_time_regime_state() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+regime strong = spot.time == {t0}
+entry long = spot.time == {t0}
+order entry long = market(venue = spot)
+size module breakout = strong ? 0.4 : 0.15
+exit long = false
+order exit long = market(venue = spot)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 12.0, 12.0),
+                bar(t0 + 2 * support::MINUTE_MS, 14.0, 14.0),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 1);
+    assert_eq!(result.fills[0].action, palmscript::FillAction::Buy);
+    approx_eq(result.fills[0].quantity, 400.0 / 12.0);
+}
+
+#[test]
 fn conflicting_entries_are_rejected() {
     let compiled = compile(
         "interval 1m

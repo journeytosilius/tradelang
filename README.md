@@ -97,6 +97,11 @@ They can also reuse the existing staged entry sizing surface through
 `size module <name> = <expr>`, so a module can opt into the same
 `capital_fraction(...)`, legacy bare fraction, or `risk_pct(...)` entry sizing
 without duplicating the bound staged entry role name.
+Because that size expression is captured through the same hidden order-field
+path as other order parameters, module sizing can already follow regime logic
+at signal time, for example
+`size module breakout = strong_trend ? 0.4 : 0.15` or
+`size module breakout = risk_pct(strong_trend ? 0.01 : 0.005, stop_price)`.
 
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 

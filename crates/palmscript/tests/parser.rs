@@ -449,6 +449,22 @@ plot(src.close)",
 }
 
 #[test]
+fn parses_regime_aware_module_entry_size_declarations() {
+    compile(
+        "interval 1m
+source src = binance.spot(\"BTCUSDT\")
+execution src = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+regime strong = src.close > src.close[1]
+entry long = src.close > src.close[1]
+order entry long = market(venue = src)
+size module breakout = strong ? 0.4 : 0.15
+plot(src.close)",
+    )
+    .expect("regime-aware module-based entry size declarations should compile");
+}
+
+#[test]
 fn parses_staged_entries_targets_and_protect_ratchets() {
     compile(
         "interval 1m
@@ -555,11 +571,9 @@ fn rejects_size_declarations_for_non_target_roles() {
     let message = compile_err(&with_interval(
         "entry long = src.close > src.close[1]\nsize exit long = 0.5\nplot(src.close)",
     ));
-    assert!(
-        message.contains(
-            "expected `entry`, `target`, `module`, `entry1..3`, or `target1..3` after `size`"
-        )
-    );
+    assert!(message.contains(
+        "expected `entry`, `target`, `module`, `entry1..3`, or `target1..3` after `size`"
+    ));
 }
 
 #[test]

@@ -134,6 +134,7 @@ size module breakout = 0.4
 - 各エントリーロールには 1 つだけラベルを付けられます
 - module 名も一意でなければならない
 - `size module <name> = expr` は、その module に結び付いた staged entry ロールに既存の entry sizing セマンティクスを再利用する
+- `size module <name> = expr` は他の size 宣言と同じ数値式を受け付けるので、regime 束縛や三項式で order request を捕捉する時点の module サイズを決められる
 - バックテスト診断ではこのラベルが trade の `entry_module` と cohort 集計に出ます
 
 ## `order` 宣言
@@ -189,8 +190,10 @@ size target long = 0.5
 - `size module <name>` は、その `module` 宣言が束縛した staged entry ロールをサイズ指定するための短縮形
 - staged entry sizing は次をサポートする:
   - `0.5` のような旧来の裸の数値比率
-  - `capital_fraction(x)`
-  - `risk_pct(pct, stop_price)`
+- `capital_fraction(x)`
+- `risk_pct(pct, stop_price)`
+- regime に応じた module sizing では、`size module breakout = strong ? 0.4 : 0.15` や `size module breakout = risk_pct(strong ? 0.01 : 0.005, stop_price)` のような通常の数値式を使える
+- 他の order field と同様に、そのサイズは order request を作った時点で固定され、後続バーから自動で再計算されることはない
 - `capital_fraction(...)` の値は有限な `(0, 1]` の比率に評価されなければならない
 - `1` 未満の entry size fraction は、後続の同方向 scale-in のために cash を残す
 - `risk_pct(...)` は v1 では entry 専用で、fill 時点の実際の fill 価格と stop 距離からサイズが決まる
