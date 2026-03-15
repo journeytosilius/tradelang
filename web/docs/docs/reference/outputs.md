@@ -251,7 +251,7 @@ Always-on summary diagnostics include:
 - trade diagnostics
 - opportunity events
 - export summaries
-- cohort summaries
+- cohort summaries, including fixed 4-hour UTC time-bucket cohorts
 - drawdown duration and stagnation metrics
 - annualized Sharpe ratio in backtest, walk-forward window, and stitched walk-forward summaries
 - baseline comparisons against flat cash and execution-asset buy-and-hold
@@ -279,7 +279,7 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - optimize validated / feasible / infeasible candidate counts
 - an optional best-infeasible-candidate fallback summary when no validated candidate satisfies every enabled constraint
 - typed constraint-failure breakdowns for the validated survivor set
-- optional full-window direct-validation replays for the top feasible validated survivors, including stitched-vs-direct drift summaries
+- optional full-window direct-validation replays for the top feasible validated survivors, including stitched-vs-direct drift summaries and time-bucket cohort summaries
 
 ## Output Time And Bar Index
 

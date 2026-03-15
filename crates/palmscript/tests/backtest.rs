@@ -281,6 +281,54 @@ plot(spot.close)",
     assert_eq!(summary.short_trade_count, 0);
 }
 
+#[test]
+fn backtest_reports_time_bucket_cohorts() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+
+    let bars = vec![
+        bar(3 * 60 * 60 * 1000, 100.0, 101.0),
+        bar(4 * 60 * 60 * 1000, 101.0, 103.0),
+        bar(5 * 60 * 60 * 1000, 103.0, 99.0),
+        bar(6 * 60 * 60 * 1000, 99.0, 98.0),
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should run");
+
+    assert_eq!(result.summary.trade_count, 1);
+    assert_eq!(result.diagnostics.cohorts.by_time_bucket_utc.len(), 1);
+    let summary = &result.diagnostics.cohorts.by_time_bucket_utc[0];
+    assert_eq!(summary.start_hour_utc, 0);
+    assert_eq!(summary.end_hour_utc, 4);
+    assert_eq!(summary.trade_count, 1);
+    assert_eq!(summary.winning_trade_count, 0);
+}
+
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),

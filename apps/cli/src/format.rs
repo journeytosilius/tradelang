@@ -512,6 +512,12 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         }
     }
 
+    render_time_bucket_cohorts_text(
+        &mut out,
+        "Time Bucket Cohorts",
+        &result.diagnostics.cohorts.by_time_bucket_utc,
+    );
+
     if !result.diagnostics.hints.is_empty() {
         out.push_str("Hints\n");
         for hint in &result.diagnostics.hints {
@@ -1134,6 +1140,11 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
                 validation.drift.trade_count_delta,
                 validation.drift.max_drawdown_delta
             );
+            render_time_bucket_cohorts_text(
+                &mut out,
+                "direct_time_bucket_cohorts",
+                &validation.time_bucket_cohorts,
+            );
         }
     }
 
@@ -1319,6 +1330,7 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
             );
         }
     }
+    render_time_bucket_cohorts_text(out, "time_bucket_cohorts", &candidate.time_bucket_cohorts);
 }
 
 fn has_configured_constraints(config: &ValidationConstraintConfig) -> bool {
@@ -1343,6 +1355,31 @@ fn render_constraint_summary_text(
     let _ = writeln!(out, "passed={}", summary.passed);
     if !summary.violations.is_empty() {
         let _ = writeln!(out, "violations={}", fmt_constraint_violations(summary));
+    }
+}
+
+fn render_time_bucket_cohorts_text(
+    out: &mut String,
+    heading: &str,
+    summaries: &[palmscript::TimeBucketUtcDiagnosticSummary],
+) {
+    if summaries.is_empty() {
+        return;
+    }
+    out.push_str(heading);
+    out.push('\n');
+    for summary in summaries.iter().take(6) {
+        let _ = writeln!(
+            out,
+            "start_hour_utc={} end_hour_utc={} trade_count={} winning_trade_count={} win_rate_pct={:.2} total_realized_pnl={:.2} average_realized_pnl={:.2}",
+            summary.start_hour_utc,
+            summary.end_hour_utc,
+            summary.trade_count,
+            summary.winning_trade_count,
+            summary.win_rate * 100.0,
+            summary.total_realized_pnl,
+            summary.average_realized_pnl
+        );
     }
 }
 
@@ -1570,14 +1607,19 @@ fn _output_kind(_kind: OutputKind) {}
 
 #[cfg(test)]
 mod tests {
-    use super::{render_backtest_text, render_bytecode_text, render_outputs_text};
+    use super::{
+        render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
+    };
+    use palmscript::backtest::OptimizationRobustnessSummary;
     use palmscript::bytecode::{Constant, LocalInfo, OutputDecl, OutputKind, Program};
     use palmscript::span::{Position, Span};
     use palmscript::types::Type;
     use palmscript::{
-        BacktestResult, BacktestSummary, CompiledProgram, EquityPoint, ExportDiagnosticSummary,
-        Fill, FillAction, OrderKind, OrderRecord, OrderStatus, OutputSample, OutputSeries,
-        OutputValue, Outputs, PlotPoint, PlotSeries, PositionSide, SignalRole, Trade,
+        BacktestResult, BacktestSummary, CompiledProgram, DiagnosticsDetailMode, EquityPoint,
+        ExportDiagnosticSummary, Fill, FillAction, OptimizeCandidateSummary, OptimizeConfig,
+        OptimizeEvaluationSummary, OptimizeObjective, OptimizeResult, OptimizeRunner, OrderKind,
+        OrderRecord, OrderStatus, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint,
+        PlotSeries, PositionSide, SignalRole, Trade,
     };
 
     #[test]
@@ -1863,6 +1905,15 @@ mod tests {
                 }],
                 per_bar_trace: vec![],
                 cohorts: palmscript::CohortDiagnostics {
+                    by_time_bucket_utc: vec![palmscript::TimeBucketUtcDiagnosticSummary {
+                        start_hour_utc: 0,
+                        end_hour_utc: 4,
+                        trade_count: 1,
+                        winning_trade_count: 1,
+                        win_rate: 1.0,
+                        total_realized_pnl: 12.0,
+                        average_realized_pnl: 12.0,
+                    }],
                     by_entry_module: vec![palmscript::EntryModuleDiagnosticSummary {
                         name: "breakout".to_string(),
                         trade_count: 1,
@@ -1936,10 +1987,117 @@ mod tests {
         assert!(rendered.contains("Recent Orders"));
         assert!(rendered.contains("role=long_entry"));
         assert!(rendered.contains("Entry Module Attribution"));
+        assert!(rendered.contains("Time Bucket Cohorts"));
+        assert!(rendered.contains("start_hour_utc=0 end_hour_utc=4"));
         assert!(rendered.contains("Recent Trades"));
         assert!(rendered.contains("side=long"));
         assert!(rendered.contains("module=breakout"));
         assert!(rendered.contains("Open Position"));
         assert!(rendered.contains("flat"));
+    }
+
+    #[test]
+    fn render_optimize_text_includes_time_bucket_cohorts() {
+        let candidate = OptimizeCandidateSummary {
+            trial_id: 7,
+            input_overrides: std::collections::BTreeMap::from([("threshold".to_string(), 0.0)]),
+            objective_score: 1.25,
+            summary: OptimizeEvaluationSummary::Backtest {
+                summary: BacktestSummary {
+                    starting_equity: 1000.0,
+                    ending_equity: 1100.0,
+                    realized_pnl: 100.0,
+                    unrealized_pnl: 0.0,
+                    total_return: 0.10,
+                    sharpe_ratio: Some(1.5),
+                    trade_count: 4,
+                    winning_trade_count: 3,
+                    losing_trade_count: 1,
+                    win_rate: 0.75,
+                    max_drawdown: 12.0,
+                    max_gross_exposure: 100.0,
+                    max_net_exposure: 100.0,
+                    peak_open_position_count: 1,
+                },
+                capture_summary: palmscript::BacktestCaptureSummary::default(),
+            },
+            time_bucket_cohorts: vec![palmscript::TimeBucketUtcDiagnosticSummary {
+                start_hour_utc: 8,
+                end_hour_utc: 12,
+                trade_count: 4,
+                winning_trade_count: 3,
+                win_rate: 0.75,
+                total_realized_pnl: 100.0,
+                average_realized_pnl: 25.0,
+            }],
+            constraints: palmscript::ValidationConstraintSummary::default(),
+        };
+        let result = OptimizeResult {
+            config: OptimizeConfig {
+                runner: OptimizeRunner::Backtest,
+                backtest: palmscript::BacktestConfig {
+                    execution_source_alias: "spot".to_string(),
+                    portfolio_execution_aliases: Vec::new(),
+                    activation_time_ms: None,
+                    initial_capital: 1000.0,
+                    maker_fee_bps: 0.0,
+                    taker_fee_bps: 0.0,
+                    execution_fee_schedules: std::collections::BTreeMap::new(),
+                    slippage_bps: 0.0,
+                    diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                    perp: None,
+                    perp_context: None,
+                    portfolio_perp_contexts: std::collections::BTreeMap::new(),
+                },
+                walk_forward: None,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                holdout: None,
+                params: vec![],
+                objective: OptimizeObjective::EndingEquity,
+                trials: 8,
+                startup_trials: 8,
+                seed: 7,
+                workers: 1,
+                top_n: 1,
+                direct_validation_top_n: 1,
+                base_input_overrides: std::collections::BTreeMap::new(),
+                constraints: palmscript::ValidationConstraintConfig::default(),
+            },
+            candidate_count: 8,
+            completed_trials: 8,
+            validated_candidate_count: 8,
+            feasible_candidate_count: 8,
+            infeasible_candidate_count: 0,
+            best_candidate: candidate.clone(),
+            best_infeasible_candidate: None,
+            top_candidates: vec![candidate.clone()],
+            holdout: None,
+            robustness: OptimizationRobustnessSummary::default(),
+            constraints: palmscript::ValidationConstraintSummary::default(),
+            constraint_failure_breakdown: vec![],
+            direct_validation: vec![palmscript::OptimizeDirectValidationResult {
+                survivor_rank: 1,
+                trial_id: 7,
+                input_overrides: candidate.input_overrides.clone(),
+                objective_score: 1.25,
+                summary: match &candidate.summary {
+                    OptimizeEvaluationSummary::Backtest { summary, .. } => summary.clone(),
+                    _ => unreachable!(),
+                },
+                capture_summary: palmscript::BacktestCaptureSummary::default(),
+                baseline_comparison: palmscript::BaselineComparisonSummary::default(),
+                date_perturbation: palmscript::DatePerturbationDiagnostics::default(),
+                overfitting_risk: palmscript::OverfittingRiskSummary::default(),
+                time_bucket_cohorts: candidate.time_bucket_cohorts.clone(),
+                drift: palmscript::DirectValidationDriftSummary::default(),
+            }],
+            hints: vec![],
+            overfitting_risk: palmscript::OverfittingRiskSummary::default(),
+        };
+
+        let rendered = render_optimize_text(&result, None);
+        assert!(rendered.contains("time_bucket_cohorts"));
+        assert!(rendered.contains("direct_time_bucket_cohorts"));
+        assert!(rendered.contains("start_hour_utc=8 end_hour_utc=12"));
     }
 }

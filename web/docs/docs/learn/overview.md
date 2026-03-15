@@ -36,7 +36,7 @@ Current backtest-oriented outputs include:
 
 - typed order and trade diagnostics
 - bounded opportunity events
-- cohort summaries and drawdown-path summaries
+- cohort summaries, including fixed 4-hour UTC time-bucket cohorts, and drawdown-path summaries
 - source-alignment summaries for missing or synthetic feed updates
 - deterministic overfitting-risk summaries, validation-constraint summaries, baseline comparisons, bounded date-perturbation reruns for top-level backtests, feasible vs infeasible optimize survivor counts, constraint-failure breakdowns, optional direct-validation survivor replays, optimize holdout pass-rate data, and improvement hints that stay conservative when no out-of-sample evidence exists
 - optional per-bar decision traces with `--diagnostics full-trace`

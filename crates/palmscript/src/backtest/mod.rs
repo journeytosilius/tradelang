@@ -632,6 +632,17 @@ pub struct HourDiagnosticSummary {
     pub total_realized_pnl: f64,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TimeBucketUtcDiagnosticSummary {
+    pub start_hour_utc: u8,
+    pub end_hour_utc: u8,
+    pub trade_count: usize,
+    pub winning_trade_count: usize,
+    pub win_rate: f64,
+    pub total_realized_pnl: f64,
+    pub average_realized_pnl: f64,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HoldingTimeBucket {
@@ -677,6 +688,8 @@ pub struct CohortDiagnostics {
     pub by_exit_classification: Vec<ExitClassificationDiagnosticSummary>,
     pub by_weekday_utc: Vec<WeekdayDiagnosticSummary>,
     pub by_hour_utc: Vec<HourDiagnosticSummary>,
+    #[serde(default)]
+    pub by_time_bucket_utc: Vec<TimeBucketUtcDiagnosticSummary>,
     pub by_holding_time: Vec<HoldingTimeBucketSummary>,
     pub by_active_export: Vec<BoolExportActiveTradeSummary>,
     #[serde(default)]

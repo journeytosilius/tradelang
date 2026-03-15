@@ -9,16 +9,17 @@ use rand_distr::{Distribution, Normal};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::backtest::diagnostics::aggregate_time_bucket_summaries;
 use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
     bridge, run_backtest_with_sources, run_backtest_with_sources_internal,
     run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig, BacktestError,
     BacktestSummary, BaselineComparisonSummary, ConstraintFailureBreakdown,
     DatePerturbationDiagnostics, DiagnosticsDetailMode, ImprovementHint, ImprovementHintKind,
-    OverfittingRiskLevel, OverfittingRiskSummary, ValidationConstraintConfig,
-    ValidationConstraintKind, ValidationConstraintSummary, ValidationConstraintViolation,
-    WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
-    WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    OverfittingRiskLevel, OverfittingRiskSummary, TimeBucketUtcDiagnosticSummary,
+    ValidationConstraintConfig, ValidationConstraintKind, ValidationConstraintSummary,
+    ValidationConstraintViolation, WalkForwardConfig, WalkForwardResult,
+    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -235,6 +236,8 @@ pub struct OptimizeDirectValidationResult {
     pub date_perturbation: DatePerturbationDiagnostics,
     #[serde(default)]
     pub overfitting_risk: OverfittingRiskSummary,
+    #[serde(default)]
+    pub time_bucket_cohorts: Vec<TimeBucketUtcDiagnosticSummary>,
     pub drift: DirectValidationDriftSummary,
 }
 
@@ -261,6 +264,8 @@ pub struct OptimizeCandidateSummary {
     pub input_overrides: BTreeMap<String, f64>,
     pub objective_score: f64,
     pub summary: OptimizeEvaluationSummary,
+    #[serde(default)]
+    pub time_bucket_cohorts: Vec<TimeBucketUtcDiagnosticSummary>,
     #[serde(default)]
     pub constraints: ValidationConstraintSummary,
 }
@@ -1705,6 +1710,7 @@ fn run_direct_validations(
                 baseline_comparison: result.diagnostics.baseline_comparison,
                 date_perturbation: result.diagnostics.date_perturbation,
                 overfitting_risk: result.diagnostics.overfitting_risk,
+                time_bucket_cohorts: result.diagnostics.cohorts.by_time_bucket_utc,
             })
         })
         .collect()
@@ -1895,7 +1901,7 @@ fn evaluate_candidate(
     overrides: BTreeMap<String, f64>,
 ) -> Result<OptimizeCandidateSummary, OptimizeError> {
     let compiled = compile_with_input_overrides(source, &overrides)?;
-    let summary = match config.runner {
+    let (summary, time_bucket_cohorts) = match config.runner {
         OptimizeRunner::WalkForward => {
             let result = run_walk_forward_with_sources(
                 &compiled,
@@ -1906,7 +1912,15 @@ fn evaluate_candidate(
                     .clone()
                     .expect("validated walk-forward config"),
             )?;
-            summarize_walk_forward_candidate(&result)
+            (
+                summarize_walk_forward_candidate(&result),
+                aggregate_time_bucket_summaries(
+                    result
+                        .segments
+                        .iter()
+                        .map(|segment| &segment.out_of_sample_diagnostics.cohorts),
+                ),
+            )
         }
         OptimizeRunner::Backtest => {
             let result = run_backtest_with_sources_internal(
@@ -1916,10 +1930,13 @@ fn evaluate_candidate(
                 config.backtest,
                 false,
             )?;
-            OptimizeEvaluationSummary::Backtest {
-                summary: result.summary,
-                capture_summary: result.diagnostics.capture_summary,
-            }
+            (
+                OptimizeEvaluationSummary::Backtest {
+                    summary: result.summary,
+                    capture_summary: result.diagnostics.capture_summary,
+                },
+                result.diagnostics.cohorts.by_time_bucket_utc,
+            )
         }
     };
     let constraints = build_candidate_constraint_summary(&config.constraints, &summary);
@@ -1929,6 +1946,7 @@ fn evaluate_candidate(
         input_overrides: overrides,
         objective_score,
         summary,
+        time_bucket_cohorts,
         constraints,
     })
 }
@@ -2371,6 +2389,7 @@ mod tests {
                 },
                 capture_summary: BacktestCaptureSummary::default(),
             },
+            time_bucket_cohorts: Vec::new(),
             constraints: ValidationConstraintSummary {
                 passed: constraints_passed,
                 violations: Vec::new(),

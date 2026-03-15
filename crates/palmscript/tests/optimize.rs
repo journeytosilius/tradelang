@@ -228,6 +228,16 @@ fn optimize_can_direct_validate_top_feasible_survivors() {
     assert_eq!(direct.drift.max_drawdown_delta, 0.0);
     assert_eq!(direct.drift.execution_asset_return_delta, 0.0);
     assert_eq!(direct.drift.sharpe_ratio_delta, Some(0.0));
+    assert_eq!(result.best_candidate.time_bucket_cohorts.len(), 1);
+    assert_eq!(
+        result.best_candidate.time_bucket_cohorts[0].start_hour_utc,
+        0
+    );
+    assert_eq!(result.best_candidate.time_bucket_cohorts[0].end_hour_utc, 4);
+    assert_eq!(
+        direct.time_bucket_cohorts,
+        result.best_candidate.time_bucket_cohorts
+    );
 }
 
 #[test]

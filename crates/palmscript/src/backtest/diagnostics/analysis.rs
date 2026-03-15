@@ -6,9 +6,12 @@ use crate::backtest::{
     DrawdownDiagnostics, EntryModuleDiagnosticSummary, EquityPoint,
     ExitClassificationDiagnosticSummary, ExportDiagnosticSummary, HoldingTimeBucket,
     HoldingTimeBucketSummary, HourDiagnosticSummary, ImprovementHint, ImprovementHintKind,
-    SideDiagnosticSummary, TradeDiagnostic, TradeExitClassification, WeekdayDiagnosticSummary,
+    SideDiagnosticSummary, TimeBucketUtcDiagnosticSummary, TradeDiagnostic,
+    TradeExitClassification, WeekdayDiagnosticSummary,
 };
 use crate::position::PositionSide;
+
+const TIME_BUCKET_HOURS_UTC: u8 = 4;
 
 pub(crate) fn build_cohort_diagnostics(
     trade_diagnostics: &[TradeDiagnostic],
@@ -19,10 +22,47 @@ pub(crate) fn build_cohort_diagnostics(
         by_exit_classification: build_exit_classification_summaries(trade_diagnostics),
         by_weekday_utc: build_weekday_summaries(trade_diagnostics),
         by_hour_utc: build_hour_summaries(trade_diagnostics),
+        by_time_bucket_utc: build_time_bucket_summaries(trade_diagnostics),
         by_holding_time: build_holding_time_summaries(trade_diagnostics),
         by_active_export: build_active_export_summaries(trade_diagnostics, export_summaries),
         by_entry_module: build_entry_module_summaries(trade_diagnostics),
     }
+}
+
+pub(crate) fn aggregate_time_bucket_summaries<'a>(
+    cohorts: impl IntoIterator<Item = &'a CohortDiagnostics>,
+) -> Vec<TimeBucketUtcDiagnosticSummary> {
+    let mut aggregates = BTreeMap::<(u8, u8), (usize, usize, f64)>::new();
+    for cohort in cohorts {
+        for summary in &cohort.by_time_bucket_utc {
+            let entry = aggregates
+                .entry((summary.start_hour_utc, summary.end_hour_utc))
+                .or_insert((0, 0, 0.0));
+            entry.0 += summary.trade_count;
+            entry.1 += summary.winning_trade_count;
+            entry.2 += summary.total_realized_pnl;
+        }
+    }
+
+    aggregates
+        .into_iter()
+        .map(
+            |(
+                (start_hour_utc, end_hour_utc),
+                (trade_count, winning_trade_count, total_realized_pnl),
+            )| {
+                TimeBucketUtcDiagnosticSummary {
+                    start_hour_utc,
+                    end_hour_utc,
+                    trade_count,
+                    winning_trade_count,
+                    win_rate: ratio(winning_trade_count, trade_count),
+                    total_realized_pnl,
+                    average_realized_pnl: average_realized_pnl(total_realized_pnl, trade_count),
+                }
+            },
+        )
+        .collect()
 }
 
 pub(crate) fn build_drawdown_diagnostics(equity_curve: &[EquityPoint]) -> DrawdownDiagnostics {
@@ -264,6 +304,44 @@ fn build_hour_summaries(trade_diagnostics: &[TradeDiagnostic]) -> Vec<HourDiagno
     summaries
 }
 
+fn build_time_bucket_summaries(
+    trade_diagnostics: &[TradeDiagnostic],
+) -> Vec<TimeBucketUtcDiagnosticSummary> {
+    let mut summaries = Vec::new();
+    let bucket_width = TIME_BUCKET_HOURS_UTC as usize;
+    for start_hour in (0..24usize).step_by(bucket_width) {
+        let end_hour = (start_hour + bucket_width).min(24);
+        let matching = trade_diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                let hour = hour_utc(exit_time_ms(diagnostic));
+                hour >= start_hour as u8 && hour < end_hour as u8
+            })
+            .collect::<Vec<_>>();
+        if matching.is_empty() {
+            continue;
+        }
+        let winning_trade_count = matching
+            .iter()
+            .filter(|diagnostic| diagnostic.realized_pnl > 0.0)
+            .count();
+        let total_realized_pnl = matching
+            .iter()
+            .map(|diagnostic| diagnostic.realized_pnl)
+            .sum::<f64>();
+        summaries.push(TimeBucketUtcDiagnosticSummary {
+            start_hour_utc: start_hour as u8,
+            end_hour_utc: end_hour as u8,
+            trade_count: matching.len(),
+            winning_trade_count,
+            win_rate: ratio(winning_trade_count, matching.len()),
+            total_realized_pnl,
+            average_realized_pnl: average_realized_pnl(total_realized_pnl, matching.len()),
+        });
+    }
+    summaries
+}
+
 fn build_holding_time_summaries(
     trade_diagnostics: &[TradeDiagnostic],
 ) -> Vec<HoldingTimeBucketSummary> {
@@ -397,6 +475,14 @@ fn build_entry_module_summaries(
             ),
         })
         .collect()
+}
+
+fn average_realized_pnl(total_realized_pnl: f64, trade_count: usize) -> f64 {
+    if trade_count == 0 {
+        0.0
+    } else {
+        total_realized_pnl / trade_count as f64
+    }
 }
 
 fn exit_time_ms(diagnostic: &TradeDiagnostic) -> i64 {

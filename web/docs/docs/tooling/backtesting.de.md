@@ -293,7 +293,7 @@ Paper mode reuses the same:
 
 Backtest, walk-forward, and optimize results now expose richer machine-readable diagnostics on top of the existing order/trade summaries:
 
-- cohort summaries by side, exit classification, weekday/hour UTC, holding-time bucket, and active exported bool state
+- cohort summaries by side, exit classification, weekday/hour UTC, fixed 4-hour UTC time buckets, holding-time bucket, and active exported bool state
 - drawdown duration and stagnation diagnostics
 - baseline comparisons against flat cash and execution-asset buy-and-hold, plus bounded date-perturbation reruns on top-level backtests
 - source alignment diagnostics that show degraded bars and synthetic supplemental updates

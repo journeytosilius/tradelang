@@ -596,6 +596,7 @@ mod tests {
                     losing_trade_count: 2,
                     win_rate: 0.66,
                 },
+                time_bucket_cohorts: Vec::new(),
                 constraints: crate::backtest::ValidationConstraintSummary::default(),
             },
             Some(&OptimizeHoldoutResult {
