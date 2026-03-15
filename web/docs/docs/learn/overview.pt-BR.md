@@ -23,6 +23,7 @@ Para jobs longos de tuning pela CLI:
 - salve os candidatos uteis com `--preset-out best.json` para reroda-los com `run backtest` ou `run walk-forward`
 - mantenha o holdout final intacto ativado por padrao, a menos que queira desativar essa protecao de forma intencional
 - adicione restricoes explicitas como `--min-sharpe`, `--min-holdout-pass-rate` e `--max-overfitting-risk` quando quiser que o otimizador busque apenas na regiao viavel
+- adicione `--direct-validate-top <N>` quando quiser que o otimizador rode automaticamente os melhores survivors viaveis na janela completa
 
 ## O Que Ler Depois
 
@@ -43,7 +44,7 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`
 - summary mode keeps cohort, drawdown-path, baseline-comparison, source-alignment, holdout-drift, robustness, overfitting-risk, validation-constraint, and hint data, and top-level backtests also add bounded date-perturbation reruns
 - full-trace mode adds one typed per-bar decision trace per execution bar
-- optimize output now includes top-candidate holdout checks plus validation-constraint, feasible vs infeasible survivor counts, constraint-failure breakdowns, holdout-pass-rate, parameter stability, baseline-comparison, and overfitting-risk summaries
+- optimize output now includes top-candidate holdout checks plus validation-constraint, feasible vs infeasible survivor counts, constraint-failure breakdowns, optional direct-validation survivor replays, holdout-pass-rate, parameter stability, baseline-comparison, and overfitting-risk summaries
 
 ## Execucao Paper Local
 

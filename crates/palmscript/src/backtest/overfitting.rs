@@ -563,6 +563,7 @@ mod tests {
             seed: 0,
             workers: 1,
             top_n: 5,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: crate::backtest::ValidationConstraintConfig::default(),
         };

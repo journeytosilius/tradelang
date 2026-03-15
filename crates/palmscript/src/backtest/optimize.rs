@@ -13,12 +13,12 @@ use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
     bridge, run_backtest_with_sources, run_backtest_with_sources_internal,
     run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig, BacktestError,
-    BacktestSummary, ConstraintFailureBreakdown, DatePerturbationDiagnostics,
-    DiagnosticsDetailMode, ImprovementHint, ImprovementHintKind, OverfittingRiskLevel,
-    OverfittingRiskSummary, ValidationConstraintConfig, ValidationConstraintKind,
-    ValidationConstraintSummary, ValidationConstraintViolation, WalkForwardConfig,
-    WalkForwardResult, WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary,
-    WalkForwardWindowSummary,
+    BacktestSummary, BaselineComparisonSummary, ConstraintFailureBreakdown,
+    DatePerturbationDiagnostics, DiagnosticsDetailMode, ImprovementHint, ImprovementHintKind,
+    OverfittingRiskLevel, OverfittingRiskSummary, ValidationConstraintConfig,
+    ValidationConstraintKind, ValidationConstraintSummary, ValidationConstraintViolation,
+    WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -178,6 +178,8 @@ pub struct OptimizeConfig {
     pub seed: u64,
     pub workers: usize,
     pub top_n: usize,
+    #[serde(default)]
+    pub direct_validation_top_n: usize,
     pub base_input_overrides: BTreeMap<String, f64>,
     #[serde(default)]
     pub constraints: ValidationConstraintConfig,
@@ -207,6 +209,33 @@ pub struct HoldoutDriftSummary {
     pub trade_count_delta: i64,
     pub win_rate_delta: f64,
     pub max_drawdown_delta: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct DirectValidationDriftSummary {
+    pub total_return_delta: f64,
+    pub execution_asset_return_delta: f64,
+    pub trade_count_delta: i64,
+    pub win_rate_delta: f64,
+    pub max_drawdown_delta: f64,
+    pub sharpe_ratio_delta: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OptimizeDirectValidationResult {
+    pub survivor_rank: usize,
+    pub trial_id: usize,
+    pub input_overrides: BTreeMap<String, f64>,
+    pub objective_score: f64,
+    pub summary: BacktestSummary,
+    pub capture_summary: BacktestCaptureSummary,
+    #[serde(default)]
+    pub baseline_comparison: BaselineComparisonSummary,
+    #[serde(default)]
+    pub date_perturbation: DatePerturbationDiagnostics,
+    #[serde(default)]
+    pub overfitting_risk: OverfittingRiskSummary,
+    pub drift: DirectValidationDriftSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -331,6 +360,8 @@ pub struct OptimizeResult {
     pub constraints: ValidationConstraintSummary,
     #[serde(default)]
     pub constraint_failure_breakdown: Vec<ConstraintFailureBreakdown>,
+    #[serde(default)]
+    pub direct_validation: Vec<OptimizeDirectValidationResult>,
     #[serde(default)]
     pub hints: Vec<ImprovementHint>,
     #[serde(default)]
@@ -610,6 +641,8 @@ pub fn run_optimize_with_source_resume(
         .len()
         .saturating_sub(feasible_candidate_count);
     let constraints = best_candidate.constraints.clone();
+    let direct_validation =
+        run_direct_validations(source, &runtime, vm_limits, &config, &top_candidates)?;
     let hints = build_optimize_hints(&best_candidate, holdout.as_ref(), &robustness);
     Ok(OptimizeResult {
         candidate_count: config.trials,
@@ -625,6 +658,7 @@ pub fn run_optimize_with_source_resume(
         robustness,
         constraints,
         constraint_failure_breakdown,
+        direct_validation,
         hints,
         overfitting_risk,
     })
@@ -1630,6 +1664,95 @@ fn run_candidate_backtest_validation(
     let compiled = compile_with_input_overrides(source, overrides)?;
     let result = run_backtest_with_sources(&compiled, runtime, vm_limits, config.backtest.clone())?;
     Ok(result.diagnostics.date_perturbation)
+}
+
+fn run_direct_validations(
+    source: &str,
+    runtime: &SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &OptimizeConfig,
+    top_candidates: &[OptimizeCandidateSummary],
+) -> Result<Vec<OptimizeDirectValidationResult>, OptimizeError> {
+    if config.direct_validation_top_n == 0 {
+        return Ok(Vec::new());
+    }
+
+    top_candidates
+        .iter()
+        .filter(|candidate| candidate.constraints.passed)
+        .take(config.direct_validation_top_n)
+        .enumerate()
+        .map(|(index, candidate)| {
+            let compiled = compile_with_input_overrides(source, &candidate.input_overrides)?;
+            let result = run_backtest_with_sources(
+                &compiled,
+                runtime.clone(),
+                vm_limits,
+                config.backtest.clone(),
+            )?;
+            Ok(OptimizeDirectValidationResult {
+                survivor_rank: index + 1,
+                trial_id: candidate.trial_id,
+                input_overrides: candidate.input_overrides.clone(),
+                objective_score: candidate.objective_score,
+                drift: build_direct_validation_drift(
+                    &candidate.summary,
+                    &result.summary,
+                    &result.diagnostics.capture_summary,
+                ),
+                summary: result.summary,
+                capture_summary: result.diagnostics.capture_summary,
+                baseline_comparison: result.diagnostics.baseline_comparison,
+                date_perturbation: result.diagnostics.date_perturbation,
+                overfitting_risk: result.diagnostics.overfitting_risk,
+            })
+        })
+        .collect()
+}
+
+fn build_direct_validation_drift(
+    candidate_summary: &OptimizeEvaluationSummary,
+    direct_summary: &BacktestSummary,
+    direct_capture_summary: &BacktestCaptureSummary,
+) -> DirectValidationDriftSummary {
+    match candidate_summary {
+        OptimizeEvaluationSummary::WalkForward {
+            stitched_summary,
+            trade_count,
+            win_rate,
+            ..
+        } => DirectValidationDriftSummary {
+            total_return_delta: direct_summary.total_return - stitched_summary.total_return,
+            execution_asset_return_delta: direct_capture_summary.execution_asset_return
+                - stitched_summary.average_execution_asset_return,
+            trade_count_delta: direct_summary.trade_count as i64 - *trade_count as i64,
+            win_rate_delta: direct_summary.win_rate - *win_rate,
+            max_drawdown_delta: direct_summary.max_drawdown - stitched_summary.max_drawdown,
+            sharpe_ratio_delta: option_delta(
+                direct_summary.sharpe_ratio,
+                stitched_summary.sharpe_ratio,
+            ),
+        },
+        OptimizeEvaluationSummary::Backtest {
+            summary,
+            capture_summary,
+        } => DirectValidationDriftSummary {
+            total_return_delta: direct_summary.total_return - summary.total_return,
+            execution_asset_return_delta: direct_capture_summary.execution_asset_return
+                - capture_summary.execution_asset_return,
+            trade_count_delta: direct_summary.trade_count as i64 - summary.trade_count as i64,
+            win_rate_delta: direct_summary.win_rate - summary.win_rate,
+            max_drawdown_delta: direct_summary.max_drawdown - summary.max_drawdown,
+            sharpe_ratio_delta: option_delta(direct_summary.sharpe_ratio, summary.sharpe_ratio),
+        },
+    }
+}
+
+fn option_delta(lhs: Option<f64>, rhs: Option<f64>) -> Option<f64> {
+    match (lhs, rhs) {
+        (Some(lhs), Some(rhs)) => Some(lhs - rhs),
+        _ => None,
+    }
 }
 
 fn build_constraint_failure_breakdown(

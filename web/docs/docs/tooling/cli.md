@@ -107,11 +107,14 @@ Walk-forward optimize now reserves a final untouched holdout window by default. 
 
 Add explicit search constraints such as `--min-sharpe`, `--min-holdout-pass-rate`, `--min-date-perturbation-positive-ratio`, `--min-date-perturbation-outperform-ratio`, and `--max-overfitting-risk` when you want optimize to search only the feasible region instead of filtering winners manually after the fact.
 
+Add `--direct-validate-top <N>` when you want optimize to replay that many top feasible validated survivors over the full backtest window automatically.
+
 The optimize result now also reports:
 
 - holdout drift versus the stitched optimization summary
 - holdout checks for the top ranked candidates, not only the winner
 - validated / feasible / infeasible survivor counts plus constraint-failure breakdowns for the validated survivor set
+- optional full-window direct-validation replays for the top feasible validated survivors
 - parameter stability ranges across the ranked and holdout-passing candidates
 - explicit overfitting-risk summaries with typed reasons and scores
 - deterministic machine-readable improvement hints

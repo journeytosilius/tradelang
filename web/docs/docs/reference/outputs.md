@@ -262,6 +262,7 @@ Walk-forward and optimize outputs reuse the same diagnostics model and add:
 - optimize validated / feasible / infeasible candidate counts
 - an optional best-infeasible-candidate fallback summary when no validated candidate satisfies every enabled constraint
 - typed constraint-failure breakdowns for the validated survivor set
+- optional full-window direct-validation replays for the top feasible validated survivors, including stitched-vs-direct drift summaries
 
 ## Output Time And Bar Index
 

@@ -25,6 +25,7 @@ For long CLI tuning jobs:
 - save survivors with `--preset-out best.json` so they can be rerun with `run backtest` or `run walk-forward`
 - keep the default untouched holdout enabled unless you are intentionally disabling that protection
 - add explicit constraints such as `--min-sharpe`, `--min-holdout-pass-rate`, and `--max-overfitting-risk` when you want the optimizer to search only the feasible region
+- add `--direct-validate-top <N>` when you want the optimizer to replay the best feasible survivors on the full window automatically
 - switch `--diagnostics` to `full-trace` when you want per-bar decision traces instead of only summary diagnostics
 
 ## Agent-Oriented Runtime Diagnostics
@@ -37,7 +38,7 @@ Current backtest-oriented outputs include:
 - bounded opportunity events
 - cohort summaries and drawdown-path summaries
 - source-alignment summaries for missing or synthetic feed updates
-- deterministic overfitting-risk summaries, validation-constraint summaries, baseline comparisons, bounded date-perturbation reruns for top-level backtests, feasible vs infeasible optimize survivor counts, constraint-failure breakdowns, optimize holdout pass-rate data, and improvement hints that stay conservative when no out-of-sample evidence exists
+- deterministic overfitting-risk summaries, validation-constraint summaries, baseline comparisons, bounded date-perturbation reruns for top-level backtests, feasible vs infeasible optimize survivor counts, constraint-failure breakdowns, optional direct-validation survivor replays, optimize holdout pass-rate data, and improvement hints that stay conservative when no out-of-sample evidence exists
 - optional per-bar decision traces with `--diagnostics full-trace`
 
 PalmScript also now includes a local execution daemon for paper sessions. The daemon reuses the same compiled VM and order simulator as backtest mode, drives them from live exchange-backed closed bars under a persistent local paper ledger, and surfaces shared top-of-book / last / mark quote snapshots so agents can inspect live paper-session valuation and feed health directly from the CLI.

@@ -185,6 +185,7 @@ palmscript run optimize strategy.ps \
   --objective robust-return \
   --trials 50 \
   --top 5 \
+  --direct-validate-top 3 \
   --preset-out /tmp/adaptive-best.json
 ```
 
@@ -200,11 +201,12 @@ V1 optimizer notes:
 - the search is seeded and deterministic for the same script, seed, and search space
 - `--workers` only controls bounded parallel evaluation
 - `--preset-out` writes a reusable preset containing the best overrides and top candidates
+- `--direct-validate-top <N>` reruns that many top feasible validated survivors as full-window backtests so stitched and direct metrics can be reviewed together
 - `walk-forward-sweep` remains the explicit grid-search baseline tool
 - the final result now reports a separate holdout summary so the winning candidate is checked on unseen tail data before you trust the tuned output
 - the optimizer now revalidates the ranked survivor set with holdout, date-perturbation, and overfitting diagnostics before the winner is chosen
 - if at least one validated candidate is feasible, only feasible candidates can win; if none are feasible, PalmScript returns the best infeasible fallback plus its violations
-- the final optimize result now also reports validation-constraint summaries, validated/feasible/infeasible candidate counts, constraint-failure breakdowns, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
+- the final optimize result now also reports validation-constraint summaries, validated/feasible/infeasible candidate counts, constraint-failure breakdowns, optional direct-validation survivor replays with stitched-vs-direct drift, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, baseline comparisons, Sharpe summaries, explicit overfitting-risk summaries, and machine-readable improvement hints
 
 Run optimize in the foreground when you want a direct result:
 

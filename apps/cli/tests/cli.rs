@@ -1971,6 +1971,8 @@ fn run_optimize_emits_ranked_json() {
             "7",
             "--workers",
             "2",
+            "--direct-validate-top",
+            "1",
         ])
         .output()
         .expect("optimize command executes");
@@ -1980,6 +1982,8 @@ fn run_optimize_emits_ranked_json() {
     assert_eq!(json["completed_trials"], Value::from(8));
     assert!(json["best_candidate"].is_object());
     assert!(json["top_candidates"].is_array());
+    assert_eq!(json["direct_validation"].as_array().map(Vec::len), Some(1));
+    assert!(json["direct_validation"][0]["drift"].is_object());
     let best_threshold = json["best_candidate"]["input_overrides"]["threshold"]
         .as_f64()
         .expect("threshold is numeric");
@@ -2079,6 +2083,8 @@ fn run_optimize_emits_constraint_summaries() {
         json["best_infeasible_candidate"].is_null()
             || json["best_infeasible_candidate"].is_object()
     );
+    assert!(json["direct_validation"].is_array());
+    assert_eq!(json["direct_validation"].as_array().map(Vec::len), Some(0));
 }
 
 #[test]

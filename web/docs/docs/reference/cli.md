@@ -138,6 +138,7 @@ palmscript run optimize <script.ps> --from <unix_ms> --to <unix_ms> \
   [--seed <N>] \
   [--workers <N>] \
   [--top <N>] \
+  [--direct-validate-top <N>] \
   [--preset-out <path>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
@@ -176,6 +177,7 @@ Arguments and flags:
 - `--seed <N>`: deterministic optimizer seed
 - `--workers <N>`: bounded parallel worker count
 - `--top <N>`: number of top candidates to retain
+- `--direct-validate-top <N>`: rerun that many top feasible validated survivors as full-window direct backtests and include stitched-vs-direct drift summaries in the optimize result
 - `--preset-out <path>`: write the best preset and top candidates to disk
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`
 - `--format json|text`: output rendering format; default `json`
@@ -191,7 +193,7 @@ Default safety behavior:
 - repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
-- the final JSON/text result also carries validation-constraint summaries, feasible vs infeasible candidate counts, best-infeasible-candidate fallback data, constraint-failure breakdowns, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
+- the final JSON/text result also carries validation-constraint summaries, feasible vs infeasible candidate counts, best-infeasible-candidate fallback data, constraint-failure breakdowns, optional direct-validation survivor replays, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints
 
 ## `palmscript run paper`
 

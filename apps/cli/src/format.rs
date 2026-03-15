@@ -1005,6 +1005,11 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
     let _ = writeln!(out, "trials={}", result.config.trials);
     let _ = writeln!(out, "startup_trials={}", result.config.startup_trials);
     let _ = writeln!(out, "workers={}", result.config.workers);
+    let _ = writeln!(
+        out,
+        "direct_validation_count={}",
+        result.direct_validation.len()
+    );
     if let Some(path) = preset_out {
         let _ = writeln!(out, "preset_out={}", path.display());
     }
@@ -1071,6 +1076,47 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
         let _ = writeln!(out, "trial_id={}", candidate.trial_id);
         let _ = writeln!(out, "objective_score={:.6}", candidate.objective_score);
         render_optimize_candidate_summary(&mut out, candidate);
+    }
+
+    if !result.direct_validation.is_empty() {
+        out.push_str("Direct Validation\n");
+        for validation in &result.direct_validation {
+            let _ = writeln!(
+                out,
+                "survivor_rank={} trial_id={} objective_score={:.6} overrides={}",
+                validation.survivor_rank,
+                validation.trial_id,
+                validation.objective_score,
+                fmt_input_overrides(&validation.input_overrides)
+            );
+            let _ = writeln!(
+                out,
+                "ending_equity={:.2} total_return_pct={:.2} sharpe_ratio={} trade_count={} win_rate_pct={:.2} max_drawdown={:.2}",
+                validation.summary.ending_equity,
+                validation.summary.total_return * 100.0,
+                fmt_opt_f64(validation.summary.sharpe_ratio),
+                validation.summary.trade_count,
+                validation.summary.win_rate * 100.0,
+                validation.summary.max_drawdown
+            );
+            let _ = writeln!(
+                out,
+                "execution_asset_return_pct={:.2} excess_return_vs_execution_asset_pct={:.2}",
+                validation.capture_summary.execution_asset_return * 100.0,
+                validation
+                    .baseline_comparison
+                    .excess_return_vs_execution_asset
+                    * 100.0
+            );
+            let _ = writeln!(
+                out,
+                "drift_total_return_delta_pct={:.2} drift_sharpe_delta={} drift_trade_count_delta={} drift_max_drawdown_delta={:.2}",
+                validation.drift.total_return_delta * 100.0,
+                fmt_opt_f64(validation.drift.sharpe_ratio_delta),
+                validation.drift.trade_count_delta,
+                validation.drift.max_drawdown_delta
+            );
+        }
     }
 
     if let Some(holdout) = &result.holdout {

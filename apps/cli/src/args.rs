@@ -40,7 +40,7 @@ pub enum RunCommand {
     Backtest(BacktestRunArgs),
     WalkForward(WalkForwardRunArgs),
     WalkForwardSweep(WalkForwardSweepRunArgs),
-    Optimize(OptimizeRunArgs),
+    Optimize(Box<OptimizeRunArgs>),
     Paper(PaperRunArgs),
     PaperStatus(PaperStatusArgs),
     PaperList(PaperListArgs),
@@ -270,6 +270,8 @@ pub struct OptimizeRunArgs {
     pub workers: Option<usize>,
     #[arg(long, default_value_t = 10)]
     pub top: usize,
+    #[arg(long)]
+    pub direct_validate_top: Option<usize>,
     #[arg(long)]
     pub preset_out: Option<PathBuf>,
     #[arg(long, value_enum, default_value_t = OutputFormat::Json)]

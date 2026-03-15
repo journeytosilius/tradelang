@@ -75,6 +75,7 @@ fn backtest_optimize_config() -> OptimizeConfig {
         seed: 11,
         workers: 2,
         top_n: 2,
+        direct_validation_top_n: 0,
         base_input_overrides: BTreeMap::new(),
         constraints: ValidationConstraintConfig::default(),
     }
@@ -159,6 +160,7 @@ fn optimize_walk_forward_ranks_candidates() {
             seed: 7,
             workers: 2,
             top_n: 3,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig::default(),
         },
@@ -172,6 +174,88 @@ fn optimize_walk_forward_ranks_candidates() {
         Some(&0.0)
     );
     assert_eq!(result.top_candidates.len(), 3);
+}
+
+#[test]
+fn optimize_can_direct_validate_top_feasible_survivors() {
+    let result = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            runner: OptimizeRunner::Backtest,
+            backtest: optimize_backtest_config(),
+            walk_forward: None,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            holdout: None,
+            params: vec![OptimizeParamSpace::Choice {
+                name: "threshold".to_string(),
+                values: vec![0.0, 100.0],
+            }],
+            objective: OptimizeObjective::EndingEquity,
+            trials: 8,
+            startup_trials: 8,
+            seed: 11,
+            workers: 2,
+            top_n: 2,
+            direct_validation_top_n: 1,
+            base_input_overrides: BTreeMap::new(),
+            constraints: ValidationConstraintConfig::default(),
+        },
+    )
+    .expect("optimize should succeed");
+
+    assert_eq!(result.direct_validation.len(), 1);
+    let direct = &result.direct_validation[0];
+    assert_eq!(direct.survivor_rank, 1);
+    assert_eq!(direct.trial_id, result.best_candidate.trial_id);
+    assert_eq!(
+        direct.input_overrides,
+        result.best_candidate.input_overrides
+    );
+    let OptimizeEvaluationSummary::Backtest {
+        summary,
+        capture_summary,
+    } = &result.best_candidate.summary
+    else {
+        panic!("expected backtest candidate summary");
+    };
+    assert_eq!(direct.summary, *summary);
+    assert_eq!(direct.capture_summary, *capture_summary);
+    assert_eq!(direct.drift.total_return_delta, 0.0);
+    assert_eq!(direct.drift.trade_count_delta, 0);
+    assert_eq!(direct.drift.win_rate_delta, 0.0);
+    assert_eq!(direct.drift.max_drawdown_delta, 0.0);
+    assert_eq!(direct.drift.execution_asset_return_delta, 0.0);
+    assert_eq!(direct.drift.sharpe_ratio_delta, Some(0.0));
+}
+
+#[test]
+fn optimize_direct_validation_skips_when_no_feasible_survivors_exist() {
+    let result = run_optimize_with_source(
+        &optimize_source(),
+        optimize_runtime(),
+        VmLimits::default(),
+        OptimizeConfig {
+            constraints: ValidationConstraintConfig {
+                min_trade_count: Some(100),
+                min_sharpe_ratio: None,
+                min_holdout_trade_count: None,
+                require_positive_holdout: false,
+                max_zero_trade_segments: None,
+                min_holdout_pass_rate: None,
+                min_date_perturbation_positive_ratio: None,
+                min_date_perturbation_outperform_ratio: None,
+                max_overfitting_risk: None,
+            },
+            direct_validation_top_n: 1,
+            ..backtest_optimize_config()
+        },
+    )
+    .expect("optimize should succeed");
+
+    assert_eq!(result.feasible_candidate_count, 0);
+    assert!(result.direct_validation.is_empty());
 }
 
 #[test]
@@ -207,6 +291,7 @@ fn optimize_is_seed_stable_across_worker_counts() {
         seed: 99,
         workers: 1,
         top_n: 4,
+        direct_validation_top_n: 0,
         base_input_overrides: BTreeMap::new(),
         constraints: ValidationConstraintConfig::default(),
     };
@@ -275,6 +360,7 @@ fn optimize_best_candidate_round_trips_into_input_overrides() {
             seed: 11,
             workers: 2,
             top_n: 2,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig::default(),
         },
@@ -333,6 +419,7 @@ order exit short = market(venue = spot)",
             seed: 5,
             workers: 2,
             top_n: 2,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::from([(String::from("offset"), 0.0)]),
             constraints: ValidationConstraintConfig::default(),
         },
@@ -378,6 +465,7 @@ fn optimize_rejects_missing_walk_forward_config() {
             seed: 1,
             workers: 1,
             top_n: 1,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig::default(),
         },
@@ -415,6 +503,7 @@ fn optimize_holdout_reserves_tail_bars_and_reports_unseen_summary() {
             seed: 7,
             workers: 2,
             top_n: 3,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig::default(),
         },
@@ -568,6 +657,7 @@ order exit short = market(venue = spot)",
             seed: 3,
             workers: 2,
             top_n: 2,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig {
                 min_trade_count: Some(1),
@@ -625,6 +715,7 @@ fn optimize_reports_holdout_constraint_failures() {
             seed: 7,
             workers: 2,
             top_n: 3,
+            direct_validation_top_n: 0,
             base_input_overrides: BTreeMap::new(),
             constraints: ValidationConstraintConfig {
                 min_trade_count: None,

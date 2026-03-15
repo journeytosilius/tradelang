@@ -66,7 +66,7 @@ fn run_mode(mode: RunCommand) -> Result<(), String> {
         RunCommand::Backtest(args) => run_backtest(args),
         RunCommand::WalkForward(args) => run_walk_forward(args),
         RunCommand::WalkForwardSweep(args) => run_walk_forward_sweep(args),
-        RunCommand::Optimize(args) => run_optimize(args),
+        RunCommand::Optimize(args) => run_optimize(*args),
         RunCommand::Paper(args) => run_paper(args),
         RunCommand::PaperStatus(args) => run_paper_status(args),
         RunCommand::PaperList(args) => run_paper_list(args),
@@ -451,6 +451,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
             seed: args.seed,
             workers,
             top_n: args.top,
+            direct_validation_top_n: args.direct_validate_top.unwrap_or(0),
             base_input_overrides: preset_overrides,
             constraints: ValidationConstraintConfig {
                 min_trade_count: args.min_trades,
