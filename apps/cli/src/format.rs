@@ -495,6 +495,23 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         }
     }
 
+    if !result.diagnostics.cohorts.by_entry_module.is_empty() {
+        out.push_str("Entry Module Attribution\n");
+        for summary in result.diagnostics.cohorts.by_entry_module.iter().take(5) {
+            let _ = writeln!(
+                out,
+                "name={} trade_count={} long_trade_count={} short_trade_count={} win_rate_pct={:.2} total_realized_pnl={:.2} average_realized_pnl={:.2}",
+                summary.name,
+                summary.trade_count,
+                summary.long_trade_count,
+                summary.short_trade_count,
+                summary.win_rate * 100.0,
+                summary.total_realized_pnl,
+                summary.average_realized_pnl
+            );
+        }
+    }
+
     if !result.diagnostics.hints.is_empty() {
         out.push_str("Hints\n");
         for hint in &result.diagnostics.hints {
@@ -533,8 +550,9 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
     for trade in recent_trades.iter().rev() {
         let _ = writeln!(
             out,
-            "side={} entry_time={} exit_time={} entry_price={:.2} exit_price={:.2} qty={:.6} pnl={:.2}",
+            "side={} module={} entry_time={} exit_time={} entry_price={:.2} exit_price={:.2} qty={:.6} pnl={:.2}",
             fmt_position_side(trade.side),
+            trade.entry_module.as_deref().unwrap_or("na"),
             trade.entry.time,
             trade.exit.time,
             trade.entry.price,
@@ -1703,6 +1721,7 @@ mod tests {
             trades: vec![Trade {
                 execution_alias: "spot".to_string(),
                 side: PositionSide::Long,
+                entry_module: Some("breakout".to_string()),
                 quantity: 1.25,
                 entry: Fill {
                     execution_alias: "spot".to_string(),
@@ -1843,7 +1862,19 @@ mod tests {
                     forward_max_adverse_pct: Some(-0.02),
                 }],
                 per_bar_trace: vec![],
-                cohorts: palmscript::CohortDiagnostics::default(),
+                cohorts: palmscript::CohortDiagnostics {
+                    by_entry_module: vec![palmscript::EntryModuleDiagnosticSummary {
+                        name: "breakout".to_string(),
+                        trade_count: 1,
+                        long_trade_count: 1,
+                        short_trade_count: 0,
+                        win_rate: 1.0,
+                        total_realized_pnl: 12.0,
+                        average_realized_pnl: 12.0,
+                        average_bars_held: 1.0,
+                    }],
+                    ..palmscript::CohortDiagnostics::default()
+                },
                 drawdown: palmscript::DrawdownDiagnostics::default(),
                 source_alignment: palmscript::runtime::SourceAlignmentDiagnostics::default(),
                 hints: vec![],
@@ -1904,8 +1935,10 @@ mod tests {
         assert!(rendered.contains("Recent Opportunity Events"));
         assert!(rendered.contains("Recent Orders"));
         assert!(rendered.contains("role=long_entry"));
+        assert!(rendered.contains("Entry Module Attribution"));
         assert!(rendered.contains("Recent Trades"));
         assert!(rendered.contains("side=long"));
+        assert!(rendered.contains("module=breakout"));
         assert!(rendered.contains("Open Position"));
         assert!(rendered.contains("flat"));
     }

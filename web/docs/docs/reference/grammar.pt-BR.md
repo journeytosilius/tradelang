@@ -37,6 +37,7 @@ stmt                   ::= let_stmt
                          | regime_stmt
                          | trigger_stmt
                          | risk_control_stmt
+                         | module_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_template_stmt
@@ -53,6 +54,9 @@ regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
 risk_control_stmt      ::= "cooldown" signal_side "=" expr
                          | "max_bars_in_trade" signal_side "=" expr
+module_stmt            ::= "module" ident "=" module_role
+module_role            ::= "entry" signal_side
+                         | ("entry2" | "entry3") signal_side
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -73,6 +77,9 @@ else_tail              ::= if_stmt
 expr_stmt              ::= expr
 block                  ::= "{" separator* stmt* "}"
 ```
+
+Declaracoes `module` sao apenas de nivel superior. Na v1 elas rotulam somente
+os papeis `entry`, `entry2` e `entry3` para diagnosticos.
 
 ## Expressoes
 

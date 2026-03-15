@@ -127,6 +127,8 @@ pub struct Fill {
 pub struct Trade {
     pub execution_alias: String,
     pub side: PositionSide,
+    #[serde(default)]
+    pub entry_module: Option<String>,
     pub quantity: f64,
     pub entry: Fill,
     pub exit: Fill,
@@ -563,6 +565,8 @@ pub struct TradeDiagnostic {
     pub execution_alias: String,
     pub trade_id: usize,
     pub side: PositionSide,
+    #[serde(default)]
+    pub entry_module: Option<String>,
     pub entry_order_id: usize,
     pub exit_order_id: usize,
     pub entry_role: SignalRole,
@@ -655,6 +659,18 @@ pub struct BoolExportActiveTradeSummary {
     pub inactive_win_rate: f64,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct EntryModuleDiagnosticSummary {
+    pub name: String,
+    pub trade_count: usize,
+    pub long_trade_count: usize,
+    pub short_trade_count: usize,
+    pub win_rate: f64,
+    pub total_realized_pnl: f64,
+    pub average_realized_pnl: f64,
+    pub average_bars_held: f64,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct CohortDiagnostics {
     pub by_side: Vec<SideDiagnosticSummary>,
@@ -663,6 +679,8 @@ pub struct CohortDiagnostics {
     pub by_hour_utc: Vec<HourDiagnosticSummary>,
     pub by_holding_time: Vec<HoldingTimeBucketSummary>,
     pub by_active_export: Vec<BoolExportActiveTradeSummary>,
+    #[serde(default)]
+    pub by_entry_module: Vec<EntryModuleDiagnosticSummary>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

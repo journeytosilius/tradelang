@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
+
 use crate::backtest::{
     average, ratio, BacktestCaptureSummary, BacktestDiagnosticSummary, BacktestSummary,
     BaselineComparisonSummary, BoolExportActiveTradeSummary, CohortDiagnostics,
-    DrawdownDiagnostics, EquityPoint, ExitClassificationDiagnosticSummary, ExportDiagnosticSummary,
-    HoldingTimeBucket, HoldingTimeBucketSummary, HourDiagnosticSummary, ImprovementHint,
-    ImprovementHintKind, SideDiagnosticSummary, TradeDiagnostic, TradeExitClassification,
-    WeekdayDiagnosticSummary,
+    DrawdownDiagnostics, EntryModuleDiagnosticSummary, EquityPoint,
+    ExitClassificationDiagnosticSummary, ExportDiagnosticSummary, HoldingTimeBucket,
+    HoldingTimeBucketSummary, HourDiagnosticSummary, ImprovementHint, ImprovementHintKind,
+    SideDiagnosticSummary, TradeDiagnostic, TradeExitClassification, WeekdayDiagnosticSummary,
 };
 use crate::position::PositionSide;
 
@@ -19,6 +21,7 @@ pub(crate) fn build_cohort_diagnostics(
         by_hour_utc: build_hour_summaries(trade_diagnostics),
         by_holding_time: build_holding_time_summaries(trade_diagnostics),
         by_active_export: build_active_export_summaries(trade_diagnostics, export_summaries),
+        by_entry_module: build_entry_module_summaries(trade_diagnostics),
     }
 }
 
@@ -347,6 +350,53 @@ fn build_active_export_summaries(
         });
     }
     summaries
+}
+
+fn build_entry_module_summaries(
+    trade_diagnostics: &[TradeDiagnostic],
+) -> Vec<EntryModuleDiagnosticSummary> {
+    let mut buckets = BTreeMap::<String, Vec<&TradeDiagnostic>>::new();
+    for diagnostic in trade_diagnostics {
+        let Some(module) = diagnostic.entry_module.as_ref() else {
+            continue;
+        };
+        buckets.entry(module.clone()).or_default().push(diagnostic);
+    }
+
+    buckets
+        .into_iter()
+        .map(|(name, matching)| EntryModuleDiagnosticSummary {
+            name,
+            trade_count: matching.len(),
+            long_trade_count: matching
+                .iter()
+                .filter(|diagnostic| diagnostic.side == PositionSide::Long)
+                .count(),
+            short_trade_count: matching
+                .iter()
+                .filter(|diagnostic| diagnostic.side == PositionSide::Short)
+                .count(),
+            win_rate: ratio(
+                matching
+                    .iter()
+                    .filter(|diagnostic| diagnostic.realized_pnl > 0.0)
+                    .count(),
+                matching.len(),
+            ),
+            total_realized_pnl: matching
+                .iter()
+                .map(|diagnostic| diagnostic.realized_pnl)
+                .sum(),
+            average_realized_pnl: average(
+                matching.iter().map(|diagnostic| diagnostic.realized_pnl),
+            ),
+            average_bars_held: average(
+                matching
+                    .iter()
+                    .map(|diagnostic| diagnostic.bars_held as f64),
+            ),
+        })
+        .collect()
 }
 
 fn exit_time_ms(diagnostic: &TradeDiagnostic) -> i64 {

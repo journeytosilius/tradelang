@@ -224,6 +224,63 @@ plot(spot.close)",
         .any(|scenario| scenario.kind == palmscript::DatePerturbationKind::TrimmedBoth));
 }
 
+#[test]
+fn backtest_reports_entry_module_attribution() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+entry long = spot.close > 101
+exit long = spot.close < 102
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+
+    let bars = vec![
+        bar(0, 100.0, 100.0),
+        bar(60_000, 100.0, 102.0),
+        bar(120_000, 102.0, 104.0),
+        bar(180_000, 104.0, 101.0),
+        bar(240_000, 101.0, 100.0),
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should run");
+
+    assert_eq!(result.summary.trade_count, 1);
+    assert_eq!(result.trades[0].entry_module.as_deref(), Some("breakout"));
+    assert_eq!(
+        result.diagnostics.trade_diagnostics[0]
+            .entry_module
+            .as_deref(),
+        Some("breakout")
+    );
+    assert_eq!(result.diagnostics.cohorts.by_entry_module.len(), 1);
+    let summary = &result.diagnostics.cohorts.by_entry_module[0];
+    assert_eq!(summary.name, "breakout");
+    assert_eq!(summary.trade_count, 1);
+    assert_eq!(summary.long_trade_count, 1);
+    assert_eq!(summary.short_trade_count, 0);
+}
+
 fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),

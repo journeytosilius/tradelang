@@ -10,6 +10,7 @@ PalmScript stellt drei Konstrukte zur Ausgabeerzeugung bereit:
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`,
@@ -135,6 +136,23 @@ Regeln:
 - `entry2` und `entry3` sind sequenzielle, gleichseitige Add-on-Signale, die
   erst gueltig werden, nachdem die vorherige Stufe im aktuellen Positionszyklus
   gefuellt wurde
+
+## Entry-Modul-Labels
+
+PalmScript kann Entry-Rollen auch fuer Forschungsdiagnostik labeln:
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+Regeln:
+
+- nur auf Top-Level
+- aktuell nur fuer `entry`, `entry2` und `entry3`
+- jede Entry-Rolle darf hoechstens ein Modul-Label haben
+- backtest-orientierte Diagnostik gibt das Label als `entry_module` auf Trades
+  und in Kohorten-Zusammenfassungen aus
 
 ## Order-Deklarationen
 

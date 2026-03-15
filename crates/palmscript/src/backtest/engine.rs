@@ -623,6 +623,7 @@ pub(crate) fn simulate_backtest(
                                         TradeEntryContext {
                                             order_id: active.record_index,
                                             role,
+                                            module: prepared.signal_modules.get(&role).cloned(),
                                             kind: active.request.kind,
                                             snapshot: last_snapshot.clone(),
                                         },
@@ -1605,6 +1606,7 @@ pub(crate) fn simulate_portfolio_backtest(
                                         TradeEntryContext {
                                             order_id: active.record_index,
                                             role,
+                                            module: prepared.signal_modules.get(&role).cloned(),
                                             kind: active.request.kind,
                                             snapshot: state.last_snapshot.clone(),
                                         },
@@ -2984,6 +2986,7 @@ fn maybe_close_position_for_role(
         mut trade,
         side,
         entry_order_id,
+        entry_module,
         entry_role,
         entry_kind,
         entry_snapshot_value,
@@ -3010,6 +3013,7 @@ fn maybe_close_position_for_role(
             trade,
             open_trade.side,
             open_trade.entry_order_id,
+            open_trade.entry_module.clone(),
             open_trade.entry_role,
             open_trade.entry_kind,
             open_trade.entry_snapshot.clone(),
@@ -3057,6 +3061,7 @@ fn maybe_close_position_for_role(
         execution_alias: execution_alias.to_string(),
         trade_id: trades.len(),
         side,
+        entry_module,
         entry_order_id,
         exit_order_id: order_id,
         entry_role,
@@ -3889,6 +3894,7 @@ fn force_liquidation(
     let (
         mut trade,
         entry_order_id,
+        entry_module,
         entry_role,
         entry_kind,
         entry_snapshot,
@@ -3905,6 +3911,7 @@ fn force_liquidation(
         (
             trade,
             open_trade.entry_order_id,
+            open_trade.entry_module.clone(),
             open_trade.entry_role,
             open_trade.entry_kind,
             open_trade.entry_snapshot.clone(),
@@ -3931,6 +3938,7 @@ fn force_liquidation(
         execution_alias: execution_alias.to_string(),
         trade_id: trades.len(),
         side,
+        entry_module,
         entry_order_id,
         exit_order_id: usize::MAX,
         entry_role,

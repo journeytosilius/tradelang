@@ -10,6 +10,7 @@ PalmScript は次の出力生成構文を公開します。
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
 - `exit long = expr`, `exit short = expr`
@@ -114,6 +115,22 @@ exit short = spot.close > ema(spot.close, 20)
 - ランタイムイベント出力は通常の trigger と同じ `true` / `false` / `na` 規則に従う
 - `entry long` と `entry short` は `entry1 long` と `entry1 short` の互換エイリアス
 - `entry2` と `entry3` は、現在のポジションサイクルで前段階が fill された後にのみ有効になる、同方向の追加シグナル
+
+## エントリーモジュールラベル
+
+PalmScript では研究用診断のためにエントリーロールへラベルを付けられます。
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+ルール:
+
+- トップレベル専用です
+- 現在は `entry`、`entry2`、`entry3` だけを受け付けます
+- 各エントリーロールには 1 つだけラベルを付けられます
+- バックテスト診断ではこのラベルが trade の `entry_module` と cohort 集計に出ます
 
 ## `order` 宣言
 

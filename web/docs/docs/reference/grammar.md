@@ -37,6 +37,7 @@ stmt                   ::= let_stmt
                          | risk_control_stmt
                          | portfolio_control_stmt
                          | portfolio_group_stmt
+                         | module_stmt
                          | signal_stmt
                          | attached_exit_stmt
                          | order_template_stmt
@@ -63,6 +64,9 @@ portfolio_control_stmt ::= "max_positions" "=" expr
                          | "max_gross_exposure_pct" "=" expr
                          | "max_net_exposure_pct" "=" expr
 portfolio_group_stmt   ::= "portfolio_group" string_literal "=" "[" ident ("," ident)* "]"
+module_stmt            ::= "module" ident "=" module_role
+module_role            ::= "entry" signal_side
+                         | ("entry2" | "entry3") signal_side
 signal_stmt            ::= "entry" signal_side "=" expr
                          | "exit" signal_side "=" expr
 attached_exit_stmt     ::= "protect" signal_side "=" order_spec
@@ -86,6 +90,9 @@ else_tail              ::= if_stmt
 expr_stmt              ::= expr
 block                  ::= "{" separator* stmt* "}"
 ```
+
+`module` declarations are top-level only. In v1 they label entry roles for
+diagnostics, so only `entry`, `entry2`, and `entry3` surfaces are valid.
 
 ## Expressions
 

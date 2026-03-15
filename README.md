@@ -82,6 +82,17 @@ order entry long = market_order
 order exit long = market_order
 ```
 
+Trading scripts can also label entry roles for per-module attribution in
+backtest, walk-forward, and optimize diagnostics:
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+These labels currently bind to `entry`, `entry2`, or `entry3` roles and flow
+through trade diagnostics plus cohort summaries as `entry_module`.
+
 `run optimize` now defaults to walk-forward tuning with a final untouched holdout window reserved from the tail of the selected execution range. By default that holdout size matches `--test-bars`. Optimizer search space can now live directly in the script through `input ... optimize(int|float|choice, ...)` metadata, with explicit `--param` still taking precedence when you need to override it. PalmScript also supports first-class `regime` declarations backed by the `state(enter, exit)` builtin for persistent market-state logic, plus declarative backtest controls such as `cooldown long = 12` and `max_bars_in_trade short = 48`. The executable indicator surface now includes `supertrend`, `anchored_vwap`, `donchian`, rolling `percentile`, rolling `zscore`, and `ulcer_index`.
 
 Backtests can also run in portfolio mode when you repeat `--execution-source`. In that mode PalmScript evaluates one shared-equity ledger across the selected execution aliases, and only explicitly routed orders whose `venue = <execution_alias>` matches the active alias participate on that leg. Top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.

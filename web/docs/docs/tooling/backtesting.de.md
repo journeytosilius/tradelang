@@ -33,6 +33,14 @@ policies:
 - `max_gross_exposure_pct = <N>` and `max_net_exposure_pct = <N>` cap shared-equity exposure when portfolio mode is active
 - `portfolio_group "name" = [alias1, alias2, ...]` declares a named alias bucket for diagnostics and future group-scoped controls
 
+Trading-Skripte koennen Entry-Rollen auch fuer Modul-Attribution labeln:
+
+- `module breakout = entry long`
+- `module pullback = entry2 long`
+
+Diese Labels erscheinen in der Diagnostik als `entry_module` und
+`by_entry_module`.
+
 ## CLI
 
 Run a backtest end to end:

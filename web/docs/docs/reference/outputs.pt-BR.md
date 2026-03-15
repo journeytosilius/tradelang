@@ -10,6 +10,7 @@ PalmScript expoe tres construtos produtores de saida:
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`,
@@ -134,6 +135,24 @@ Regras:
 - `entry2` e `entry3` sao sinais sequenciais de adicao no mesmo lado, que so
   ficam elegiveis depois que o estagio anterior foi preenchido no ciclo atual
   da posicao
+
+## Rotulos De Modulo De Entrada
+
+PalmScript tambem pode rotular papeis de entrada para atribuicao nos
+diagnosticos de pesquisa:
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+Regras:
+
+- apenas no nivel superior
+- por enquanto so aceitam `entry`, `entry2` e `entry3`
+- cada papel de entrada pode ter no maximo um rotulo
+- os diagnosticos de backtest expoem o rotulo como `entry_module` nas trades e
+  nos resumos de coorte
 
 ## Declaracoes `order`
 

@@ -10,6 +10,7 @@ PalmScript expone tres construcciones que producen salidas:
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`,
@@ -135,6 +136,24 @@ Reglas:
 - `entry2` y `entry3` son senales secuenciales de agregado en el mismo lado que
   solo se vuelven elegibles despues de que la etapa previa se lleno dentro del
   ciclo actual de posicion
+
+## Etiquetas De Modulo De Entrada
+
+PalmScript tambien puede etiquetar roles de entrada para la atribucion en los
+diagnosticos de investigacion:
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+Reglas:
+
+- son solo de nivel superior
+- por ahora solo aceptan `entry`, `entry2` y `entry3`
+- cada rol de entrada puede tener como maximo una etiqueta de modulo
+- los diagnosticos orientados a backtest exponen la etiqueta como `entry_module`
+  en las operaciones y en los cohortes
 
 ## Declaraciones De Orden
 

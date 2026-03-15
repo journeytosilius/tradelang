@@ -211,6 +211,14 @@ pub struct PortfolioGroupDecl {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SignalModuleDecl {
+    pub name: String,
+    pub name_span: Span,
+    pub role: SignalRole,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
         name: String,
@@ -275,6 +283,9 @@ pub enum StmtKind {
     },
     PortfolioGroup {
         group: PortfolioGroupDecl,
+    },
+    Module {
+        module: SignalModuleDecl,
     },
     If {
         condition: Expr,

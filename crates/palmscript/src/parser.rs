@@ -6,8 +6,8 @@
 use crate::ast::{
     Ast, BinaryOp, BindingName, Block, ExecutionDecl, Expr, ExprKind, FunctionDecl, FunctionParam,
     InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
-    PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalRole, SourceDecl,
-    SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalModuleDecl, SignalRole,
+    SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -194,6 +194,16 @@ impl<'a> Parser<'a> {
                 return None;
             }
             return self.parse_portfolio_group_stmt();
+        }
+        if self.matches_keyword(&TokenKind::Module) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "module declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_module_stmt();
         }
         if self.matches_keyword(&TokenKind::MaxPositions) {
             if self.block_depth > 0 {
@@ -834,6 +844,29 @@ impl<'a> Parser<'a> {
             id: self.alloc_id(),
             span: group.span,
             kind: StmtKind::PortfolioGroup { group },
+        })
+    }
+
+    fn parse_module_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let (name, name_span) = self.expect_ident("expected identifier after `module`")?;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after module name",
+        )?;
+        let role = self.parse_module_entry_role()?;
+        let span = start.merge(self.previous().span);
+        Some(Stmt {
+            id: self.alloc_id(),
+            span,
+            kind: StmtKind::Module {
+                module: SignalModuleDecl {
+                    name,
+                    name_span,
+                    role,
+                    span,
+                },
+            },
         })
     }
 
@@ -2069,6 +2102,49 @@ impl<'a> Parser<'a> {
             TokenKind::Short => Some(map(false)),
             _ => {
                 self.push_diagnostic(message, side.span);
+                None
+            }
+        }
+    }
+
+    fn parse_module_entry_role(&mut self) -> Option<SignalRole> {
+        if self.matches_keyword(&TokenKind::Entry) {
+            return self.parse_side_role(
+                "expected `long` or `short` after `entry` in module declaration",
+                |is_long| {
+                    if is_long {
+                        SignalRole::LongEntry
+                    } else {
+                        SignalRole::ShortEntry
+                    }
+                },
+            );
+        }
+
+        let token = self.advance()?.clone();
+        let TokenKind::Ident(name) = token.kind else {
+            self.push_diagnostic(
+                "expected `entry`, `entry2`, or `entry3` after `=` in module declaration",
+                token.span,
+            );
+            return None;
+        };
+        let Some(role) = staged_signal_role_for_ident(&name) else {
+            self.push_diagnostic(
+                "module declarations only support `entry`, `entry2`, or `entry3` roles",
+                token.span,
+            );
+            return None;
+        };
+        let side = self.advance()?.clone();
+        match side.kind {
+            TokenKind::Long => Some(long_role(role)),
+            TokenKind::Short => Some(short_role(role)),
+            _ => {
+                self.push_diagnostic(
+                    "expected `long` or `short` after module entry role",
+                    side.span,
+                );
                 None
             }
         }

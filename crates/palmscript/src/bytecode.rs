@@ -264,6 +264,12 @@ pub struct OutputDecl {
     pub slot: u16,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignalModuleDecl {
+    pub name: String,
+    pub role: SignalRole,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderFieldDecl {
     pub name: String,
@@ -389,6 +395,7 @@ pub struct Program {
     pub locals: Vec<LocalInfo>,
     pub inputs: Vec<InputDecl>,
     pub outputs: Vec<OutputDecl>,
+    pub signal_modules: Vec<SignalModuleDecl>,
     pub order_fields: Vec<OrderFieldDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,

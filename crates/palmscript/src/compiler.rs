@@ -17,7 +17,7 @@ use crate::bytecode::{
     PortfolioControlDecl, PortfolioControlKind as CompiledPortfolioControlKind,
     PortfolioGroupDecl as CompiledPortfolioGroupDecl, PositionEventFieldDecl, PositionFieldDecl,
     Program, RiskControlDecl, RiskControlKind as CompiledRiskControlKind,
-    SignalRole as CompiledSignalRole,
+    SignalModuleDecl as CompiledSignalModuleDecl, SignalRole as CompiledSignalRole,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
@@ -232,6 +232,7 @@ struct Analysis {
     immutable_values: HashMap<String, Value>,
     locals: Vec<LocalInfo>,
     outputs: Vec<OutputDecl>,
+    signal_modules: Vec<CompiledSignalModuleDecl>,
     order_fields: Vec<OrderFieldDecl>,
     position_fields: Vec<PositionFieldDecl>,
     position_field_slots: HashMap<PositionField, u16>,
@@ -341,6 +342,9 @@ impl<'a> Analyzer<'a> {
                 StmtKind::OrderSize { .. } => {
                     first_executable_span.get_or_insert(stmt.span);
                 }
+                StmtKind::Module { .. } => {
+                    first_executable_span.get_or_insert(stmt.span);
+                }
                 _ => {}
             }
         }
@@ -353,7 +357,7 @@ impl<'a> Analyzer<'a> {
                     span,
                 ));
             }
-            for (role, span) in declared_signal_spans {
+            for (&role, &span) in &declared_signal_spans {
                 if declared_order_roles.contains(&role) {
                     continue;
                 }
@@ -376,6 +380,20 @@ impl<'a> Analyzer<'a> {
                 format!(
                     "size declaration for `{}` requires a matching order declaration",
                     role.canonical_name()
+                ),
+                Span::default(),
+            ));
+        }
+        for module in &self.analysis.signal_modules {
+            if declared_signal_spans.contains_key(&module.role) {
+                continue;
+            }
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "module declaration `{}` requires a matching `{}` signal declaration",
+                    module.name,
+                    signal_role_surface(module.role)
                 ),
                 Span::default(),
             ));
@@ -1429,6 +1447,9 @@ impl<'a> Analyzer<'a> {
             StmtKind::PortfolioGroup { group } => {
                 self.analyze_portfolio_group_stmt(group);
             }
+            StmtKind::Module { module } => {
+                self.analyze_module_stmt(module);
+            }
             StmtKind::If {
                 condition,
                 then_block,
@@ -1994,6 +2015,38 @@ impl<'a> Analyzer<'a> {
         self.analysis
             .resolved_order_field_slots
             .insert(stmt.id, resolved);
+    }
+
+    fn analyze_module_stmt(&mut self, module: &crate::ast::SignalModuleDecl) {
+        let role = compiled_signal_role(module.role);
+        if !role.is_entry() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "module declarations only support `entry`, `entry2`, and `entry3` roles",
+                module.span,
+            ));
+            return;
+        }
+        if self
+            .analysis
+            .signal_modules
+            .iter()
+            .any(|decl| decl.role == role)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "duplicate module declaration for `{}`",
+                    role.canonical_name()
+                ),
+                module.span,
+            ));
+            return;
+        }
+        self.analysis.signal_modules.push(CompiledSignalModuleDecl {
+            name: module.name.clone(),
+            role,
+        });
     }
 
     fn analyze_risk_control_stmt(
@@ -3176,7 +3229,7 @@ fn collect_source_series_stmt(
         StmtKind::OrderTemplate { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
-        StmtKind::PortfolioGroup { .. } => {}
+        StmtKind::PortfolioGroup { .. } | StmtKind::Module { .. } => {}
         StmtKind::If {
             condition,
             then_block,
@@ -3302,7 +3355,7 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         StmtKind::OrderTemplate { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
-        StmtKind::PortfolioGroup { .. } => None,
+        StmtKind::PortfolioGroup { .. } | StmtKind::Module { .. } => None,
         StmtKind::If {
             condition,
             then_block,
@@ -5820,6 +5873,7 @@ impl<'a> Compiler<'a> {
         self.program.locals = self.analysis.locals.clone();
         self.program.inputs = collect_input_decls(self.ast, &self.analysis);
         self.program.outputs = self.analysis.outputs.clone();
+        self.program.signal_modules = self.analysis.signal_modules.clone();
         self.program.order_fields = self.analysis.order_fields.clone();
         self.program.position_fields = self.analysis.position_fields.clone();
         self.program.position_event_fields = self.analysis.position_event_fields.clone();
@@ -6059,7 +6113,8 @@ impl<'a> Compiler<'a> {
             }
             StmtKind::RiskControl { .. }
             | StmtKind::PortfolioControl { .. }
-            | StmtKind::PortfolioGroup { .. } => {}
+            | StmtKind::PortfolioGroup { .. }
+            | StmtKind::Module { .. } => {}
             StmtKind::If {
                 condition,
                 then_block,

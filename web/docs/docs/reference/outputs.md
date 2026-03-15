@@ -10,6 +10,7 @@ PalmScript exposes three output-producing constructs:
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
 - `exit long = expr`, `exit short = expr`
@@ -114,6 +115,22 @@ Rules:
 - runtime event emission follows the same `true`/`false`/`na` rules as ordinary triggers
 - `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
 - `entry2` and `entry3` are sequential same-side add-on signals that only become eligible after the previous stage has filled in the current position cycle
+
+## Entry Module Labels
+
+PalmScript can also label entry roles for attribution in research diagnostics:
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+Rules:
+
+- module declarations are top-level only
+- they currently bind only to `entry`, `entry2`, or `entry3` roles
+- each entry role may have at most one module label
+- backtest-oriented diagnostics expose the label as `entry_module` on trades and in cohort summaries
 
 ## Order Declarations
 

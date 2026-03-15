@@ -11,6 +11,7 @@ PalmScript expose trois constructions productrices de sortie :
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`,
   `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`,
@@ -137,6 +138,24 @@ Regles :
 - `entry2` et `entry3` sont des signaux d'ajout sequentiels du meme cote, qui
   ne deviennent eligibles qu'apres le remplissage de l'etape precedente dans le
   cycle de position courant
+
+## Etiquettes De Module DEntree
+
+PalmScript peut aussi etiqueter les roles d'entree pour l'attribution dans les
+diagnostics de recherche :
+
+```palmscript
+module breakout = entry long
+module pullback = entry2 long
+```
+
+Regles :
+
+- uniquement au niveau superieur
+- v1 accepte seulement `entry`, `entry2` et `entry3`
+- chaque role d'entree peut avoir au plus une etiquette
+- les diagnostics de backtest exposent cette etiquette comme `entry_module`
+  sur les trades et dans les cohortes
 
 ## Declarations `order`
 

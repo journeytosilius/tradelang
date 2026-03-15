@@ -23,13 +23,14 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 24] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 25] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("execution", "Declare a named execution venue"),
     ("use", "Declare an additional referenced interval"),
     ("fn", "Declare a top-level function"),
     ("let", "Bind a local value"),
+    ("module", "Label an entry role for per-module attribution"),
     ("order_template", "Declare a reusable named order template"),
     ("optimize", "Attach optimizer metadata to an input"),
     ("export", "Publish a named output series"),
@@ -638,7 +639,7 @@ fn resolve_stmt(
         StmtKind::PortfolioControl { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
-        StmtKind::PortfolioGroup { .. } => {}
+        StmtKind::PortfolioGroup { .. } | StmtKind::Module { .. } => {}
         StmtKind::If {
             condition,
             then_block,
@@ -884,6 +885,17 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
         StmtKind::RiskControl { .. } => {}
         StmtKind::PortfolioControl { .. } => {}
         StmtKind::PortfolioGroup { .. } => {}
+        StmtKind::Module { module } => context.document_symbols.push(DocumentSymbolInfo {
+            name: module.name.clone(),
+            kind: SymbolKind::Let,
+            span: stmt.span,
+            selection_span: module.name_span,
+            detail: Some(format!(
+                "module {}",
+                format_signal_role_surface(module.role)
+            )),
+            children: Vec::new(),
+        }),
         StmtKind::LetTuple { names, expr } => {
             let detail = context.expr_info.get(&expr.id).map(render_expr_info);
             for binding in names {
@@ -1345,6 +1357,7 @@ pub(crate) fn classify_highlight(
         | TokenKind::Const
         | TokenKind::Input
         | TokenKind::Order
+        | TokenKind::Module
         | TokenKind::OrderTemplate
         | TokenKind::IntervalKw
         | TokenKind::Source
@@ -1753,6 +1766,13 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 group.name
             ));
         }
+        StmtKind::Module { module } => {
+            lines.push(format!(
+                "{prefix}module {} = {}",
+                module.name,
+                format_signal_role_surface(module.role)
+            ));
+        }
         StmtKind::Expr(expr) => {
             lines.push(format!("{prefix}{}", format_expr(expr, 0)));
         }
@@ -1781,6 +1801,33 @@ fn format_input_optimization(optimization: &crate::ast::InputOptimization) -> St
                 .join(", ");
             format!(" optimize(choice, {values})")
         }
+    }
+}
+
+fn format_signal_role_surface(role: crate::ast::SignalRole) -> &'static str {
+    match role {
+        crate::ast::SignalRole::LongEntry => "entry long",
+        crate::ast::SignalRole::LongEntry2 => "entry2 long",
+        crate::ast::SignalRole::LongEntry3 => "entry3 long",
+        crate::ast::SignalRole::LongExit => "exit long",
+        crate::ast::SignalRole::ShortEntry => "entry short",
+        crate::ast::SignalRole::ShortEntry2 => "entry2 short",
+        crate::ast::SignalRole::ShortEntry3 => "entry3 short",
+        crate::ast::SignalRole::ShortExit => "exit short",
+        crate::ast::SignalRole::ProtectLong => "protect long",
+        crate::ast::SignalRole::ProtectAfterTarget1Long => "protect_after_target1 long",
+        crate::ast::SignalRole::ProtectAfterTarget2Long => "protect_after_target2 long",
+        crate::ast::SignalRole::ProtectAfterTarget3Long => "protect_after_target3 long",
+        crate::ast::SignalRole::ProtectShort => "protect short",
+        crate::ast::SignalRole::ProtectAfterTarget1Short => "protect_after_target1 short",
+        crate::ast::SignalRole::ProtectAfterTarget2Short => "protect_after_target2 short",
+        crate::ast::SignalRole::ProtectAfterTarget3Short => "protect_after_target3 short",
+        crate::ast::SignalRole::TargetLong => "target long",
+        crate::ast::SignalRole::TargetLong2 => "target2 long",
+        crate::ast::SignalRole::TargetLong3 => "target3 long",
+        crate::ast::SignalRole::TargetShort => "target short",
+        crate::ast::SignalRole::TargetShort2 => "target2 short",
+        crate::ast::SignalRole::TargetShort3 => "target3 short",
     }
 }
 

@@ -169,6 +169,36 @@ plot(left.close)",
 }
 
 #[test]
+fn parses_entry_module_declarations() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+entry long = spot.close > spot.close[1]
+exit long = spot.close < spot.close[1]
+order entry long = market(venue = spot)
+order exit long = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("entry module declarations should compile");
+}
+
+#[test]
+fn rejects_module_declarations_without_matching_signal() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+plot(spot.close)",
+    );
+    assert!(message.contains(
+        "module declaration `breakout` requires a matching `entry long = ...` signal declaration"
+    ));
+}
+
+#[test]
 fn rejects_nested_risk_control_declarations() {
     let message = compile_err(&with_interval(
         "if true { cooldown long = 1 } else { plot(close) }",

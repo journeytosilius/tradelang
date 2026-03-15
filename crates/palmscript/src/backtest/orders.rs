@@ -123,6 +123,7 @@ pub(crate) struct OpenTrade {
     pub entry: Fill,
     pub entry_order_id: usize,
     pub entry_role: SignalRole,
+    pub entry_module: Option<String>,
     pub entry_kind: OrderKind,
     pub entry_snapshot: Option<FeatureSnapshot>,
     pub mae_price_delta: f64,
@@ -140,6 +141,7 @@ pub(crate) struct EntryProgressState {
 pub(crate) struct TradeEntryContext {
     pub order_id: usize,
     pub role: SignalRole,
+    pub module: Option<String>,
     pub kind: OrderKind,
     pub snapshot: Option<FeatureSnapshot>,
 }
@@ -778,6 +780,7 @@ pub(crate) fn open_position(
         entry: fill.clone(),
         entry_order_id: entry_context.order_id,
         entry_role: entry_context.role,
+        entry_module: entry_context.module,
         entry_kind: entry_context.kind,
         entry_snapshot: entry_context.snapshot,
         mae_price_delta: 0.0,
@@ -935,6 +938,7 @@ pub(crate) fn close_trade_slice(
     crate::backtest::Trade {
         execution_alias: execution_alias.to_string(),
         side: open_trade.side,
+        entry_module: open_trade.entry_module.clone(),
         quantity,
         entry,
         exit,

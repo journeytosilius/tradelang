@@ -22,6 +22,7 @@ pub(crate) struct PreparedExport {
 
 pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
+    pub signal_modules: HashMap<SignalRole, String>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
     pub risk_controls: Vec<RiskControlDecl>,
     pub portfolio_controls: Vec<PortfolioControlDecl>,
@@ -123,6 +124,7 @@ pub(crate) fn prepare_backtest_for_aliases(
 
     Ok(PreparedBacktest {
         signal_roles,
+        signal_modules: explicit_modules_by_role(compiled),
         order_templates,
         risk_controls: compiled.program.risk_controls.clone(),
         portfolio_controls: compiled.program.portfolio_controls.clone(),
@@ -186,6 +188,16 @@ fn explicit_orders_by_role(compiled: &CompiledProgram) -> HashMap<SignalRole, Or
         .iter()
         .cloned()
         .map(|order| (order.role, order))
+        .collect()
+}
+
+fn explicit_modules_by_role(compiled: &CompiledProgram) -> HashMap<SignalRole, String> {
+    compiled
+        .program
+        .signal_modules
+        .iter()
+        .cloned()
+        .map(|module| (module.role, module.name))
         .collect()
 }
 
