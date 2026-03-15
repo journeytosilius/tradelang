@@ -37,6 +37,8 @@ pub struct BacktestConfig {
     #[serde(default)]
     pub portfolio_execution_aliases: Vec<String>,
     #[serde(default)]
+    pub spot_virtual_rebalance: bool,
+    #[serde(default)]
     pub activation_time_ms: Option<i64>,
     pub initial_capital: f64,
     pub maker_fee_bps: f64,
@@ -281,6 +283,15 @@ pub struct PortfolioControlBlockSummary {
     pub alias: String,
     pub group: Option<String>,
     pub count: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SpotQuoteTransfer {
+    pub from_alias: String,
+    pub to_alias: String,
+    pub bar_index: usize,
+    pub time: f64,
+    pub amount: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -809,7 +820,11 @@ pub struct BacktestDiagnostics {
     #[serde(default)]
     pub portfolio_mode: bool,
     #[serde(default)]
+    pub spot_virtual_portfolio: bool,
+    #[serde(default)]
     pub blocked_portfolio_entries: Vec<PortfolioControlBlockSummary>,
+    #[serde(default)]
+    pub spot_quote_transfers: Vec<SpotQuoteTransfer>,
     #[serde(default)]
     pub date_perturbation: DatePerturbationDiagnostics,
 }
@@ -906,6 +921,17 @@ pub enum BacktestError {
     MissingPortfolioExecutionSources,
     #[error("portfolio mode execution source `{alias}` is duplicated")]
     DuplicatePortfolioExecutionSource { alias: String },
+    #[error("spot virtual rebalance requires at least two selected portfolio execution sources")]
+    SpotVirtualRebalanceRequiresPortfolioMode,
+    #[error("spot virtual rebalance only supports spot execution aliases, but `{alias}` is `{template:?}`")]
+    SpotVirtualRebalanceRequiresSpotAliases {
+        alias: String,
+        template: crate::interval::SourceTemplate,
+    },
+    #[error(
+        "spot virtual rebalance does not support short spot roles; alias=`{alias}` role={role:?}"
+    )]
+    SpotVirtualRebalanceShortRoleUnsupported { alias: String, role: SignalRole },
     #[error("walk-forward train_bars must be > 0, found {value}")]
     InvalidWalkForwardTrainBars { value: usize },
     #[error("walk-forward test_bars must be > 0, found {value}")]

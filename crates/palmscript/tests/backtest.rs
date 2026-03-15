@@ -88,6 +88,7 @@ fn config(alias: &str) -> BacktestConfig {
     BacktestConfig {
         execution_source_alias: alias.to_string(),
         portfolio_execution_aliases: Vec::new(),
+        spot_virtual_rebalance: false,
         activation_time_ms: None,
         initial_capital: 1_000.0,
         maker_fee_bps: 0.0,
@@ -339,6 +340,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
     BacktestConfig {
         execution_source_alias: alias.to_string(),
         portfolio_execution_aliases: Vec::new(),
+        spot_virtual_rebalance: false,
         activation_time_ms: None,
         initial_capital: 1_000.0,
         maker_fee_bps: 0.0,
@@ -1002,6 +1004,95 @@ plot(left.close)",
         .open_positions
         .iter()
         .any(|position| position.execution_alias == "right"));
+}
+
+#[test]
+fn spot_virtual_rebalance_transfers_quote_between_portfolio_aliases() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+entry long = left.close > left.close[1]
+order entry long = market(venue = left)
+size entry long = 1.0
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                12.0,
+                12.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 20.0, 20.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                20.0,
+                20.0,
+            ),
+        ],
+    );
+    let mut backtest = config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    backtest.spot_virtual_rebalance = true;
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("spot virtual rebalance portfolio backtest should succeed");
+
+    assert!(result.diagnostics.portfolio_mode);
+    assert!(result.diagnostics.spot_virtual_portfolio);
+    assert_eq!(result.diagnostics.spot_quote_transfers.len(), 1);
+    let transfer = &result.diagnostics.spot_quote_transfers[0];
+    assert_eq!(transfer.from_alias, "right");
+    assert_eq!(transfer.to_alias, "left");
+    assert!((transfer.amount - 500.0).abs() < 1e-9);
+    assert_eq!(result.open_positions.len(), 1);
+    assert_eq!(result.open_positions[0].execution_alias, "left");
+}
+
+#[test]
+fn spot_virtual_rebalance_rejects_short_spot_roles() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+entry long = left.close > left.close[1]
+entry short = right.close > right.close[1]
+order entry long = market(venue = left)
+order entry short = market(venue = right)
+size entry long = 0.5
+size entry short = 0.5
+plot(left.close)",
+    )
+    .expect("script should compile");
+    let runtime = multi_source_runtime(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 11.0, 11.0),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 21.0, 21.0),
+        ],
+    );
+    let mut backtest = config("left");
+    backtest.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+    backtest.spot_virtual_rebalance = true;
+    let error = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect_err("short spot roles should be rejected");
+
+    assert_eq!(
+        error,
+        BacktestError::SpotVirtualRebalanceShortRoleUnsupported {
+            alias: "right".to_string(),
+            role: SignalRole::ShortEntry,
+        }
+    );
 }
 
 #[test]

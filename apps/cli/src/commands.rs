@@ -213,6 +213,7 @@ fn run_backtest(args: BacktestRunArgs) -> Result<(), String> {
             } else {
                 Vec::new()
             },
+            spot_virtual_rebalance: args.spot_virtual_rebalance,
             activation_time_ms: None,
             initial_capital: args.initial_capital,
             maker_fee_bps: global_fee_schedule.maker_bps,
@@ -284,6 +285,7 @@ fn run_walk_forward(args: WalkForwardRunArgs) -> Result<(), String> {
                 } else {
                     Vec::new()
                 },
+                spot_virtual_rebalance: args.spot_virtual_rebalance,
                 activation_time_ms: None,
                 initial_capital: args.initial_capital,
                 maker_fee_bps: global_fee_schedule.maker_bps,
@@ -369,6 +371,7 @@ fn run_walk_forward_sweep(args: WalkForwardSweepRunArgs) -> Result<(), String> {
                     } else {
                         Vec::new()
                     },
+                    spot_virtual_rebalance: args.spot_virtual_rebalance,
                     activation_time_ms: None,
                     initial_capital: args.initial_capital,
                     maker_fee_bps: global_fee_schedule.maker_bps,
@@ -447,6 +450,7 @@ fn run_optimize(args: OptimizeRunArgs) -> Result<(), String> {
         } else {
             Vec::new()
         },
+        spot_virtual_rebalance: args.spot_virtual_rebalance,
         activation_time_ms: None,
         initial_capital: args.initial_capital,
         maker_fee_bps: global_fee_schedule.maker_bps,
@@ -1483,6 +1487,7 @@ mod tests {
             backtest: palmscript::BacktestConfig {
                 execution_source_alias: "spot".to_string(),
                 portfolio_execution_aliases: Vec::new(),
+                spot_virtual_rebalance: false,
                 activation_time_ms: None,
                 initial_capital: 1_000.0,
                 maker_fee_bps: 0.0,

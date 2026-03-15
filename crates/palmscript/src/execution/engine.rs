@@ -97,6 +97,7 @@ pub(crate) fn process_paper_session(
             } else {
                 Vec::new()
             },
+            spot_virtual_rebalance: false,
             activation_time_ms: Some(manifest.start_time_ms),
             initial_capital: manifest.config.initial_capital,
             maker_fee_bps: manifest.config.maker_fee_bps,

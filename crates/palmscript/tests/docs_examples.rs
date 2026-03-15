@@ -216,6 +216,7 @@ fn multi_interval_backtest_docs_examples_run_with_local_feeds() {
             BacktestConfig {
                 execution_source_alias: "spot".to_string(),
                 portfolio_execution_aliases: Vec::new(),
+                spot_virtual_rebalance: false,
                 activation_time_ms: None,
                 initial_capital: 10_000.0,
                 maker_fee_bps: 0.0,
@@ -260,6 +261,7 @@ fn portfolio_backtest_docs_example_runs_with_local_feeds() {
         BacktestConfig {
             execution_source_alias: "left".to_string(),
             portfolio_execution_aliases: vec!["left".to_string(), "right".to_string()],
+            spot_virtual_rebalance: false,
             activation_time_ms: None,
             initial_capital: 10_000.0,
             maker_fee_bps: 0.0,
@@ -308,6 +310,7 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
         BacktestConfig {
             execution_source_alias: "exec".to_string(),
             portfolio_execution_aliases: Vec::new(),
+            spot_virtual_rebalance: false,
             activation_time_ms: None,
             initial_capital: 10_000.0,
             maker_fee_bps: 0.0,

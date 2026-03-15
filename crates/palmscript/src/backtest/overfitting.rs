@@ -511,6 +511,7 @@ mod tests {
             backtest: crate::backtest::BacktestConfig {
                 execution_source_alias: "spot".to_string(),
                 portfolio_execution_aliases: Vec::new(),
+                spot_virtual_rebalance: false,
                 activation_time_ms: None,
                 initial_capital: 1_000.0,
                 maker_fee_bps: 0.0,
@@ -532,6 +533,7 @@ mod tests {
                 backtest: crate::backtest::BacktestConfig {
                     execution_source_alias: "spot".to_string(),
                     portfolio_execution_aliases: Vec::new(),
+                    spot_virtual_rebalance: false,
                     activation_time_ms: None,
                     initial_capital: 1_000.0,
                     maker_fee_bps: 0.0,

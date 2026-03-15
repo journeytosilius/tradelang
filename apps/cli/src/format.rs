@@ -399,6 +399,11 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         result.diagnostics.drawdown.average_recovery_bars
     );
     let _ = writeln!(out, "portfolio_mode={}", result.diagnostics.portfolio_mode);
+    let _ = writeln!(
+        out,
+        "spot_virtual_portfolio={}",
+        result.diagnostics.spot_virtual_portfolio
+    );
     render_overfitting_risk_text(
         &mut out,
         "Overfitting Risk",
@@ -493,6 +498,20 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
                 blocked.alias,
                 blocked.group.as_deref().unwrap_or("none"),
                 blocked.count
+            );
+        }
+    }
+    if !result.diagnostics.spot_quote_transfers.is_empty() {
+        out.push_str("Spot Quote Transfers\n");
+        for transfer in &result.diagnostics.spot_quote_transfers {
+            let _ = writeln!(
+                out,
+                "from_alias={} to_alias={} bar_index={} time={} amount={:.4}",
+                transfer.from_alias,
+                transfer.to_alias,
+                transfer.bar_index,
+                transfer.time,
+                transfer.amount,
             );
         }
     }
@@ -2023,7 +2042,9 @@ mod tests {
                     }],
                 },
                 portfolio_mode: false,
+                spot_virtual_portfolio: false,
                 blocked_portfolio_entries: vec![],
+                spot_quote_transfers: vec![],
                 date_perturbation: palmscript::DatePerturbationDiagnostics {
                     offset_bars: 2,
                     scenarios: vec![palmscript::DatePerturbationScenarioSummary {
@@ -2122,6 +2143,7 @@ mod tests {
                 backtest: palmscript::BacktestConfig {
                     execution_source_alias: "spot".to_string(),
                     portfolio_execution_aliases: Vec::new(),
+                    spot_virtual_rebalance: false,
                     activation_time_ms: None,
                     initial_capital: 1000.0,
                     maker_fee_bps: 0.0,

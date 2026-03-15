@@ -542,6 +542,7 @@ async fn run_backtest(
                         .alias
                         .clone(),
                     portfolio_execution_aliases: Vec::new(),
+                    spot_virtual_rebalance: false,
                     activation_time_ms: None,
                     initial_capital: dataset.initial_capital,
                     maker_fee_bps: dataset.fee_bps,

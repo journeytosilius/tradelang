@@ -105,7 +105,8 @@ Additional diagnostics flag:
 - `--set name=value`: override one numeric `input` on top of the selected preset survivor; repeat per input
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
-- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+- repeat `--execution-source <alias>` to activate portfolio mode across the selected execution aliases
+- `--spot-virtual-rebalance`: optional multi-venue spot-only portfolio mode that splits quote capital evenly across the selected aliases and transfers quote between them automatically before long entries
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 
 ## `palmscript run walk-forward`
@@ -137,7 +138,8 @@ Additional diagnostics flag:
 - `--set name=value`: override one numeric `input` on top of the selected preset survivor; repeat per input
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
-- repeat `--execution-source <alias>` to activate portfolio mode with a shared equity ledger across the selected execution aliases
+- repeat `--execution-source <alias>` to activate portfolio mode across the selected execution aliases
+- `--spot-virtual-rebalance`: optional multi-venue spot-only portfolio mode that splits quote capital evenly across the selected aliases and transfers quote between them automatically before long entries
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 
 ## `palmscript run optimize`
@@ -225,7 +227,8 @@ Default safety behavior:
 - when `walk-forward` is used, the CLI reserves a final untouched holdout automatically
 - the default holdout size matches `test-bars`
 - if `--param` is omitted, PalmScript first looks for preset parameter space and then infers search space from `input ... optimize(...)` metadata inside the script
-- repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger
+- repeated `--execution-source` flags activate portfolio mode, which evaluates the same compiled strategy logic for each selected alias under one shared equity ledger by default
+- `--spot-virtual-rebalance` switches multi-venue spot backtests and optimize runs to long/flat quote-wallet accounting with automatic quote transfers between aliases
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
 - the final JSON/text result also carries validation-constraint summaries, feasible vs infeasible candidate counts, best-infeasible-candidate fallback data, constraint-failure breakdowns, optional direct-validation survivor replays, holdout drift, top-candidate holdout robustness, holdout pass rate, parameter stability ranges, deterministic overfitting-risk summaries, and improvement hints

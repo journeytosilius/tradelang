@@ -125,6 +125,8 @@ pub struct BacktestRunArgs {
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long)]
+    pub spot_virtual_rebalance: bool,
+    #[arg(long)]
     pub maker_fee_bps: f64,
     #[arg(long)]
     pub taker_fee_bps: f64,
@@ -163,6 +165,8 @@ pub struct WalkForwardRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
+    #[arg(long)]
+    pub spot_virtual_rebalance: bool,
     #[arg(long)]
     pub maker_fee_bps: f64,
     #[arg(long)]
@@ -213,6 +217,8 @@ pub struct WalkForwardSweepRunArgs {
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
     #[arg(long)]
+    pub spot_virtual_rebalance: bool,
+    #[arg(long)]
     pub maker_fee_bps: f64,
     #[arg(long)]
     pub taker_fee_bps: f64,
@@ -257,6 +263,8 @@ pub struct OptimizeRunArgs {
     pub execution_source: Vec<String>,
     #[arg(long, default_value_t = 10_000.0)]
     pub initial_capital: f64,
+    #[arg(long)]
+    pub spot_virtual_rebalance: bool,
     #[arg(long)]
     pub maker_fee_bps: f64,
     #[arg(long)]
