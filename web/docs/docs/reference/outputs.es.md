@@ -35,6 +35,7 @@ PalmScript expone tres construcciones que producen salidas:
   `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` es una llamada builtin. `export`, `regime` y `trigger` son declaraciones.
 
@@ -145,6 +146,7 @@ diagnosticos de investigacion:
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 Reglas:
@@ -152,6 +154,8 @@ Reglas:
 - son solo de nivel superior
 - por ahora solo aceptan `entry`, `entry2` y `entry3`
 - cada rol de entrada puede tener como maximo una etiqueta de modulo
+- los nombres de modulo tambien deben ser unicos
+- `size module <name> = expr` reutiliza la misma semantica de tamanio de entrada escalonada para el rol de entrada enlazado al modulo
 - los diagnosticos orientados a backtest exponen la etiqueta como `entry_module`
   en las operaciones y en los cohortes
 
@@ -214,6 +218,7 @@ Reglas:
   ganancias adjunta; `target` es un alias de compatibilidad para `target1`
 - `size entry1..3` y `size target1..3` son opcionales por etapa y solo aplican
   a la entrada o target escalonado correspondiente
+- `size module <name>` es un atajo para dimensionar el rol de entrada escalonada enlazado por esa declaracion `module`
 - el tamanio de entradas escalonadas soporta:
   - una fraccion numerica legacy como `0.5`
   - `capital_fraction(x)`

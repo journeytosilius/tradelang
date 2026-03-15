@@ -36,6 +36,7 @@ PalmScript expose trois constructions productrices de sortie :
   `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` est un appel builtin. `export`, `regime` et `trigger` sont des declarations.
 
@@ -147,6 +148,7 @@ diagnostics de recherche :
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 Regles :
@@ -154,6 +156,8 @@ Regles :
 - uniquement au niveau superieur
 - v1 accepte seulement `entry`, `entry2` et `entry3`
 - chaque role d'entree peut avoir au plus une etiquette
+- les noms de module doivent aussi etre uniques
+- `size module <name> = expr` reutilise la meme semantique de dimensionnement d'entree echelonnee pour le role d'entree lie a ce module
 - les diagnostics de backtest exposent cette etiquette comme `entry_module`
   sur les trades et dans les cohortes
 
@@ -218,6 +222,7 @@ Regles :
   `target1`
 - `size entry1..3` et `size target1..3` sont facultatifs et ne s'appliquent
   qu'a l'entree ou au target echelonne correspondant
+- `size module <name>` est un raccourci pour dimensionner le role d'entree echelonne lie par cette declaration `module`
 - le dimensionnement des entrees echelonnees prend en charge :
   - une fraction numerique nue historique telle que `0.5`
   - `capital_fraction(x)`

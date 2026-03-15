@@ -166,6 +166,7 @@ target2 long = take_profit_market(trigger_price = position.entry_price + 8, trig
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
+size module breakout = 0.5
 size target1 long = 0.5
 ```
 
@@ -199,6 +200,7 @@ Regles :
   echelonnee avec `capital_fraction(x)` / la semantique historique par fraction
   numerique nue, ou `risk_pct(pct, stop_price)` pour un dimensionnement base
   sur le risque
+- `size module <name>` permet aussi de dimensionner l'entree echelonnee liee a une declaration compatible `module <name> = entry...` avec la meme semantique de taille d'entree
 - `size target1..3 long|short` permet de dimensionner facultativement un
   remplissage `target` echelonne comme fraction de la position ouverte
 - une seule declaration `order` est autorisee par role de signal
@@ -208,6 +210,7 @@ Regles :
 - `size entry ...` et `size target ...` exigent chacun une declaration
   `order ...` echelonnee ou `target ...` attachee correspondante pour le meme
   role
+- `size module ...` exige une declaration `module` correspondante qui se resout vers un role d'entree echelonnee
 - `risk_pct(...)` n'est valide que sur les declarations de taille d'entree
   echelonnee dans la v1
 - les sorties attachees echelonnees sont sequentielles : seule la prochaine

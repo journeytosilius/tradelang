@@ -35,6 +35,7 @@ PalmScript expoe tres construtos produtores de saida:
   `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` e uma chamada builtin. `export`, `regime` e `trigger` sao declaracoes.
 
@@ -144,6 +145,7 @@ diagnosticos de pesquisa:
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 Regras:
@@ -151,6 +153,8 @@ Regras:
 - apenas no nivel superior
 - por enquanto so aceitam `entry`, `entry2` e `entry3`
 - cada papel de entrada pode ter no maximo um rotulo
+- nomes de modulo tambem precisam ser unicos
+- `size module <name> = expr` reutiliza a mesma semantica de dimensionamento de entrada em estagio para o papel de entrada ligado a esse modulo
 - os diagnosticos de backtest expoem o rotulo como `entry_module` nas trades e
   nos resumos de coorte
 
@@ -213,6 +217,7 @@ Regras:
   realizacao de lucro; `target` e um alias de compatibilidade para `target1`
 - `size entry1..3` e `size target1..3` sao opcionais e se aplicam apenas ao
   entry ou target em estagio correspondente
+- `size module <name>` e um atalho para dimensionar o papel de entrada em estagio ligado por aquela declaracao `module`
 - o dimensionamento de entradas em estagio suporta:
   - uma fracao numerica nua legada como `0.5`
   - `capital_fraction(x)`

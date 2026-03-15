@@ -149,6 +149,7 @@ target2 long = take_profit_market(trigger_price = position.entry_price + 8, trig
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
+size module breakout = 0.5
 size target1 long = 0.5
 ```
 
@@ -172,11 +173,13 @@ size target1 long = 0.5
 - `order entry ...` と `order exit ...` は、対応するシグナルロールに実行テンプレートを付ける
 - `protect`、`protect_after_target1..3`、`target1..3` は、対応ポジションが開いている間だけ有効になる段階付き attached exit を宣言する
 - `size entry1..3 long|short` は、`capital_fraction(x)` / 旧来の裸の数値比率セマンティクス、またはリスクベース entry sizing 用の `risk_pct(pct, stop_price)` によって段階付き entry fill のサイズを任意指定できる
+- `size module <name>` も、対応する `module <name> = entry...` 宣言に結び付いた段階付き entry fill を同じ entry sizing セマンティクスでサイズ指定できる
 - `size target1..3 long|short` は、段階付き `target` fill を open position の比率として任意指定できる
 - 各シグナルロールにつき `order` 宣言は最大一つ
 - 各段階ロールにつき宣言は最大一つ
 - 実行系 CLI モードでは、各 `entry` / `exit` シグナルロールごとに明示的な `order ...` 宣言が必要
 - `size entry ...` と `size target ...` は、それぞれ同じロールに対応する段階付き `order ...` または段階付き attached `target ...` 宣言を必要とする
+- `size module ...` には、段階付き entry ロールへ解決される対応 `module` 宣言が必要
 - v1 では `risk_pct(...)` は段階付き entry size 宣言でのみ有効
 - 段階付き attached exit は順次的であり、一度に有効なのは次の target 段階と現在の protect 段階だけ
 - `position.*` は `protect` と `target` 宣言内でのみ利用できる

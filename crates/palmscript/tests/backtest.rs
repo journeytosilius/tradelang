@@ -1751,6 +1751,44 @@ plot(spot.close)",
 }
 
 #[test]
+fn entry_module_size_uses_existing_entry_sizing_runtime() {
+    let t0 = support::JAN_1_2024_UTC_MS;
+    let compiled = compile(&format!(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+module breakout = entry long
+entry long = spot.time == {t0}
+order entry long = market(venue = spot)
+size module breakout = 0.4
+exit long = false
+order exit long = market(venue = spot)
+plot(spot.close)"
+    ))
+    .expect("script should compile");
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![SourceFeed {
+            source_id: 0,
+            interval: Interval::Min1,
+            bars: vec![
+                bar(t0, 10.0, 10.0),
+                bar(t0 + support::MINUTE_MS, 12.0, 12.0),
+                bar(t0 + 2 * support::MINUTE_MS, 14.0, 14.0),
+            ],
+        }],
+    };
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should succeed");
+
+    assert_eq!(result.fills.len(), 1);
+    assert_eq!(result.fills[0].action, palmscript::FillAction::Buy);
+    approx_eq(result.fills[0].quantity, 400.0 / 12.0);
+    let open_position = result.open_position.expect("position should remain open");
+    assert_eq!(open_position.side, palmscript::PositionSide::Long);
+    approx_eq(open_position.quantity, result.fills[0].quantity);
+}
+
+#[test]
 fn conflicting_entries_are_rejected() {
     let compiled = compile(
         "interval 1m

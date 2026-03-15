@@ -657,6 +657,7 @@ Explicit execution templates for trading scripts:
 - `order entry short = limit(price = spot.close[1], tif = tif.gtc, post_only = false, venue = exec)`
 - `order exit short = take_profit_limit(trigger_price = trigger, limit_price = price, tif = tif.gtc, post_only = false, trigger_ref = trigger_ref.mark, expire_time_ms = expire_ms, venue = exec)`
 - `size entry1 long = 0.5`
+- `size module breakout = 0.5`
 - `size entry1 long = risk_pct(0.01, stop_price)`
 - `size entry2 long = 0.5`
 - `size entry1 short = 0.5`
@@ -711,6 +712,7 @@ The backtester stays intentionally simple and deterministic:
 - the portfolio model remains net-position based with no explicit quantity expressions
 - same-side re-entry is ignored by default except for explicit staged entries
 - `size entry1..3 long|short = <expr>` opt a staged entry role into explicit entry sizing
+- `size module <name> = <expr>` applies that same entry sizing to the staged entry role bound by `module <name> = entry...`
 - `size entry1..3 long|short = capital_fraction(x)` uses a finite fraction in `(0, 1]` of current cash or free collateral at fill time
 - `size entry1..3 long|short = risk_pct(pct, stop_price)` sizes from actual fill price and stop distance so the requested loss at `stop_price` is `pct` of current equity, then clamps to capital or margin limits
 - entry size expressions are evaluated as hidden numeric series like other order fields
@@ -722,6 +724,7 @@ The backtester stays intentionally simple and deterministic:
 - only the currently active staged protect and next staged target are armed for a side at any time
 - `protect_after_target1..3` inherit from the most recent declared protect stage when an exact staged protect is absent
 - `size entry1..3 long|short = <expr>` optionally reduce a staged entry fill to a fraction of current cash or compute a risk-based quantity instead of opening all-in
+- `size module <name> = <expr>` is a shorthand for the same staged entry sizing when you want sizing to follow the module label instead of the raw role name
 - `size target1..3 long|short = <expr>` optionally reduce a staged target fill to a fraction of the current position instead of closing it fully
 - entry and target size expressions are evaluated as hidden numeric series like other order fields
 - v1 only supports explicit sizing for staged `entry` roles and staged attached `target` roles; other order roles still close or open the full position

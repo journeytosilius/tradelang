@@ -161,6 +161,7 @@ target2 long = take_profit_market(trigger_price = position.entry_price + 8, trig
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
+size module breakout = 0.5
 size target1 long = 0.5
 ```
 
@@ -192,6 +193,7 @@ Regras:
 - `size entry1..3 long|short` permite dimensionar opcionalmente um fill de
   entrada em estagio com semantica `capital_fraction(x)` / fracao numerica nua
   legada, ou `risk_pct(pct, stop_price)` para dimensionamento por risco
+- `size module <name>` tambem permite dimensionar o fill de entrada em estagio ligado a uma declaracao compativel `module <name> = entry...` usando a mesma semantica de tamanho de entrada
 - `size target1..3 long|short` permite dimensionar opcionalmente um fill de
   `target` em estagio como fracao da posicao aberta
 - no maximo uma declaracao `order` e permitida por role de sinal
@@ -200,6 +202,7 @@ Regras:
   exige uma declaracao explicita `order ...`
 - `size entry ...` e `size target ...` exigem uma declaracao correspondente
   `order ...` em estagio ou `target ...` anexado para o mesmo role
+- `size module ...` exige uma declaracao `module` correspondente que se resolva para um role de entrada em estagio
 - `risk_pct(...)` e valido apenas em declaracoes de tamanho de entrada em
   estagio na v1
 - saidas anexadas em estagios sao sequenciais: apenas o proximo target e o

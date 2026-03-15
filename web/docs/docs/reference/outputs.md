@@ -23,6 +23,7 @@ PalmScript exposes three output-producing constructs:
 - `size entry short = expr`, `size entry1 short = expr`, `size entry2 short = expr`, `size entry3 short = expr`
 - `size target long = expr`, `size target1 long = expr`, `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`, `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` is a builtin call. `export`, `regime`, and `trigger` are declarations.
 
@@ -123,6 +124,7 @@ PalmScript can also label entry roles for attribution in research diagnostics:
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 Rules:
@@ -130,6 +132,8 @@ Rules:
 - module declarations are top-level only
 - they currently bind only to `entry`, `entry2`, or `entry3` roles
 - each entry role may have at most one module label
+- module names must also be unique
+- `size module <name> = expr` reuses the existing staged entry sizing semantics for the module's bound entry role
 - backtest-oriented diagnostics expose the label as `entry_module` on trades and in cohort summaries
 
 ## Order Declarations
@@ -190,6 +194,7 @@ Rules:
 - `protect_after_target1`, `protect_after_target2`, and `protect_after_target3` optionally ratchet the active protect order after each staged target fill
 - `target`, `target1`, `target2`, and `target3` are sequential attached profit-taking stages; `target` is a compatibility alias for `target1`
 - `size entry1..3` and `size target1..3` are optional per stage and only apply to the matching staged entry or target
+- `size module <name>` is a shorthand for sizing the staged entry role bound by that module declaration
 - staged entry sizing supports:
   - a legacy bare numeric fraction such as `0.5`
   - `capital_fraction(x)`

@@ -1770,32 +1770,42 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
             };
             lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
         }
-        StmtKind::OrderSize { role, expr } => {
-            let header = match role {
-                crate::ast::SignalRole::LongEntry => "size entry long",
-                crate::ast::SignalRole::LongEntry2 => "size entry2 long",
-                crate::ast::SignalRole::LongEntry3 => "size entry3 long",
-                crate::ast::SignalRole::ShortEntry => "size entry short",
-                crate::ast::SignalRole::ShortEntry2 => "size entry2 short",
-                crate::ast::SignalRole::ShortEntry3 => "size entry3 short",
-                crate::ast::SignalRole::TargetLong => "size target long",
-                crate::ast::SignalRole::TargetLong2 => "size target2 long",
-                crate::ast::SignalRole::TargetLong3 => "size target3 long",
-                crate::ast::SignalRole::TargetShort => "size target short",
-                crate::ast::SignalRole::TargetShort2 => "size target2 short",
-                crate::ast::SignalRole::TargetShort3 => "size target3 short",
-                crate::ast::SignalRole::LongExit
-                | crate::ast::SignalRole::ShortExit
-                | crate::ast::SignalRole::ProtectLong
-                | crate::ast::SignalRole::ProtectAfterTarget1Long
-                | crate::ast::SignalRole::ProtectAfterTarget2Long
-                | crate::ast::SignalRole::ProtectAfterTarget3Long
-                | crate::ast::SignalRole::ProtectShort
-                | crate::ast::SignalRole::ProtectAfterTarget1Short
-                | crate::ast::SignalRole::ProtectAfterTarget2Short
-                | crate::ast::SignalRole::ProtectAfterTarget3Short => {
-                    unreachable!("order sizing is only supported for entries and targets")
+        StmtKind::OrderSize { target, expr } => {
+            let header = match target {
+                crate::ast::OrderSizeTarget::Module(binding) => {
+                    lines.push(format!(
+                        "{prefix}size module {} = {}",
+                        binding.name,
+                        format_expr(expr, 0)
+                    ));
+                    return;
                 }
+                crate::ast::OrderSizeTarget::Role(role) => match role {
+                    crate::ast::SignalRole::LongEntry => "size entry long",
+                    crate::ast::SignalRole::LongEntry2 => "size entry2 long",
+                    crate::ast::SignalRole::LongEntry3 => "size entry3 long",
+                    crate::ast::SignalRole::ShortEntry => "size entry short",
+                    crate::ast::SignalRole::ShortEntry2 => "size entry2 short",
+                    crate::ast::SignalRole::ShortEntry3 => "size entry3 short",
+                    crate::ast::SignalRole::TargetLong => "size target long",
+                    crate::ast::SignalRole::TargetLong2 => "size target2 long",
+                    crate::ast::SignalRole::TargetLong3 => "size target3 long",
+                    crate::ast::SignalRole::TargetShort => "size target short",
+                    crate::ast::SignalRole::TargetShort2 => "size target2 short",
+                    crate::ast::SignalRole::TargetShort3 => "size target3 short",
+                    crate::ast::SignalRole::LongExit
+                    | crate::ast::SignalRole::ShortExit
+                    | crate::ast::SignalRole::ProtectLong
+                    | crate::ast::SignalRole::ProtectAfterTarget1Long
+                    | crate::ast::SignalRole::ProtectAfterTarget2Long
+                    | crate::ast::SignalRole::ProtectAfterTarget3Long
+                    | crate::ast::SignalRole::ProtectShort
+                    | crate::ast::SignalRole::ProtectAfterTarget1Short
+                    | crate::ast::SignalRole::ProtectAfterTarget2Short
+                    | crate::ast::SignalRole::ProtectAfterTarget3Short => {
+                        unreachable!("order sizing is only supported for entries and targets")
+                    }
+                },
             };
             lines.push(format!("{prefix}{header} = {}", format_expr(expr, 0)));
         }

@@ -970,6 +970,48 @@ plot(close)",
 }
 
 #[test]
+fn rejects_unknown_module_size_declarations() {
+    let source = with_interval(
+        "module breakout = entry long
+entry long = close > close[1]
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market(venue = src)
+size module missing = 0.5
+plot(close)",
+    );
+    assert_compile_diagnostics(
+        "unknown_module_size",
+        &source,
+        &[expected(
+            DiagnosticKind::Type,
+            "unknown module `missing` in size declaration",
+        )],
+    );
+}
+
+#[test]
+fn rejects_duplicate_module_names() {
+    let source = with_interval(
+        "module breakout = entry long
+module breakout = entry2 long
+entry long = close > close[1]
+entry2 long = close > close[2]
+execution src = binance.spot(\"BTCUSDT\")
+order entry long = market(venue = src)
+order entry2 long = market(venue = src)
+plot(close)",
+    );
+    assert_compile_diagnostics(
+        "duplicate_module_name",
+        &source,
+        &[expected(
+            DiagnosticKind::Type,
+            "duplicate module declaration name `breakout`",
+        )],
+    );
+}
+
+#[test]
 fn compile_api_keeps_internal_compile_diagnostics_internal() {
     let cases = [
         "plot(\"x\")",

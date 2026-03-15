@@ -35,6 +35,7 @@ PalmScript stellt drei Konstrukte zur Ausgabeerzeugung bereit:
   `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`,
   `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` ist ein Builtin-Aufruf. `export`, `regime` und `trigger` sind Deklarationen.
 
@@ -144,6 +145,7 @@ PalmScript kann Entry-Rollen auch fuer Forschungsdiagnostik labeln:
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 Regeln:
@@ -151,6 +153,8 @@ Regeln:
 - nur auf Top-Level
 - aktuell nur fuer `entry`, `entry2` und `entry3`
 - jede Entry-Rolle darf hoechstens ein Modul-Label haben
+- Modulnamen muessen ebenfalls eindeutig sein
+- `size module <name> = expr` verwendet dieselbe gestufte Entry-Sizing-Semantik fuer die an das Modul gebundene Entry-Rolle wieder
 - backtest-orientierte Diagnostik gibt das Label als `entry_module` auf Trades
   und in Kohorten-Zusammenfassungen aus
 
@@ -213,6 +217,7 @@ Regeln:
   Gewinnmitnahmen; `target` ist ein Kompatibilitaets-Alias fuer `target1`
 - `size entry1..3` und `size target1..3` sind optional pro Stufe und gelten nur
   fuer den jeweiligen gestuften Entry oder Target
+- `size module <name>` ist eine Kurzform fuer das Sizing der gestuften Entry-Rolle, die von dieser `module`-Deklaration gebunden wird
 - gestufte Entry-Groessen unterstuetzen:
   - eine nackte Legacy-Fraction wie `0.5`
   - `capital_fraction(x)`

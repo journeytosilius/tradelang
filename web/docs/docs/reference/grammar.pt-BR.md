@@ -181,6 +181,7 @@ exige:
   escalar inteira nao negativa resolvida em compilacao
 - `size entry1..3 long|short` e `size target1..3 long|short` sao declaracoes
   `size` em estagio validas na v1
+- `size module <name> = <expr>` tambem e valido quando `<name>` se resolve para um `module` declarado ligado a um role de entrada em estagio
 - tamanhos de entrada em estagio aceitam uma fracao numerica nua legada,
   `capital_fraction(x)` ou `risk_pct(pct, stop_price)`
 - `size entry ...` exige uma declaracao correspondente `order entry ...` em

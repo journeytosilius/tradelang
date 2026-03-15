@@ -162,6 +162,7 @@ target2 long = take_profit_market(trigger_price = position.entry_price + 8, trig
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
+size module breakout = 0.5
 size target1 long = 0.5
 ```
 
@@ -194,6 +195,7 @@ Regeln:
 - `size entry1..3 long|short` kann einen gestuften Entry-Fill dimensionieren,
   entweder mit einer Legacy-Zahl-Fraction, `capital_fraction(x)` oder
   `risk_pct(pct, stop_price)` fuer risikobasierte Entry-Groesse
+- `size module <name>` kann den gestuften Entry-Fill dimensionieren, der an eine passende `module <name> = entry...`-Deklaration gebunden ist, und verwendet dieselbe Entry-Sizing-Semantik
 - `size target1..3 long|short` kann einen gestuften `target`-Fill als Anteil
   der offenen Position dimensionieren
 - pro Signalrolle ist hoechstens eine `order`-Deklaration erlaubt
@@ -203,6 +205,7 @@ Regeln:
 - `size entry ...` und `size target ...` erfordern jeweils eine passende
   gestufte `order ...`- oder angehaengte `target ...`-Deklaration fuer dieselbe
   Rolle
+- `size module ...` erfordert eine passende Modul-Deklaration, die zu einer gestuften Entry-Rolle aufgeloest wird
 - `risk_pct(...)` ist in v1 nur bei gestuften Entry-Size-Deklarationen gueltig
 - gestufte angehaengte Exits sind sequenziell: immer nur die naechste
   Target-Stufe und die aktuelle Protect-Stufe sind aktiv

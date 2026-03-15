@@ -219,6 +219,12 @@ pub struct SignalModuleDecl {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum OrderSizeTarget {
+    Role(SignalRole),
+    Module(BindingName),
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum StmtKind {
     Let {
         name: String,
@@ -269,7 +275,7 @@ pub enum StmtKind {
         spec: Box<OrderSpec>,
     },
     OrderSize {
-        role: SignalRole,
+        target: OrderSizeTarget,
         expr: Expr,
     },
     RiskControl {

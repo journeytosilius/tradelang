@@ -987,7 +987,10 @@ impl<'a> Parser<'a> {
         Some(Stmt {
             id: self.alloc_id(),
             span: start.merge(expr.span),
-            kind: StmtKind::OrderSize { role, expr },
+            kind: StmtKind::OrderSize {
+                target: crate::ast::OrderSizeTarget::Role(role),
+                expr,
+            },
         })
     }
 
@@ -1109,8 +1112,11 @@ impl<'a> Parser<'a> {
 
     fn parse_order_size_stmt(&mut self) -> Option<Stmt> {
         let start = self.previous().span;
-        let role = if self.matches_keyword(&TokenKind::Target) {
-            self.parse_side_role(
+        let target = if self.matches_keyword(&TokenKind::Module) {
+            let (name, span) = self.expect_ident("expected module name after `size module`")?;
+            crate::ast::OrderSizeTarget::Module(BindingName { name, span })
+        } else if self.matches_keyword(&TokenKind::Target) {
+            crate::ast::OrderSizeTarget::Role(self.parse_side_role(
                 "expected `long` or `short` after `size target`",
                 |is_long| {
                     if is_long {
@@ -1119,19 +1125,22 @@ impl<'a> Parser<'a> {
                         SignalRole::TargetShort
                     }
                 },
-            )?
+            )?)
         } else if self.matches_keyword(&TokenKind::Entry) {
-            self.parse_side_role("expected `long` or `short` after `size entry`", |is_long| {
-                if is_long {
-                    SignalRole::LongEntry
-                } else {
-                    SignalRole::ShortEntry
-                }
-            })?
+            crate::ast::OrderSizeTarget::Role(self.parse_side_role(
+                "expected `long` or `short` after `size entry`",
+                |is_long| {
+                    if is_long {
+                        SignalRole::LongEntry
+                    } else {
+                        SignalRole::ShortEntry
+                    }
+                },
+            )?)
         } else if let TokenKind::Ident(name) = self.peek_kind().clone() {
             let Some(base_role) = staged_size_role_for_ident(&name) else {
                 self.push_diagnostic(
-                    "expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`",
+                    "expected `entry`, `target`, `module`, `entry1..3`, or `target1..3` after `size`",
                     self.tokens[self.cursor].span,
                 );
                 return None;
@@ -1148,10 +1157,10 @@ impl<'a> Parser<'a> {
                     return None;
                 }
             };
-            role
+            crate::ast::OrderSizeTarget::Role(role)
         } else {
             self.push_diagnostic(
-                "expected `entry`, `target`, `entry1..3`, or `target1..3` after `size`",
+                "expected `entry`, `target`, `module`, `entry1..3`, or `target1..3` after `size`",
                 self.tokens[self.cursor].span,
             );
             return None;
@@ -1164,7 +1173,7 @@ impl<'a> Parser<'a> {
         Some(Stmt {
             id: self.alloc_id(),
             span: start.merge(expr.span),
-            kind: StmtKind::OrderSize { role, expr },
+            kind: StmtKind::OrderSize { target, expr },
         })
     }
 

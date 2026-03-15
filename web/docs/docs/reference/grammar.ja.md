@@ -164,6 +164,7 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - `entry long` と `target long|short` は stage 1 の互換エイリアスのまま
 - `cooldown long|short` と `max_bars_in_trade long|short` はコンパイル時に解決される非負整数スカラー式を必要とする
 - `size entry1..3 long|short` と `size target1..3 long|short` は v1 の有効な staged `size` 宣言
+- `size module <name> = <expr>` も `<name>` が段階付き entry ロールに結び付いた宣言済み `module` に解決される場合は有効
 - staged entry size は、旧来の裸の数値比率、`capital_fraction(x)`、または `risk_pct(pct, stop_price)` を受け付ける
 - `size entry ...` には、同じロールの対応する staged `order entry ...` 宣言が必要
 - `size target ...` には、同じロールの対応する staged `target ...` 宣言が必要

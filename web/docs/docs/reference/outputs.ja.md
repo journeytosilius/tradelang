@@ -23,6 +23,7 @@ PalmScript は次の出力生成構文を公開します。
 - `size entry short = expr`, `size entry1 short = expr`, `size entry2 short = expr`, `size entry3 short = expr`
 - `size target long = expr`, `size target1 long = expr`, `size target2 long = expr`, `size target3 long = expr`
 - `size target short = expr`, `size target1 short = expr`, `size target2 short = expr`, `size target3 short = expr`
+- `size module name = expr`
 
 `plot` は builtin 呼び出しです。`export`、`regime`、`trigger` は宣言です。
 
@@ -123,6 +124,7 @@ PalmScript では研究用診断のためにエントリーロールへラベル
 ```palmscript
 module breakout = entry long
 module pullback = entry2 long
+size module breakout = 0.4
 ```
 
 ルール:
@@ -130,6 +132,8 @@ module pullback = entry2 long
 - トップレベル専用です
 - 現在は `entry`、`entry2`、`entry3` だけを受け付けます
 - 各エントリーロールには 1 つだけラベルを付けられます
+- module 名も一意でなければならない
+- `size module <name> = expr` は、その module に結び付いた staged entry ロールに既存の entry sizing セマンティクスを再利用する
 - バックテスト診断ではこのラベルが trade の `entry_module` と cohort 集計に出ます
 
 ## `order` 宣言
@@ -182,6 +186,7 @@ size target long = 0.5
 - `protect_after_target1`, `protect_after_target2`, `protect_after_target3` は、各 staged target fill 後に active protect order を ratchet するための任意宣言
 - `target`, `target1`, `target2`, `target3` は段階的な利確ステージ。`target` は `target1` の互換エイリアス
 - `size entry1..3` と `size target1..3` は任意で、対応する staged entry または target にのみ適用される
+- `size module <name>` は、その `module` 宣言が束縛した staged entry ロールをサイズ指定するための短縮形
 - staged entry sizing は次をサポートする:
   - `0.5` のような旧来の裸の数値比率
   - `capital_fraction(x)`

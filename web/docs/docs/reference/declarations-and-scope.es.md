@@ -163,6 +163,7 @@ target2 long = take_profit_market(trigger_price = position.entry_price + 8, trig
 size entry1 long = 0.5
 size entry2 long = 0.5
 size entry3 long = risk_pct(0.01, stop_price)
+size module breakout = 0.5
 size target1 long = 0.5
 ```
 
@@ -196,6 +197,7 @@ Reglas:
   escalonada usando `capital_fraction(x)` / la semantica legacy de fraccion
   numerica desnuda, o `risk_pct(pct, stop_price)` para dimensionamiento basado
   en riesgo
+- `size module <name>` opcionalmente dimensiona el fill de entrada escalonada ligado a una declaracion `module <name> = entry...` compatible usando la misma semantica de tamanio de entrada
 - `size target1..3 long|short` opcionalmente dimensiona un fill `target`
   escalonado como fraccion de la posicion abierta
 - se permite como maximo una declaracion `order` por rol de senal
@@ -204,6 +206,7 @@ Reglas:
   requiere una declaracion explicita `order ...`
 - `size entry ...` y `size target ...` requieren una declaracion escalonada
   `order ...` o `target ...` adjunta correspondiente para el mismo rol
+- `size module ...` requiere una declaracion `module` correspondiente que se resuelva a un rol de entrada escalonada
 - `risk_pct(...)` solo es valido en declaraciones de tamano de entrada
   escalonada en v1
 - las salidas adjuntas escalonadas son secuenciales: solo la siguiente etapa de

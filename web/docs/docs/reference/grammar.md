@@ -188,6 +188,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - `venue = <execution_alias>` requires a declared `execution` alias
 - trading scripts require at least one declared `execution` target
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
+- `size module <name> = <expr>` is also valid when `<name>` resolves to a declared `module` bound to a staged entry role
 - staged entry sizes accept either a legacy bare numeric fraction, `capital_fraction(x)`, or `risk_pct(pct, stop_price)`
 - `size entry ...` requires a matching staged `order entry ...` declaration for the same role
 - `size target ...` requires a matching staged `target ...` declaration for the same role

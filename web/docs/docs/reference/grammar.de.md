@@ -184,6 +184,7 @@ fordert zusaetzlich:
   Compile-Zeit aufgeloesten nicht-negativen ganzzahligen Skalarausdruck
 - `size entry1..3 long|short` und `size target1..3 long|short` sind gueltige
   gestufte `size`-Deklarationen in v1
+- `size module <name> = <expr>` ist ebenfalls gueltig, wenn `<name>` zu einem deklarierten `module` aufgeloest wird, das an eine gestufte Entry-Rolle gebunden ist
 - gestufte Entry-Groessen akzeptieren entweder eine nackte Legacy-Fraktion,
   `capital_fraction(x)` oder `risk_pct(pct, stop_price)`
 - `size entry ...` erfordert eine passende gestufte `order entry ...`-

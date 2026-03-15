@@ -184,6 +184,7 @@ ademas exige:
   expresion escalar entera no negativa resuelta en compilacion
 - `size entry1..3 long|short` y `size target1..3 long|short` son declaraciones
   `size` escalonadas validas en v1
+- `size module <name> = <expr>` tambien es valido cuando `<name>` se resuelve a un `module` declarado que esta enlazado a un rol de entrada escalonada
 - los tamanos de entrada escalonada aceptan una fraccion numerica legacy,
   `capital_fraction(x)` o `risk_pct(pct, stop_price)`
 - `size entry ...` requiere una declaracion `order entry ...` escalonada para

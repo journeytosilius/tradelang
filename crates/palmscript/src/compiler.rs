@@ -322,6 +322,14 @@ impl<'a> Analyzer<'a> {
 
     fn analyze(mut self, ast: &Ast) -> Result<Analysis, CompileError> {
         for stmt in &ast.statements {
+            if let StmtKind::Module { module } = &stmt.kind {
+                self.analyze_module_stmt(module);
+            }
+        }
+        for stmt in &ast.statements {
+            if matches!(stmt.kind, StmtKind::Module { .. }) {
+                continue;
+            }
             self.analyze_stmt(stmt);
         }
         let mut declared_signal_spans = HashMap::new();
@@ -1449,8 +1457,8 @@ impl<'a> Analyzer<'a> {
             StmtKind::Order { role, spec } => {
                 self.analyze_order_stmt(stmt, *role, spec);
             }
-            StmtKind::OrderSize { role, expr } => {
-                self.analyze_order_size_stmt(stmt, *role, expr);
+            StmtKind::OrderSize { target, expr } => {
+                self.analyze_order_size_stmt(stmt, target, expr);
             }
             StmtKind::RiskControl { kind, side, expr } => {
                 self.analyze_risk_control_stmt(stmt, *kind, *side, expr);
@@ -1461,9 +1469,7 @@ impl<'a> Analyzer<'a> {
             StmtKind::PortfolioGroup { group } => {
                 self.analyze_portfolio_group_stmt(group);
             }
-            StmtKind::Module { module } => {
-                self.analyze_module_stmt(module);
-            }
+            StmtKind::Module { .. } => {}
             StmtKind::If {
                 condition,
                 then_block,
@@ -1919,8 +1925,15 @@ impl<'a> Analyzer<'a> {
         false
     }
 
-    fn analyze_order_size_stmt(&mut self, stmt: &Stmt, role: AstSignalRole, expr: &Expr) {
-        let role = compiled_signal_role(role);
+    fn analyze_order_size_stmt(
+        &mut self,
+        stmt: &Stmt,
+        target: &crate::ast::OrderSizeTarget,
+        expr: &Expr,
+    ) {
+        let Some(role) = self.resolve_order_size_target(target, stmt.span) else {
+            return;
+        };
         if !matches!(
             role,
             CompiledSignalRole::LongEntry
@@ -2031,6 +2044,48 @@ impl<'a> Analyzer<'a> {
             .insert(stmt.id, resolved);
     }
 
+    fn resolve_order_size_target(
+        &mut self,
+        target: &crate::ast::OrderSizeTarget,
+        span: Span,
+    ) -> Option<CompiledSignalRole> {
+        match target {
+            crate::ast::OrderSizeTarget::Role(role) => Some(compiled_signal_role(*role)),
+            crate::ast::OrderSizeTarget::Module(binding) => {
+                let mut matches = self
+                    .analysis
+                    .signal_modules
+                    .iter()
+                    .filter(|decl| decl.name == binding.name)
+                    .map(|decl| decl.role);
+                let first = matches.next();
+                let second = matches.next();
+                match (first, second) {
+                    (Some(role), None) => Some(role),
+                    (None, _) => {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!("unknown module `{}` in size declaration", binding.name),
+                            binding.span,
+                        ));
+                        None
+                    }
+                    (Some(_), Some(_)) => {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!(
+                                "module name `{}` is ambiguous in size declaration; rename modules or size the role directly",
+                                binding.name
+                            ),
+                            span,
+                        ));
+                        None
+                    }
+                }
+            }
+        }
+    }
+
     fn analyze_module_stmt(&mut self, module: &crate::ast::SignalModuleDecl) {
         let role = compiled_signal_role(module.role);
         if !role.is_entry() {
@@ -2038,6 +2093,19 @@ impl<'a> Analyzer<'a> {
                 DiagnosticKind::Type,
                 "module declarations only support `entry`, `entry2`, and `entry3` roles",
                 module.span,
+            ));
+            return;
+        }
+        if self
+            .analysis
+            .signal_modules
+            .iter()
+            .any(|decl| decl.name == module.name)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("duplicate module declaration name `{}`", module.name),
+                module.name_span,
             ));
             return;
         }

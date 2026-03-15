@@ -186,6 +186,7 @@ L'implementation exige aussi :
   expression scalaire entiere non negative resolue a la compilation
 - `size entry1..3 long|short` et `size target1..3 long|short` sont des
   declarations `size` echelonnees valides dans la v1
+- `size module <name> = <expr>` est aussi valide quand `<name>` se resout vers un `module` declare qui est lie a un role d'entree echelonnee
 - les tailles d'entree echelonnees acceptent soit une fraction numerique nue
   historique, soit `capital_fraction(x)`, soit `risk_pct(pct, stop_price)`
 - `size entry ...` exige une declaration `order entry ...` echelonnee
