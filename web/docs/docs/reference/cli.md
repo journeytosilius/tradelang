@@ -265,6 +265,7 @@ Arguments and flags:
 Notes:
 
 - `run paper` submits a persistent local paper session; it does not start the daemon itself
+- submitted paper sessions snap `start_time_ms` down to the base-interval open so exchange execution and mark-price feeds align on closed bars
 - trading scripts submitted to `run paper` require at least one declared `execution` target and matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - scripts that reference `binance.usdm` auxiliary historical source fields such as `funding_rate`, `mark_price`, `index_price`, `premium_index`, or `basis` now bootstrap those datasets into the shared paper feed cache before the session becomes `live`
 - the session snapshots the script source and queues it under the local execution state root

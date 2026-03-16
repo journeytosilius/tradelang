@@ -475,6 +475,40 @@ fn run_paper_records_maker_taker_fee_configuration() {
 }
 
 #[test]
+fn run_paper_aligns_start_time_to_base_interval_open() {
+    let dir = tempdir().expect("tempdir");
+    let state_dir = dir.path().join("execution-state");
+    let script = write_file(
+        dir.path(),
+        "paper_aligned_start.ps",
+        "interval 4h\nsource perp = binance.usdm(\"BTCUSDT\")\nentry long = false\nentry short = false\nexit long = false\nexit short = false\norder entry long = market(venue = perp)\norder entry short = market(venue = perp)\norder exit long = market(venue = perp)\norder exit short = market(venue = perp)\nplot(perp.close)",
+    );
+
+    let output = palmscript_cmd()
+        .env("PALMSCRIPT_EXECUTION_STATE_DIR", &state_dir)
+        .args([
+            "run",
+            "paper",
+            script.to_str().unwrap(),
+            "--execution-source",
+            "perp",
+            "--maker-fee-bps",
+            "0",
+            "--taker-fee-bps",
+            "0",
+        ])
+        .output()
+        .expect("paper submit should run");
+    assert!(output.status.success());
+    let manifest: Value =
+        serde_json::from_slice(&output.stdout).expect("paper submit should emit manifest json");
+    let start_time_ms = manifest["start_time_ms"]
+        .as_i64()
+        .expect("manifest start time should exist");
+    assert_eq!(start_time_ms % (4 * 60 * 60 * 1000), 0);
+}
+
+#[test]
 fn run_rejects_removed_csv_subcommand() {
     let mut cmd = palmscript_cmd();
     cmd.args(["run", "csv"]);

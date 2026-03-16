@@ -166,6 +166,9 @@ pub fn submit_paper_session(
         .program
         .base_interval
         .ok_or(ExecutionError::MissingBaseInterval)?;
+    let aligned_start_time_ms = base_interval
+        .bucket_open_time(request.start_time_ms)
+        .unwrap_or(request.start_time_ms);
     if request.config.execution_source_aliases.is_empty() {
         return Err(ExecutionError::InvalidConfig {
             message: "paper sessions require at least one execution source alias".to_string(),
@@ -184,7 +187,7 @@ pub fn submit_paper_session(
         mode: ExecutionMode::Paper,
         created_at_ms,
         updated_at_ms: created_at_ms,
-        start_time_ms: request.start_time_ms,
+        start_time_ms: aligned_start_time_ms,
         status: ExecutionSessionStatus::Queued,
         health: ExecutionSessionHealth::Starting,
         stop_requested: false,
