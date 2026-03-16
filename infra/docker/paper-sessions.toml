@@ -1,5 +1,6 @@
 # Container defaults:
-# - Mount strategy files at /strategies
+# - The image bundles example strategies at /usr/share/palmscript/strategies
+# - Mount strategy files at /strategies to override or add custom scripts
 # - Mount persistent session state at /var/lib/palmscript/execution
 # - Override this file by mounting your own config at
 #   /etc/palmscript/paper-sessions.toml

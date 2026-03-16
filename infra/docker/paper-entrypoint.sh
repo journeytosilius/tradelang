@@ -3,6 +3,7 @@ set -eu
 
 CONFIG_PATH="${PALMSCRIPT_PAPER_CONFIG:-/etc/palmscript/paper-sessions.toml}"
 STRATEGY_ROOT="${PALMSCRIPT_STRATEGY_ROOT:-/strategies}"
+BUNDLED_STRATEGY_ROOT="${PALMSCRIPT_BUNDLED_STRATEGY_ROOT:-/usr/share/palmscript/strategies}"
 STATE_DIR="${PALMSCRIPT_EXECUTION_STATE_DIR:-/var/lib/palmscript/execution}"
 FORCE_SUBMIT="${PALMSCRIPT_FORCE_SUBMIT:-0}"
 PAPER_DASHBOARD="${PALMSCRIPT_PAPER_DASHBOARD:-1}"
@@ -31,7 +32,7 @@ if [ "$PAPER_DASHBOARD" = "1" ]; then
     dashboard_pid="$!"
 fi
 
-python3 - "$CONFIG_PATH" "$STRATEGY_ROOT" "$FORCE_SUBMIT" <<'PY'
+python3 - "$CONFIG_PATH" "$STRATEGY_ROOT" "$BUNDLED_STRATEGY_ROOT" "$FORCE_SUBMIT" <<'PY'
 import json
 import os
 import subprocess
@@ -44,7 +45,7 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-config_path, strategy_root, force_submit = sys.argv[1:4]
+config_path, strategy_root, bundled_strategy_root, force_submit = sys.argv[1:5]
 with open(config_path, "rb") as handle:
     config = tomllib.load(handle)
 
@@ -77,11 +78,14 @@ if submit_required:
         raw_script = session.get("script")
         if not isinstance(raw_script, str) or not raw_script:
             fail(f"session #{index} is missing `script`")
-        script_path = (
-            raw_script
-            if os.path.isabs(raw_script)
-            else os.path.join(strategy_root, raw_script)
-        )
+        if os.path.isabs(raw_script):
+            script_path = raw_script
+        else:
+            script_path = os.path.join(strategy_root, raw_script)
+            if not os.path.exists(script_path):
+                bundled_script_path = os.path.join(bundled_strategy_root, raw_script)
+                if os.path.exists(bundled_script_path):
+                    script_path = bundled_script_path
         if not os.path.exists(script_path):
             fail(f"session #{index} script does not exist: {script_path}")
 

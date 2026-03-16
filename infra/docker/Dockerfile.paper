@@ -35,12 +35,14 @@ COPY --from=builder /app/target/release/palmscript /usr/local/bin/palmscript
 COPY --from=builder /app/target/release/palmscript-ide-server /usr/local/bin/palmscript-ide-server
 COPY infra/docker/paper-entrypoint.sh /usr/local/bin/paper-entrypoint.sh
 COPY infra/docker/paper-sessions.toml /etc/palmscript/paper-sessions.toml
+COPY crates/palmscript/examples/strategies /usr/share/palmscript/strategies
 
 RUN chmod +x /usr/local/bin/paper-entrypoint.sh \
-    && mkdir -p /etc/palmscript /strategies /var/lib/palmscript/execution
+    && mkdir -p /etc/palmscript /strategies /var/lib/palmscript/execution /usr/share/palmscript/strategies
 
 ENV PALMSCRIPT_PAPER_CONFIG=/etc/palmscript/paper-sessions.toml
 ENV PALMSCRIPT_STRATEGY_ROOT=/strategies
+ENV PALMSCRIPT_BUNDLED_STRATEGY_ROOT=/usr/share/palmscript/strategies
 ENV PALMSCRIPT_EXECUTION_STATE_DIR=/var/lib/palmscript/execution
 ENV PALMSCRIPT_FORCE_SUBMIT=0
 ENV PALMSCRIPT_IDE_BIND=0.0.0.0:8080

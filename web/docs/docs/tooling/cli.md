@@ -201,7 +201,8 @@ The repository now ships a paper-trading container layout:
 
 The expected runtime layout is:
 
-- mount strategy files at `/strategies`
+- bundled example strategies are available at `/usr/share/palmscript/strategies`
+- optionally mount custom strategy files at `/strategies`
 - mount persistent execution state at `/var/lib/palmscript/execution`
 - mount the session config at `/etc/palmscript/paper-sessions.toml`
 
@@ -218,7 +219,6 @@ Example:
 ```bash
 docker build -f infra/docker/Dockerfile.paper -t palmscript-paper .
 docker run --rm \
-  -v "$(pwd)/crates/palmscript/examples/strategies:/strategies:ro" \
   -v "$(pwd)/.paper-state:/var/lib/palmscript/execution" \
   -v "$(pwd)/infra/docker/paper-sessions.toml:/etc/palmscript/paper-sessions.toml:ro" \
   -p 8080:8080 \
