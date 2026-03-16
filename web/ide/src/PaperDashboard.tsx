@@ -31,15 +31,35 @@ import type {
 import { LineChart, MetricCard } from "./ui";
 
 const POLL_MS = 3_000;
+const STRATEGY_STORAGE_KEY = "palmscript.paper.strategy";
+const SESSION_STORAGE_KEY = "palmscript.paper.session";
+
+interface StrategyGroup {
+  key: string;
+  label: string;
+  sessions: PaperDashboardSession[];
+  health: string;
+  liveCount: number;
+  failedCount: number;
+  updatedAtMs: number;
+}
 
 export function PaperDashboard() {
   const [overview, setOverview] = useState<PaperDashboardOverview | null>(null);
+  const [selectedStrategyKey, setSelectedStrategyKey] = useState<string | null>(() =>
+    window.localStorage.getItem(STRATEGY_STORAGE_KEY),
+  );
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [detail, setDetail] = useState<PaperSessionDetailResponse | null>(null);
   const [logs, setLogs] = useState<PaperSessionLogsResponse | null>(null);
   const [status, setStatus] = useState("Loading paper sessions...");
   const [overviewLoading, setOverviewLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  const strategyGroups = groupSessionsByStrategy(overview?.sessions ?? []);
+  const selectedStrategy =
+    strategyGroups.find((strategy) => strategy.key === selectedStrategyKey) ?? null;
+  const strategySessions = selectedStrategy?.sessions ?? [];
 
   useEffect(() => {
     document.title = "PalmScript Paper Dashboard";
@@ -56,13 +76,13 @@ export function PaperDashboard() {
         }
         setOverview(nextOverview);
         setOverviewLoading(false);
-        setStatus(buildOverviewStatus(nextOverview.daemon, nextOverview.sessions.length));
-        setSelectedSessionId((current) => {
-          if (current && nextOverview.sessions.some((session) => session.manifest.session_id === current)) {
-            return current;
-          }
-          return nextOverview.sessions[0]?.manifest.session_id ?? null;
-        });
+        setStatus(
+          buildOverviewStatus(
+            nextOverview.daemon,
+            groupSessionsByStrategy(nextOverview.sessions).length,
+            nextOverview.sessions.length,
+          ),
+        );
       } catch (error) {
         if (!cancelled) {
           setOverviewLoading(false);
@@ -82,6 +102,61 @@ export function PaperDashboard() {
   }, []);
 
   useEffect(() => {
+    if (!strategyGroups.length) {
+      setSelectedStrategyKey(null);
+      setSelectedSessionId(null);
+      return;
+    }
+    setSelectedStrategyKey((current) => {
+      if (current && strategyGroups.some((strategy) => strategy.key === current)) {
+        return current;
+      }
+      return strategyGroups[0].key;
+    });
+  }, [strategyGroups]);
+
+  useEffect(() => {
+    if (!selectedStrategyKey) {
+      setSelectedSessionId(null);
+      return;
+    }
+    const nextSessions =
+      overview?.sessions.filter((session) => strategyKey(session) === selectedStrategyKey) ?? [];
+    setSelectedSessionId((current) => {
+      if (
+        current &&
+        nextSessions.some((session) => session.manifest.session_id === current)
+      ) {
+        return current;
+      }
+      const storedSession = window.localStorage.getItem(SESSION_STORAGE_KEY);
+      if (
+        storedSession &&
+        nextSessions.some((session) => session.manifest.session_id === storedSession)
+      ) {
+        return storedSession;
+      }
+      return nextSessions[0]?.manifest.session_id ?? null;
+    });
+  }, [overview, selectedStrategyKey]);
+
+  useEffect(() => {
+    if (selectedStrategyKey) {
+      window.localStorage.setItem(STRATEGY_STORAGE_KEY, selectedStrategyKey);
+    } else {
+      window.localStorage.removeItem(STRATEGY_STORAGE_KEY);
+    }
+  }, [selectedStrategyKey]);
+
+  useEffect(() => {
+    if (selectedSessionId) {
+      window.localStorage.setItem(SESSION_STORAGE_KEY, selectedSessionId);
+    } else {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+  }, [selectedSessionId]);
+
+  useEffect(() => {
     if (!selectedSessionId) {
       setDetail(null);
       setLogs(null);
@@ -90,6 +165,8 @@ export function PaperDashboard() {
     const sessionId = selectedSessionId;
 
     let cancelled = false;
+    setDetail(null);
+    setLogs(null);
 
     async function loadDetail() {
       setDetailLoading(true);
@@ -125,7 +202,7 @@ export function PaperDashboard() {
   }, [selectedSessionId]);
 
   const selectedSession =
-    overview?.sessions.find((session) => session.manifest.session_id === selectedSessionId) ?? null;
+    strategySessions.find((session) => session.manifest.session_id === selectedSessionId) ?? null;
   const exportData = detail?.export ?? null;
   const snapshot = exportData?.snapshot ?? selectedSession?.snapshot ?? null;
   const result = exportData?.latest_result ?? null;
@@ -154,9 +231,14 @@ export function PaperDashboard() {
             tone={overview?.daemon?.running ? "positive" : "negative"}
           />
           <MetricCard
-            label="Sessions"
+            label="Strategies"
+            value={String(strategyGroups.length)}
+            detail={selectedStrategy?.label ?? "no selection"}
+          />
+          <MetricCard
+            label="Runs"
             value={String(overview?.sessions.length ?? 0)}
-            detail={selectedSession ? sessionLabel(selectedSession) : "no selection"}
+            detail={selectedStrategy ? `${strategySessions.length} for selected` : "no strategy"}
           />
           <MetricCard
             label="Feed Hub"
@@ -167,17 +249,68 @@ export function PaperDashboard() {
         <div className="app__status">{status}</div>
       </header>
 
-      <main className="paper-layout">
-        <aside className="paper-sidebar panel">
+      <main className="paper-screen">
+        <section className="panel paper-strategy-panel">
           <div className="panel__titlebar">
             <h2 className="panel__title">Strategies</h2>
             <span className="panel__meta">
-              {overviewLoading ? "Refreshing" : `${overview?.sessions.length ?? 0} tracked`}
+              {strategyGroups.length
+                ? `${strategyGroups.length} configured`
+                : "No configured strategies"}
+            </span>
+          </div>
+          <div className="paper-strategy-list">
+            {strategyGroups.length ? (
+              strategyGroups.map((strategy) => {
+                const active = strategy.key === selectedStrategyKey;
+                return (
+                  <button
+                    key={strategy.key}
+                    className={`paper-strategy-card${active ? " paper-strategy-card--active" : ""}`}
+                    type="button"
+                    onClick={() => {
+                      setSelectedStrategyKey(strategy.key);
+                      setSelectedSessionId(strategy.sessions[0]?.manifest.session_id ?? null);
+                    }}
+                  >
+                    <div className="paper-session-card__header">
+                      <strong>{strategy.label}</strong>
+                      <span className={`status-pill status-pill--${toneForStatus(strategy.health)}`}>
+                        {strategy.health}
+                      </span>
+                    </div>
+                    <span className="paper-session-card__meta">
+                      {strategy.sessions.length} run{strategy.sessions.length === 1 ? "" : "s"} · updated{" "}
+                      {formatTimeLabel(strategy.updatedAtMs)}
+                    </span>
+                    <div className="paper-session-card__stats">
+                      <span>{strategy.liveCount} live</span>
+                      <span>{strategy.failedCount} failed</span>
+                    </div>
+                  </button>
+                );
+              })
+            ) : (
+              <div className="empty-state">No paper sessions have been submitted.</div>
+            )}
+          </div>
+        </section>
+
+        <div className="paper-layout">
+        <aside className="paper-sidebar panel">
+          <div className="panel__titlebar">
+            <h2 className="panel__title">Runs</h2>
+            <span className="panel__meta">
+              {overviewLoading
+                ? "Refreshing"
+                : selectedStrategy
+                  ? `${strategySessions.length} for ${selectedStrategy.label}`
+                  : "No strategy selected"}
             </span>
           </div>
           <div className="paper-session-list">
-            {overview?.sessions.length ? (
-              overview.sessions.map((session) => {
+            {strategySessions.length ? (
+              strategySessions.map((session) => {
                 const active = session.manifest.session_id === selectedSessionId;
                 const sessionSummary = session.snapshot?.summary ?? null;
                 return (
@@ -188,12 +321,13 @@ export function PaperDashboard() {
                     onClick={() => setSelectedSessionId(session.manifest.session_id)}
                   >
                     <div className="paper-session-card__header">
-                      <strong>{sessionLabel(session)}</strong>
+                      <strong>{runLabel(session)}</strong>
                       <span className={`status-pill status-pill--${toneForStatus(session.manifest.health)}`}>
                         {session.manifest.health}
                       </span>
                     </div>
                     <span className="paper-session-card__meta">
+                      started {formatTimeLabel(session.manifest.start_time_ms)} ·{" "}
                       {session.manifest.execution_sources
                         .map((source) => `${source.alias}:${source.template}`)
                         .join(" · ")}
@@ -206,7 +340,7 @@ export function PaperDashboard() {
                 );
               })
             ) : (
-              <div className="empty-state">No paper sessions have been submitted.</div>
+              <div className="empty-state">Select a strategy to inspect its tracked runs.</div>
             )}
           </div>
         </aside>
@@ -217,9 +351,9 @@ export function PaperDashboard() {
               <section className="panel">
                 <div className="panel__titlebar">
                   <div>
-                    <h2 className="panel__title">{sessionLabel(selectedSession)}</h2>
+                    <h2 className="panel__title">{selectedStrategy?.label ?? sessionLabel(selectedSession)}</h2>
                     <span className="panel__meta">
-                      {selectedSession.manifest.base_interval} · started{" "}
+                      {runLabel(selectedSession)} · {selectedSession.manifest.base_interval} · started{" "}
                       {formatTimeLabel(selectedSession.manifest.start_time_ms)}
                     </span>
                   </div>
@@ -619,6 +753,7 @@ export function PaperDashboard() {
             </section>
           )}
         </section>
+        </div>
       </main>
     </div>
   );
@@ -626,6 +761,7 @@ export function PaperDashboard() {
 
 function buildOverviewStatus(
   daemon: ExecutionDaemonStatus | null | undefined,
+  strategyCount: number,
   sessionCount: number,
 ): string {
   if (!daemon) {
@@ -634,7 +770,7 @@ function buildOverviewStatus(
       : "Sessions are persisted, but the daemon has not written status yet.";
   }
   return daemon.running
-    ? `Daemon online with ${daemon.subscription_count} subscriptions and ${sessionCount} tracked session(s).`
+    ? `Daemon online with ${daemon.subscription_count} subscriptions, ${strategyCount} strategy group(s), and ${sessionCount} tracked session(s).`
     : "Daemon status file exists, but the process is not currently running.";
 }
 
@@ -652,6 +788,64 @@ function sessionLabel(session: PaperDashboardSession): string {
   }
   const primary = session.manifest.execution_sources[0];
   return primary ? `${primary.template}:${primary.symbol}` : session.manifest.session_id;
+}
+
+function runLabel(session: PaperDashboardSession): string {
+  return session.manifest.session_id.slice(0, 8);
+}
+
+function strategyKey(session: PaperDashboardSession): string {
+  return session.manifest.script_path ?? sessionLabel(session);
+}
+
+function groupSessionsByStrategy(sessions: PaperDashboardSession[]): StrategyGroup[] {
+  const groups = new Map<string, StrategyGroup>();
+
+  for (const session of sessions) {
+    const key = strategyKey(session);
+    const existing = groups.get(key);
+    if (existing) {
+      existing.sessions.push(session);
+      existing.liveCount += sessionHealthValue(session) === "live" ? 1 : 0;
+      existing.failedCount += sessionHealthValue(session) === "failed" ? 1 : 0;
+      existing.updatedAtMs = Math.max(existing.updatedAtMs, sessionUpdatedAt(session));
+      existing.health = combineHealth(existing.health, sessionHealthValue(session));
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      label: sessionLabel(session),
+      sessions: [session],
+      health: sessionHealthValue(session),
+      liveCount: sessionHealthValue(session) === "live" ? 1 : 0,
+      failedCount: sessionHealthValue(session) === "failed" ? 1 : 0,
+      updatedAtMs: sessionUpdatedAt(session),
+    });
+  }
+
+  return [...groups.values()].sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+function sessionUpdatedAt(session: PaperDashboardSession): number {
+  return session.snapshot?.updated_at_ms ?? session.manifest.updated_at_ms;
+}
+
+function sessionHealthValue(session: PaperDashboardSession): string {
+  return (session.snapshot?.health ?? session.manifest.health).toLowerCase();
+}
+
+function combineHealth(current: string, next: string): string {
+  const ranking = ["failed", "degraded", "stopped", "live", "running"];
+  const currentRank = ranking.indexOf(current);
+  const nextRank = ranking.indexOf(next);
+  if (currentRank === -1) {
+    return next;
+  }
+  if (nextRank === -1) {
+    return current;
+  }
+  return nextRank < currentRank ? next : current;
 }
 
 function toneForStatus(status: string): "positive" | "negative" | "neutral" {

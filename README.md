@@ -140,9 +140,10 @@ The intended layout is:
 - paper-session config mounted at `/etc/palmscript/paper-sessions.toml`
 
 The paper container now also serves a live monitoring UI at `/paper` on port
-`8080`. It lists all persisted paper sessions, lets you select a strategy, and
-polls real-time paper metrics such as equity, PnL, open positions, trades,
-orders, drawdown, feed health, and session logs.
+`8080`. It lists all persisted paper sessions, shows an explicit strategy
+picker plus per-strategy run selection, and polls real-time paper metrics such
+as equity, PnL, open positions, trades, orders, drawdown, feed health, and
+session logs.
 
 Build and run:
 

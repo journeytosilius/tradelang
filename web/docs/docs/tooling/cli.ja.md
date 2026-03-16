@@ -217,8 +217,8 @@ directory is empty, then starts `palmscript execution serve`. Set
 `PALMSCRIPT_FORCE_SUBMIT=1` if you want to resubmit the configured sessions on
 container start. The same container also starts `palmscript-ide-server` and
 serves a live paper dashboard at `http://localhost:8080/paper` so you can
-select a running strategy and inspect equity, PnL, trades, drawdown, feed
-health, and logs in real time.
+strategy を明示的に選択し、その strategy に紐づく run を切り替えながら、
+equity、PnL、trade、drawdown、feed health、log をリアルタイムで確認できます。
 
 Example:
 
