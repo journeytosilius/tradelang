@@ -45,7 +45,7 @@ fn bars(start_ms: i64, spacing_ms: i64, len: usize, start_close: f64) -> Vec<Bar
 #[test]
 fn referenced_docs_examples_compile() {
     let examples = [
-        "examples/strategies/paper_trigger_happy.ps",
+        "examples/strategies/strategy.ps",
         "examples/strategies/adaptive_trend_backtest.ps",
         "examples/strategies/portfolio_caps_backtest.ps",
         "examples/strategies/sma_cross.ps",
@@ -330,9 +330,9 @@ fn explicit_order_backtest_docs_example_runs_with_local_feeds() {
 }
 
 #[test]
-fn paper_trigger_happy_example_runs_with_local_feeds() {
-    let path = "examples/strategies/paper_trigger_happy.ps";
-    let compiled = compile(&read_strategy(path)).expect("paper_trigger_happy should compile");
+fn trigger_happy_strategy_example_runs_with_local_feeds() {
+    let path = "examples/strategies/strategy.ps";
+    let compiled = compile(&read_strategy(path)).expect("strategy should compile");
     let runtime = SourceRuntimeConfig {
         base_interval: palmscript::Interval::Min1,
         feeds: vec![SourceFeed {
@@ -343,7 +343,7 @@ fn paper_trigger_happy_example_runs_with_local_feeds() {
     };
 
     let outputs = run_with_sources(&compiled, runtime.clone(), VmLimits::default())
-        .expect("paper_trigger_happy should run");
+        .expect("strategy should run");
     assert!(!outputs.plots.is_empty(), "{path} should emit plots");
 
     let result = run_backtest_with_sources(
@@ -366,7 +366,7 @@ fn paper_trigger_happy_example_runs_with_local_feeds() {
             portfolio_perp_contexts: std::collections::BTreeMap::new(),
         },
     )
-    .expect("paper_trigger_happy should backtest");
+    .expect("strategy should backtest");
     assert!(!result.orders.is_empty(), "{path} should emit orders");
     assert!(!result.equity_curve.is_empty(), "{path} should emit equity");
 }

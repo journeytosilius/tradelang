@@ -11,7 +11,7 @@ once = false
 
 [[session]]
 enabled = true
-script = "paper_trigger_happy.ps"
+script = "strategy.ps"
 
 # Default bundled paper smoke-test target:
 # - execution alias: exec

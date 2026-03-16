@@ -1,209 +1,85 @@
-interval 4h
-
+interval 1m
 source perp = binance.usdm("BTCUSDT")
-source spot = binance.spot("BTCUSDT")
 execution exec = binance.usdm("BTCUSDT")
 
-use perp 1d
-use perp 1w
+// High-churn paper-trading example intended to stress the execution loop.
+input fast_len = 3
+input slow_len = 8
+input pulse_len = 3
+input atr_len = 5
+input entry_size = 0.08
+input scalp_target_atr = 0.35
+input scalp_stop_atr = 0.25
+input max_hold_bars = 6
 
-input basis_len = 28 optimize(int, 6, 36, 2)
-input bb_dev = 1.8 optimize(float, 1.2, 3.0, 0.2)
-input price_z_entry = 1.2 optimize(float, 0.8, 2.8, 0.2)
-input short_price_z_entry = 1.8 optimize(float, 1.6, 4.0, 0.2)
-input fb_prev_price_z_entry = 2.0 optimize(float, 1.2, 2.8, 0.2)
-input rsi_len = 8 optimize(int, 2, 10, 1)
-input rsi_entry = 42 optimize(float, 15, 45, 1)
-input short_rsi_entry = 76 optimize(float, 60, 90, 1)
-input fb_prev_rsi_entry = 76 optimize(float, 70, 90, 2)
-input fb_confirm_rsi = 70 optimize(float, 60, 78, 2)
-input spread_len = 32 optimize(int, 8, 48, 4)
-input spread_cap_bps = 10 optimize(float, 5, 120, 5)
-input short_spread_floor_bps = 2 optimize(float, 0, 40, 2)
-input short_spread_z_entry = 0.6 optimize(float, 0.0, 3.0, 0.2)
-input bear_short_price_z_entry = 1.0 optimize(float, 0.4, 1.6, 0.2)
-input bear_short_rsi_entry = 56 optimize(float, 48, 68, 2)
-input bear_short_spread_z_mag = 0.2 optimize(float, 0.0, 1.0, 0.2)
-input daily_trend_len = 24 optimize(int, 8, 48, 2)
-input weekly_trend_len = 6 optimize(int, 4, 20, 1)
-input short_daily_gap_bps = 250 optimize(float, 0, 1500, 50)
-input fb_daily_gap_bps = 150 optimize(float, 50, 500, 25)
-input bear_short_daily_gap_bps = 100 optimize(float, 0, 400, 50)
-input atr_len = 10 optimize(int, 7, 24, 1)
-input entry_limit_atr = 0.0 optimize(float, 0.0, 0.4, 0.1)
-input short_entry_limit_atr = 0.1 optimize(float, 0.0, 0.4, 0.1)
-input stop_atr = 1.0 optimize(float, 1.0, 4.0, 0.1)
-input target_atr = 2.2 optimize(float, 0.4, 3.0, 0.1)
-input target_size = 0.2 optimize(float, 0.1, 0.5, 0.1)
-input target2_atr = 3.3 optimize(float, 3.0, 5.5, 0.1)
-input target2_size = 0.4 optimize(float, 0.1, 0.4, 0.1)
-input long_lock_atr = 0.6 optimize(float, 0.0, 1.5, 0.1)
-input long_primary_size_fraction = 0.85 optimize(float, 0.50, 0.95, 0.05)
-input long_add_size_fraction = 1.00 optimize(float, 0.10, 1.00, 0.10)
-input long_add2_size_fraction = 1.00 optimize(float, 0.10, 1.00, 0.10)
-input short_size_fraction = 0.20 optimize(float, 0.01, 0.2, 0.01)
-input exit_rsi = 53 optimize(float, 45, 70, 1)
-input short_exit_rsi = 66 optimize(float, 50, 75, 1)
-input short_stop_atr = 0.8 optimize(float, 0.5, 2.0, 0.1)
-input short_target_atr = 0.9 optimize(float, 0.5, 2.0, 0.1)
-input short_target_size = 0.6 optimize(float, 0.2, 0.6, 0.1)
-input short_target2_atr = 2.0 optimize(float, 1.0, 2.5, 0.1)
-input short_target2_size = 0.3 optimize(float, 0.1, 0.4, 0.1)
-input short_lock_atr = 0.5 optimize(float, 0.0, 1.0, 0.1)
-input bear_short_size_fraction = 0.20 optimize(float, 0.02, 0.20, 0.01)
-input cooldown_bars = 1 optimize(int, 0, 8, 1)
-input max_hold_bars = 13 optimize(int, 2, 20, 1)
-input short_max_hold_bars = 7 optimize(int, 2, 8, 1)
-input aux_z_len = 56 optimize(int, 12, 96, 4)
-input crowding_threshold = 3.0 optimize(float, 1.5, 4.5, 0.5)
-input crowded_short_size_fraction = 0.28 optimize(float, 0.20, 0.30, 0.02)
-input crowded_short_target2_atr = 2.0 optimize(float, 2.0, 2.6, 0.2)
-input crowded_short_target2_size = 0.3 optimize(float, 0.2, 0.4, 0.1)
-input crowded_short_lock_atr = 0.5 optimize(float, 0.2, 0.5, 0.1)
-input bear_short_add_size_fraction = 1.00 optimize(float, 0.02, 1.00, 0.02)
+let fast = ema(perp.close, fast_len)
+let slow = ema(perp.close, slow_len)
+let pulse = rsi(perp.close, pulse_len)
+let risk_unit = nz(atr(perp.high, perp.low, perp.close, atr_len), perp.close * 0.0015)
+let trend_up = above(fast, slow)
+let trend_down = below(fast, slow)
+let up_bar = perp.close > perp.close[1]
+let down_bar = perp.close < perp.close[1]
+let stretch = zscore(perp.close - slow, slow_len)
 
-const ms_per_day = 86400000
-const ms_per_hour = 3600000
-
-let basis = ema(perp.close, basis_len)
-let (upper_band, mid_band, lower_band) = bbands(perp.close, basis_len, bb_dev, bb_dev, ma_type.ema)
-let price_z = zscore(perp.close - basis, basis_len)
-let fast_rsi = rsi(perp.close, rsi_len)
-let spread_bps = ((perp.close - spot.close) / spot.close) * 10000
-let spread_z = zscore(spread_bps, spread_len)
-let daily_trend = ema(perp.1d.close, daily_trend_len)
-let weekly_trend = ema(perp.1w.close, weekly_trend_len)
-let atr_base = atr(perp.high, perp.low, perp.close, atr_len)
-let natr_daily = natr(perp.1d.high, perp.1d.low, perp.1d.close, atr_len)
-let daily_trend_gap_bps = ((perp.close - daily_trend) / daily_trend) * 10000
-let weekly_trend_gap_bps = ((perp.1w.close - weekly_trend) / weekly_trend) * 10000
-let funding_rate = nz(perp.funding_rate, 0)
-let premium_index = nz(perp.premium_index, 0)
-let funding_z = zscore(funding_rate, aux_z_len)
-let premium_z = zscore(premium_index, aux_z_len)
-let short_crowding_score = funding_z + premium_z
-let crowded_short = short_crowding_score > crowding_threshold
-let day_index = floor(perp.time / ms_per_day)
-let weekday_utc = (day_index + 3) - floor((day_index + 3) / 7) * 7
-let hour_utc = floor((perp.time - day_index * ms_per_day) / ms_per_hour)
-
-let trend_up = perp.close > daily_trend and perp.1d.close > daily_trend and perp.1w.close > weekly_trend
-let trend_down = perp.close < daily_trend and perp.1d.close < daily_trend and perp.1w.close < weekly_trend
-let long_time_ok = (((weekday_utc != 3 and weekday_utc != 4) or (weekday_utc == 4 and hour_utc == 4)) and hour_utc != 4 and hour_utc != 8)
-let short_time_ok = (weekday_utc != 0 and hour_utc != 16) or (weekday_utc == 0 and (hour_utc == 8 or hour_utc == 20))
-let dip_setup = price_z < -price_z_entry and perp.close < lower_band and fast_rsi < rsi_entry and spread_bps < spread_cap_bps and spread_bps > -spread_cap_bps
-let long_add_setup = perp.close < mid_band and price_z < -0.2 and fast_rsi < (rsi_entry + 2)
-let short_blowoff_setup = trend_up and price_z > short_price_z_entry and perp.close > upper_band and fast_rsi > short_rsi_entry and spread_bps > short_spread_floor_bps and spread_bps < spread_cap_bps and spread_z > short_spread_z_entry and daily_trend_gap_bps > short_daily_gap_bps and weekly_trend_gap_bps > 100
-let short_failed_breakout_setup = trend_up and perp.close < upper_band and perp.close > mid_band and perp.close[1] > upper_band[1] and price_z[1] > fb_prev_price_z_entry and fast_rsi[1] > fb_prev_rsi_entry and fast_rsi < fb_confirm_rsi and spread_bps > short_spread_floor_bps and spread_bps < spread_cap_bps and daily_trend_gap_bps > fb_daily_gap_bps and weekly_trend_gap_bps > 100
-let bear_short_setup = trend_down and price_z > bear_short_price_z_entry and perp.close > mid_band and fast_rsi > bear_short_rsi_entry and spread_bps > -spread_cap_bps and spread_bps < spread_cap_bps and spread_z > -bear_short_spread_z_mag and daily_trend_gap_bps < -bear_short_daily_gap_bps and weekly_trend_gap_bps < 0 and !(short_blowoff_setup) and !(short_failed_breakout_setup)
-let bear_short_active = valuewhen(position_event.short_entry_fill, bear_short_setup, 0)
-let bear_short_add_setup = bear_short_active and short_time_ok and trend_down
-
-module long_add = entry2 long
-module long_add2 = entry3 long
-module bear_short_add = entry2 short
-
-cooldown long = cooldown_bars
-cooldown short = cooldown_bars
+cooldown long = 0
+cooldown short = 0
 max_bars_in_trade long = max_hold_bars
-max_bars_in_trade short = short_max_hold_bars
+max_bars_in_trade short = max_hold_bars
 
-entry long = trend_up and long_time_ok and dip_setup
-entry2 long = long_add_setup
-entry3 long = long_add_setup
-entry short = short_time_ok and (short_blowoff_setup or short_failed_breakout_setup or bear_short_setup)
-entry2 short = bear_short_add_setup
+entry long = (trend_up and up_bar) or crossover(pulse, 52) or (stretch < -0.4 and pulse > 45)
+exit long = down_bar or crossunder(pulse, 52) or crossunder(fast, slow)
+entry short = (trend_down and down_bar) or crossunder(pulse, 48) or (stretch > 0.4 and pulse < 55)
+exit short = up_bar or crossover(pulse, 48) or crossover(fast, slow)
 
-let exit_basis = mid_band
+order_template market_order = market(venue = exec)
+order entry long = market_order
+order exit long = market_order
+order entry short = market_order
+order exit short = market_order
 
-exit long = perp.close > exit_basis or fast_rsi > exit_rsi
-exit short = perp.close < upper_band or fast_rsi < short_exit_rsi
-
-order entry long = limit(price = perp.close - entry_limit_atr * atr_base, tif = tif.gtc, post_only = false, venue = exec)
-order entry2 long = market(venue = exec)
-order entry3 long = market(venue = exec)
-order exit long = limit(price = exit_basis, tif = tif.gtc, post_only = false, venue = exec)
-order entry short = limit(price = perp.close + short_entry_limit_atr * atr_base, tif = tif.gtc, post_only = false, venue = exec)
-order entry2 short = market(venue = exec)
-order exit short = limit(price = upper_band, tif = tif.gtc, post_only = false, venue = exec)
-size entry long = capital_fraction(long_primary_size_fraction)
-size module long_add = capital_fraction(long_add_size_fraction)
-size module long_add2 = capital_fraction(long_add2_size_fraction)
-size entry short = capital_fraction(bear_short_setup ? bear_short_size_fraction : (crowded_short ? crowded_short_size_fraction : short_size_fraction))
-size module bear_short_add = capital_fraction(bear_short_add_size_fraction)
+size entry long = capital_fraction(entry_size)
+size entry short = capital_fraction(entry_size)
 
 protect long = stop_market(
-    trigger_price = position.entry_price - stop_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
+    trigger_price = position.entry_price - scalp_stop_atr * risk_unit,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
 target long = take_profit_market(
-    trigger_price = position.entry_price + target_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
+    trigger_price = position.entry_price + scalp_target_atr * risk_unit,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
-size target long = target_size
+size target long = 0.5
 protect_after_target1 long = stop_market(
     trigger_price = position.entry_price,
-    trigger_ref = trigger_ref.mark,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
-target2 long = take_profit_market(
-    trigger_price = position.entry_price + target2_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
-    venue = exec
-)
-size target2 long = target2_size
-protect_after_target2 long = stop_market(
-    trigger_price = position.entry_price + long_lock_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
-    venue = exec
-)
+
 protect short = stop_market(
-    trigger_price = position.entry_price + short_stop_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
+    trigger_price = position.entry_price + scalp_stop_atr * risk_unit,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
 target short = take_profit_market(
-    trigger_price = position.entry_price - short_target_atr * atr_base,
-    trigger_ref = trigger_ref.mark,
+    trigger_price = position.entry_price - scalp_target_atr * risk_unit,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
-size target short = short_target_size
+size target short = 0.5
 protect_after_target1 short = stop_market(
     trigger_price = position.entry_price,
-    trigger_ref = trigger_ref.mark,
-    venue = exec
-)
-target2 short = take_profit_market(
-    trigger_price = position.entry_price - (crowded_short ? crowded_short_target2_atr : short_target2_atr) * atr_base,
-    trigger_ref = trigger_ref.mark,
-    venue = exec
-)
-size target2 short = crowded_short ? crowded_short_target2_size : short_target2_size
-protect_after_target2 short = stop_market(
-    trigger_price = position.entry_price - (crowded_short ? crowded_short_lock_atr : short_lock_atr) * atr_base,
-    trigger_ref = trigger_ref.mark,
+    trigger_ref = trigger_ref.last,
     venue = exec
 )
 
-export audit_price_z = price_z
-export audit_fast_rsi = fast_rsi
-export audit_spread_bps = spread_bps
-export audit_spread_z = spread_z
-export audit_natr_daily = natr_daily
-export audit_daily_trend_gap_bps = daily_trend_gap_bps
-export audit_weekly_trend_gap_bps = weekly_trend_gap_bps
-export audit_band_gap_bps = ((perp.close - mid_band) / mid_band) * 10000
-export audit_weekday_utc = weekday_utc
-export audit_hour_utc = hour_utc
-export audit_long_time_ok = long_time_ok
-export audit_short_time_ok = short_time_ok
-export audit_long_setup_state = dip_setup
-export audit_short_setup_state = short_blowoff_setup or short_failed_breakout_setup
-export audit_short_blowoff_setup_state = short_blowoff_setup
-export audit_short_failed_breakout_setup_state = short_failed_breakout_setup
-export audit_bear_short_setup_state = bear_short_setup
+export fast_slow_gap = fast - slow
+export pulse_state = pulse
+export trigger_bias = trend_up ? 1 : (trend_down ? -1 : 0)
+export stretch_state = stretch
 
 plot(perp.close)
-plot(mid_band)
+plot(fast)
+plot(slow)
