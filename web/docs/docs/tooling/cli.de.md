@@ -197,6 +197,36 @@ palmscript execution stop
 
 Portfolio paper mode uses the same repeated `--execution-source` convention as backtest mode. Repeating execution aliases keeps one shared cash/equity ledger across all selected aliases and enforces `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` declarations on new entries only.
 
+## Containerized Paper Service
+
+The repository now ships a paper-trading container layout:
+
+- Dockerfile: `infra/docker/Dockerfile.paper`
+- entrypoint: `infra/docker/paper-entrypoint.sh`
+- config template: `infra/docker/paper-sessions.toml`
+
+The expected runtime layout is:
+
+- mount strategy files at `/strategies`
+- mount persistent execution state at `/var/lib/palmscript/execution`
+- mount the session config at `/etc/palmscript/paper-sessions.toml`
+
+The entrypoint submits the configured `[[session]]` entries once when the state
+directory is empty, then starts `palmscript execution serve`. Set
+`PALMSCRIPT_FORCE_SUBMIT=1` if you want to resubmit the configured sessions on
+container start.
+
+Example:
+
+```bash
+docker build -f infra/docker/Dockerfile.paper -t palmscript-paper .
+docker run --rm \
+  -v "$(pwd)/crates/palmscript/examples/strategies:/strategies:ro" \
+  -v "$(pwd)/.paper-state:/var/lib/palmscript/execution" \
+  -v "$(pwd)/infra/docker/paper-sessions.toml:/etc/palmscript/paper-sessions.toml:ro" \
+  palmscript-paper
+```
+
 ## Output Formats
 
 Market mode supports:

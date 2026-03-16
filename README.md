@@ -126,3 +126,25 @@ target/debug/palmscript --help
 target/debug/palmscript run --help
 target/debug/palmscript execution --help
 ```
+
+Containerized paper-trading assets live under
+[infra/docker/Dockerfile.paper](/mnt/4tbscratch/projects/tradelang/infra/docker/Dockerfile.paper),
+[infra/docker/paper-entrypoint.sh](/mnt/4tbscratch/projects/tradelang/infra/docker/paper-entrypoint.sh),
+and
+[infra/docker/paper-sessions.toml](/mnt/4tbscratch/projects/tradelang/infra/docker/paper-sessions.toml).
+The intended layout is:
+
+- strategies mounted at `/strategies`
+- persistent execution state mounted at `/var/lib/palmscript/execution`
+- paper-session config mounted at `/etc/palmscript/paper-sessions.toml`
+
+Build and run:
+
+```bash
+docker build -f infra/docker/Dockerfile.paper -t palmscript-paper .
+docker run --rm \
+  -v "$(pwd)/crates/palmscript/examples/strategies:/strategies:ro" \
+  -v "$(pwd)/.paper-state:/var/lib/palmscript/execution" \
+  -v "$(pwd)/infra/docker/paper-sessions.toml:/etc/palmscript/paper-sessions.toml:ro" \
+  palmscript-paper
+```

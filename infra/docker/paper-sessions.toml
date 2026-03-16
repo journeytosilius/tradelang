@@ -1,0 +1,39 @@
+# Container defaults:
+# - Mount strategy files at /strategies
+# - Mount persistent session state at /var/lib/palmscript/execution
+# - Override this file by mounting your own config at
+#   /etc/palmscript/paper-sessions.toml
+
+[daemon]
+poll_interval_ms = 30000
+once = false
+
+[[session]]
+enabled = true
+script = "adaptive_trend_backtest.ps"
+
+# Omit `execution_sources` when the script declares exactly one `execution`
+# alias. Add one or more aliases here when the script exposes multiple
+# execution targets and you want to select a subset or activate portfolio mode.
+execution_sources = ["spot"]
+
+initial_capital = 10000.0
+maker_fee_bps = 2.0
+taker_fee_bps = 5.0
+slippage_bps = 2.0
+diagnostics = "summary"
+
+# Optional:
+# leverage = 2
+# margin_mode = "isolated"
+# fee_schedules = ["spot:1.0:3.0"]
+
+[[session]]
+enabled = false
+script = "portfolio_caps_backtest.ps"
+execution_sources = ["left", "right"]
+initial_capital = 20000.0
+maker_fee_bps = 2.0
+taker_fee_bps = 5.0
+slippage_bps = 2.0
+diagnostics = "summary"
