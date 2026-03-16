@@ -5,6 +5,18 @@ CONFIG_PATH="${PALMSCRIPT_PAPER_CONFIG:-/etc/palmscript/paper-sessions.toml}"
 STRATEGY_ROOT="${PALMSCRIPT_STRATEGY_ROOT:-/strategies}"
 STATE_DIR="${PALMSCRIPT_EXECUTION_STATE_DIR:-/var/lib/palmscript/execution}"
 FORCE_SUBMIT="${PALMSCRIPT_FORCE_SUBMIT:-0}"
+PAPER_DASHBOARD="${PALMSCRIPT_PAPER_DASHBOARD:-1}"
+DASHBOARD_BIND="${PALMSCRIPT_IDE_BIND:-0.0.0.0:8080}"
+dashboard_pid=""
+
+cleanup() {
+    if [ -n "$dashboard_pid" ]; then
+        kill "$dashboard_pid" 2>/dev/null || true
+        wait "$dashboard_pid" 2>/dev/null || true
+    fi
+}
+
+trap cleanup EXIT INT TERM
 
 mkdir -p "$STATE_DIR"
 export PALMSCRIPT_EXECUTION_STATE_DIR="$STATE_DIR"
@@ -12,6 +24,11 @@ export PALMSCRIPT_EXECUTION_STATE_DIR="$STATE_DIR"
 if [ ! -f "$CONFIG_PATH" ]; then
     echo "paper entrypoint: missing config at $CONFIG_PATH" >&2
     exit 1
+fi
+
+if [ "$PAPER_DASHBOARD" = "1" ]; then
+    PALMSCRIPT_IDE_BIND="$DASHBOARD_BIND" palmscript-ide-server &
+    dashboard_pid="$!"
 fi
 
 python3 - "$CONFIG_PATH" "$STRATEGY_ROOT" "$FORCE_SUBMIT" <<'PY'

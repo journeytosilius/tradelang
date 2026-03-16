@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::ws::{Message as WsMessage, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
@@ -25,13 +25,19 @@ use tower_http::cors::CorsLayer;
 use palmscript::backtest::{BacktestConfig, BacktestResult};
 use palmscript::compiler::{compile, CompiledProgram};
 use palmscript::exchange::{fetch_source_runtime_config, ExchangeEndpoints, ExchangeFetchError};
+use palmscript::execution_daemon_status;
 use palmscript::ide::{
     analyze_document, complete_document, CompletionEntry, HighlightToken, HoverInfo,
 };
 use palmscript::ide_lsp::IdeLspSession;
 use palmscript::interval::{Interval, SourceTemplate};
 use palmscript::runtime::{slice_runtime_window, SourceRuntimeConfig, VmLimits};
-use palmscript::{highlight_document, run_backtest_with_sources, Diagnostic as PalmDiagnostic};
+use palmscript::{
+    highlight_document, list_paper_sessions, load_paper_session_export, load_paper_session_logs,
+    load_paper_session_snapshot, run_backtest_with_sources, Diagnostic as PalmDiagnostic,
+    ExecutionDaemonStatus, ExecutionError, PaperSessionExport, PaperSessionLogEvent,
+    PaperSessionManifest, PaperSessionSnapshot,
+};
 
 const DEFAULT_SCRIPT_LIMIT_BYTES: usize = 128 * 1024;
 const DEFAULT_SESSION_IDLE_SECS: u64 = 30 * 60;
@@ -138,6 +144,29 @@ pub struct BacktestRequest {
 pub struct BacktestResponse {
     pub dataset: PublicDataset,
     pub result: BacktestResult,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PaperDashboardSession {
+    pub manifest: PaperSessionManifest,
+    pub snapshot: Option<PaperSessionSnapshot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PaperDashboardOverview {
+    pub daemon: Option<ExecutionDaemonStatus>,
+    pub sessions: Vec<PaperDashboardSession>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PaperSessionDetailResponse {
+    pub export: PaperSessionExport,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PaperSessionLogsResponse {
+    pub session_id: String,
+    pub logs: Vec<PaperSessionLogEvent>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -379,6 +408,7 @@ pub async fn build_public_dataset_cache(
 pub fn browser_ide_router(state: PublicIdeState) -> Router {
     Router::new()
         .route("/", get(index_html))
+        .route("/paper", get(index_html))
         .route("/favicon.png", get(ide_favicon_png))
         .route("/ide/app.js", get(ide_web_js))
         .route("/ide/app.css", get(ide_web_css))
@@ -390,6 +420,15 @@ pub fn browser_ide_router(state: PublicIdeState) -> Router {
         .route("/api/hover", post(hover_info))
         .route("/api/completions", post(completions))
         .route("/api/backtest", post(run_backtest))
+        .route("/api/paper/overview", get(paper_overview))
+        .route(
+            "/api/paper/sessions/{session_id}",
+            get(paper_session_detail),
+        )
+        .route(
+            "/api/paper/sessions/{session_id}/logs",
+            get(paper_session_logs),
+        )
         .route("/api/lsp", get(lsp_socket))
         .layer(CorsLayer::permissive())
         .with_state(state)
@@ -602,6 +641,64 @@ async fn completions(
     }
     let items = complete_document(&request.script, request.offset);
     Ok(Json(CompletionsResponse { items }))
+}
+
+async fn paper_overview(
+    State(state): State<PublicIdeState>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(session) = session_id_from_headers(&headers) {
+        state.mark_session_active(&session);
+    }
+    let daemon = execution_daemon_status().map_err(api_error_from_execution)?;
+    let mut sessions = list_paper_sessions()
+        .map_err(api_error_from_execution)?
+        .into_iter()
+        .map(|manifest| {
+            let snapshot = match load_paper_session_snapshot(&manifest.session_id) {
+                Ok(snapshot) => Some(snapshot),
+                Err(ExecutionError::MissingSnapshot { .. }) => None,
+                Err(err) => return Err(api_error_from_execution(err)),
+            };
+            Ok(PaperDashboardSession { manifest, snapshot })
+        })
+        .collect::<Result<Vec<_>, ApiError>>()?;
+    sessions.sort_by_key(|session| {
+        (
+            session
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.updated_at_ms)
+                .unwrap_or(session.manifest.updated_at_ms),
+            session.manifest.created_at_ms,
+        )
+    });
+    sessions.reverse();
+    Ok(Json(PaperDashboardOverview { daemon, sessions }))
+}
+
+async fn paper_session_detail(
+    State(state): State<PublicIdeState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(session) = session_id_from_headers(&headers) {
+        state.mark_session_active(&session);
+    }
+    let export = load_paper_session_export(&session_id).map_err(api_error_from_execution)?;
+    Ok(Json(PaperSessionDetailResponse { export }))
+}
+
+async fn paper_session_logs(
+    State(state): State<PublicIdeState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(session) = session_id_from_headers(&headers) {
+        state.mark_session_active(&session);
+    }
+    let logs = load_paper_session_logs(&session_id).map_err(api_error_from_execution)?;
+    Ok(Json(PaperSessionLogsResponse { session_id, logs }))
 }
 
 async fn lsp_socket(
@@ -834,6 +931,15 @@ fn validate_dataset_compatibility(
     Ok(())
 }
 
+fn api_error_from_execution(err: ExecutionError) -> ApiError {
+    match err {
+        ExecutionError::UnknownSession { .. } | ExecutionError::MissingSnapshot { .. } => {
+            ApiError::new(StatusCode::NOT_FOUND, err.to_string())
+        }
+        _ => ApiError::new(StatusCode::INTERNAL_SERVER_ERROR, err.to_string()),
+    }
+}
+
 fn dataset_support_script(dataset: &PublicDataset) -> String {
     let mut source = format!("interval {}\n", dataset.base_interval.as_str());
     for (index, dataset_source) in dataset.sources.iter().enumerate() {
@@ -868,7 +974,19 @@ mod tests {
     use super::*;
     use axum::body::{to_bytes, Body};
     use axum::http::Request;
+    use palmscript::backtest::BacktestSummary;
+    use palmscript::execution::PaperFeedSummary;
+    use palmscript::{
+        submit_paper_session, DiagnosticsDetailMode, ExchangeEndpoints, ExecutionMode,
+        ExecutionSessionHealth, ExecutionSessionStatus, PaperSessionConfig, PaperSessionSnapshot,
+        SubmitPaperSession, VmLimits,
+    };
+    use std::fs;
+    use std::path::Path;
+    use std::sync::Mutex;
     use tower::ServiceExt;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn fixture_state() -> PublicIdeState {
         let dataset = PublicDataset {
@@ -939,6 +1057,124 @@ mod tests {
             public_examples(),
             vec![CachedPublicDataset { dataset, runtime }],
         )
+    }
+
+    fn write_json<T: Serialize>(path: &Path, value: &T) {
+        let body = serde_json::to_string_pretty(value).expect("json body");
+        fs::write(path, body).expect("write json");
+    }
+
+    fn make_paper_fixture(root: &Path) -> String {
+        std::env::set_var("PALMSCRIPT_EXECUTION_STATE_DIR", root);
+        let manifest = submit_paper_session(SubmitPaperSession {
+            source: r#"interval 1m
+source spot = binance.spot("BTCUSDT")
+execution spot = binance.spot("BTCUSDT")
+entry long = false
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
+plot(spot.close)"#
+                .to_string(),
+            script_path: Some("strategy.ps".into()),
+            config: PaperSessionConfig {
+                execution_source_aliases: vec!["spot".to_string()],
+                initial_capital: 10_000.0,
+                maker_fee_bps: 2.0,
+                taker_fee_bps: 5.0,
+                execution_fee_schedules: BTreeMap::new(),
+                slippage_bps: 1.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                leverage: Some(10.0),
+                margin_mode: None,
+                vm_limits: VmLimits::default(),
+            },
+            start_time_ms: 1_704_067_200_000,
+            endpoints: ExchangeEndpoints::from_env(),
+        })
+        .expect("paper session submission");
+        let session_dir = root.join("sessions").join(&manifest.session_id);
+        let snapshot = PaperSessionSnapshot {
+            session_id: manifest.session_id.clone(),
+            status: ExecutionSessionStatus::Live,
+            health: ExecutionSessionHealth::Live,
+            updated_at_ms: 1_704_067_380_000,
+            start_time_ms: manifest.start_time_ms,
+            warmup_from_ms: Some(1_704_060_000_000),
+            latest_runtime_to_ms: Some(1_704_067_380_000),
+            latest_closed_bar_time_ms: Some(1_704_067_380_000),
+            summary: Some(BacktestSummary {
+                starting_equity: 10_000.0,
+                ending_equity: 10_420.0,
+                realized_pnl: 320.0,
+                unrealized_pnl: 100.0,
+                total_return: 0.042,
+                sharpe_ratio: Some(1.8),
+                trade_count: 6,
+                winning_trade_count: 4,
+                losing_trade_count: 2,
+                win_rate: 4.0 / 6.0,
+                max_drawdown: 180.0,
+                max_gross_exposure: 1.2,
+                max_net_exposure: 1.0,
+                peak_open_position_count: 1,
+            }),
+            diagnostics_summary: None,
+            open_positions: Vec::new(),
+            feed_snapshots: Vec::new(),
+            feed_summary: PaperFeedSummary {
+                total_feeds: 2,
+                history_ready_feeds: 2,
+                live_ready_feeds: 2,
+                failed_feeds: 0,
+            },
+            open_order_count: 1,
+            filled_order_count: 6,
+            cancelled_order_count: 0,
+            rejected_order_count: 0,
+            expired_order_count: 0,
+            fill_count: 6,
+            trade_count: 6,
+            failure_message: None,
+        };
+        write_json(&session_dir.join("snapshot.json"), &snapshot);
+        write_json(
+            &root.join("daemon.json"),
+            &ExecutionDaemonStatus {
+                pid: 4242,
+                started_at_ms: 1_704_067_200_000,
+                updated_at_ms: 1_704_067_380_000,
+                poll_interval_ms: 30_000,
+                once: false,
+                running: true,
+                stop_requested: false,
+                active_sessions: vec![manifest.session_id.clone()],
+                subscription_count: 2,
+                armed_feed_count: 2,
+                connecting_feed_count: 0,
+                degraded_feed_count: 0,
+                failed_feed_count: 0,
+                state_root: root.display().to_string(),
+            },
+        );
+        fs::write(
+            session_dir.join("events.jsonl"),
+            serde_json::to_string(&PaperSessionLogEvent {
+                time_ms: 1_704_067_380_000,
+                status: ExecutionSessionStatus::Live,
+                health: ExecutionSessionHealth::Live,
+                message: "paper session is live".to_string(),
+                latest_runtime_to_ms: Some(1_704_067_380_000),
+            })
+            .expect("log json")
+                + "\n",
+        )
+        .expect("write events");
+        manifest.session_id
     }
 
     #[test]
@@ -1039,6 +1275,95 @@ export x = bn.close - bb.close
             .await
             .expect("response");
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn paper_overview_returns_daemon_and_sessions() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let session_id = make_paper_fixture(temp.path());
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/paper/overview")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let overview: PaperDashboardOverview =
+            serde_json::from_slice(&body).expect("overview response");
+        assert_eq!(overview.daemon.expect("daemon").pid, 4242);
+        assert_eq!(overview.sessions.len(), 1);
+        assert_eq!(overview.sessions[0].manifest.session_id, session_id);
+        std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn paper_session_detail_returns_export() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let session_id = make_paper_fixture(temp.path());
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/paper/sessions/{session_id}"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let detail: PaperSessionDetailResponse =
+            serde_json::from_slice(&body).expect("detail response");
+        assert_eq!(detail.export.manifest.mode, ExecutionMode::Paper);
+        assert_eq!(
+            detail
+                .export
+                .snapshot
+                .expect("snapshot should be present")
+                .status,
+            ExecutionSessionStatus::Live
+        );
+        std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn paper_session_logs_returns_log_stream() {
+        let _guard = ENV_LOCK.lock().expect("lock env");
+        let temp = tempfile::tempdir().expect("tempdir");
+        let session_id = make_paper_fixture(temp.path());
+        let app = browser_ide_router(fixture_state());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/paper/sessions/{session_id}/logs"))
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("body bytes");
+        let logs: PaperSessionLogsResponse = serde_json::from_slice(&body).expect("logs response");
+        assert_eq!(logs.session_id, session_id);
+        assert_eq!(logs.logs.len(), 1);
+        assert_eq!(logs.logs[0].message, "paper session is live");
+        std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
     }
 
     #[tokio::test]

@@ -1,3 +1,13 @@
+FROM node:22-bookworm AS ide-web-builder
+
+WORKDIR /app/web/ide
+
+COPY web/ide/package.json web/ide/package-lock.json ./
+RUN npm ci
+
+COPY web/ide ./
+RUN npm run build
+
 FROM rust:1.92-bookworm AS builder
 
 WORKDIR /app
@@ -9,7 +19,9 @@ COPY vendor ./vendor
 COPY web ./web
 COPY README.md LICENSE ./
 
-RUN cargo build --release --bin palmscript
+COPY --from=ide-web-builder /app/web/ide/dist ./web/ide/dist
+
+RUN cargo build --release --bin palmscript --bin palmscript-ide-server
 
 FROM debian:bookworm-slim
 
@@ -20,6 +32,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/palmscript /usr/local/bin/palmscript
+COPY --from=builder /app/target/release/palmscript-ide-server /usr/local/bin/palmscript-ide-server
 COPY infra/docker/paper-entrypoint.sh /usr/local/bin/paper-entrypoint.sh
 COPY infra/docker/paper-sessions.toml /etc/palmscript/paper-sessions.toml
 
@@ -30,5 +43,9 @@ ENV PALMSCRIPT_PAPER_CONFIG=/etc/palmscript/paper-sessions.toml
 ENV PALMSCRIPT_STRATEGY_ROOT=/strategies
 ENV PALMSCRIPT_EXECUTION_STATE_DIR=/var/lib/palmscript/execution
 ENV PALMSCRIPT_FORCE_SUBMIT=0
+ENV PALMSCRIPT_IDE_BIND=0.0.0.0:8080
+ENV PALMSCRIPT_PAPER_DASHBOARD=1
+
+EXPOSE 8080
 
 ENTRYPOINT ["paper-entrypoint.sh"]

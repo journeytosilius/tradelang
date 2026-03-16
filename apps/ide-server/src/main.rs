@@ -20,9 +20,13 @@ async fn main() {
 
 async fn run() -> Result<(), String> {
     let endpoints = ExchangeEndpoints::from_env();
-    let cached = build_public_dataset_cache(endpoints)
-        .await
-        .map_err(|err| err.to_string())?;
+    let cached = match build_public_dataset_cache(endpoints).await {
+        Ok(cached) => cached,
+        Err(err) => {
+            eprintln!("palmscript-ide-server: dataset cache unavailable: {err}");
+            Vec::new()
+        }
+    };
     let state = PublicIdeState::new(PublicIdeServerConfig::default(), public_examples(), cached);
     let app = browser_ide_router(state);
     let addr: SocketAddr = std::env::var("PALMSCRIPT_IDE_BIND")

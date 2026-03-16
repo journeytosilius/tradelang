@@ -3,6 +3,7 @@ import Editor, { type Monaco, type OnMount } from "@monaco-editor/react";
 import type * as MonacoEditor from "monaco-editor";
 
 import { checkScript, fetchDatasets, runBacktest } from "./api";
+import { PaperDashboard } from "./PaperDashboard";
 import {
   clampWindow,
   dateInputValue,
@@ -22,6 +23,7 @@ import type {
   Diagnostic,
   PublicDataset,
 } from "./types";
+import { LineChart, MetricCard } from "./ui";
 
 const CHECK_DEBOUNCE_MS = 250;
 const THEME_STORAGE_KEY = "palmscript.ide.theme";
@@ -44,6 +46,13 @@ function initialThemeMode(): ThemeMode {
 }
 
 export function App() {
+  if (window.location.pathname.startsWith("/paper")) {
+    return <PaperDashboard />;
+  }
+  return <BrowserIdeApp />;
+}
+
+function BrowserIdeApp() {
   const [script, setScript] = useState(DEFAULT_SOURCE);
   const [dataset, setDataset] = useState<PublicDataset | null>(null);
   const [fromDate, setFromDate] = useState("");
@@ -357,7 +366,15 @@ export function App() {
               <h2 className="panel__title">Equity Curve</h2>
             </div>
             {backtest && backtest.result.equity_curve.length > 1 ? (
-              <EquityChart points={backtest.result.equity_curve.map((point) => point.equity)} />
+              <LineChart
+                series={[
+                  {
+                    values: backtest.result.equity_curve.map((point) => point.equity),
+                    stroke: "#1f8de1",
+                    fill: "rgba(31, 141, 225, 0.14)",
+                  },
+                ]}
+              />
             ) : (
               <div className="empty-state">No curve yet.</div>
             )}
@@ -420,51 +437,5 @@ export function App() {
         </aside>
       </main>
     </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "positive" | "negative";
-}) {
-  return (
-    <article className={`metric-card metric-card--${tone}`}>
-      <span className="metric-card__label">{label}</span>
-      <strong className="metric-card__value">{value}</strong>
-    </article>
-  );
-}
-
-function EquityChart({ points }: { points: number[] }) {
-  const width = 560;
-  const height = 180;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const span = max - min || 1;
-  const path = points
-    .map((point, index) => {
-      const x = (index / Math.max(points.length - 1, 1)) * width;
-      const y = height - ((point - min) / span) * (height - 12) - 6;
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(" ");
-
-  return (
-    <svg className="equity-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="equity-fill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="rgba(31,141,225,0.24)" />
-          <stop offset="100%" stopColor="rgba(31,141,225,0.04)" />
-        </linearGradient>
-      </defs>
-      <rect className="equity-chart__bg" height={height} rx="18" width={width} x="0" y="0" />
-      <path className="equity-chart__area" d={`${path} L ${width} ${height} L 0 ${height} Z`} />
-      <path className="equity-chart__line" d={path} />
-    </svg>
   );
 }

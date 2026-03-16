@@ -208,7 +208,10 @@ The expected runtime layout is:
 The entrypoint submits the configured `[[session]]` entries once when the state
 directory is empty, then starts `palmscript execution serve`. Set
 `PALMSCRIPT_FORCE_SUBMIT=1` if you want to resubmit the configured sessions on
-container start.
+container start. The same container also starts `palmscript-ide-server` and
+serves a live paper dashboard at `http://localhost:8080/paper` so you can
+select a running strategy and inspect equity, PnL, trades, drawdown, feed
+health, and logs in real time.
 
 Example:
 
@@ -218,6 +221,7 @@ docker run --rm \
   -v "$(pwd)/crates/palmscript/examples/strategies:/strategies:ro" \
   -v "$(pwd)/.paper-state:/var/lib/palmscript/execution" \
   -v "$(pwd)/infra/docker/paper-sessions.toml:/etc/palmscript/paper-sessions.toml:ro" \
+  -p 8080:8080 \
   palmscript-paper
 ```
 

@@ -7,6 +7,9 @@ import type {
   CompletionsResponse,
   HoverRequest,
   HoverResponse,
+  PaperDashboardOverview,
+  PaperSessionDetailResponse,
+  PaperSessionLogsResponse,
   PublicDatasetCatalog,
 } from "./types";
 
@@ -88,4 +91,24 @@ export function runBacktest(
     method: "POST",
     body: JSON.stringify(request),
   });
+}
+
+export function fetchPaperOverview(): Promise<PaperDashboardOverview> {
+  return requestJson<PaperDashboardOverview>("./api/paper/overview");
+}
+
+export function fetchPaperSessionDetail(
+  sessionId: string,
+): Promise<PaperSessionDetailResponse> {
+  return requestJson<PaperSessionDetailResponse>(
+    `./api/paper/sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export function fetchPaperSessionLogs(
+  sessionId: string,
+): Promise<PaperSessionLogsResponse> {
+  return requestJson<PaperSessionLogsResponse>(
+    `./api/paper/sessions/${encodeURIComponent(sessionId)}/logs`,
+  );
 }

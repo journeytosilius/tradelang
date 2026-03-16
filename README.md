@@ -138,6 +138,11 @@ The intended layout is:
 - persistent execution state mounted at `/var/lib/palmscript/execution`
 - paper-session config mounted at `/etc/palmscript/paper-sessions.toml`
 
+The paper container now also serves a live monitoring UI at `/paper` on port
+`8080`. It lists all persisted paper sessions, lets you select a strategy, and
+polls real-time paper metrics such as equity, PnL, open positions, trades,
+orders, drawdown, feed health, and session logs.
+
 Build and run:
 
 ```bash
@@ -146,5 +151,6 @@ docker run --rm \
   -v "$(pwd)/crates/palmscript/examples/strategies:/strategies:ro" \
   -v "$(pwd)/.paper-state:/var/lib/palmscript/execution" \
   -v "$(pwd)/infra/docker/paper-sessions.toml:/etc/palmscript/paper-sessions.toml:ro" \
+  -p 8080:8080 \
   palmscript-paper
 ```
