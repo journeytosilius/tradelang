@@ -1131,3 +1131,46 @@ fn percentile_requires_numeric_scalar_percentage() {
         )],
     );
 }
+
+#[test]
+fn arb_pair_fields_require_execution_aliases_and_numeric_size() {
+    assert_compile_diagnostics(
+        "arb_pair_requires_alias_and_numeric_size",
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+arb_entry = true
+arb_order entry = market_pair(
+    buy_venue = spot.close,
+    sell_venue = gt,
+    size = true
+)
+plot(spot.close)",
+        &[expected(
+            DiagnosticKind::Type,
+            "arbitrage pair field `buy_venue` requires an execution_alias expression",
+        )],
+    );
+}
+
+#[test]
+fn transfer_fields_require_execution_aliases_and_numeric_amounts() {
+    assert_compile_diagnostics(
+        "transfer_requires_alias_and_numeric_amount",
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+transfer quote = quote_transfer(
+    from = spot.close,
+    to = gt,
+    amount = true
+)
+plot(spot.close)",
+        &[expected(
+            DiagnosticKind::Type,
+            "transfer field `from` requires an execution_alias expression",
+        )],
+    );
+}

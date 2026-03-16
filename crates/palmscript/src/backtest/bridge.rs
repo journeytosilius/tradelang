@@ -4,8 +4,10 @@ use crate::backtest::orders::CapturedOrderRequest;
 use crate::backtest::venue::{validate_order_for_template, VenueOrderProfile};
 use crate::backtest::BacktestError;
 use crate::bytecode::{
-    LastExitFieldDecl, OrderDecl, OutputKind, PortfolioControlDecl, PortfolioGroupDecl,
-    PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, SignalRole,
+    ArbOrderDecl, ArbSignalDecl, ArbSignalKind, ExecutionPriceDecl, LastExitFieldDecl,
+    LedgerFieldDecl, OrderDecl, OutputKind, PortfolioControlDecl, PortfolioGroupDecl,
+    PositionEventFieldDecl, PositionFieldDecl, RiskControlDecl, SignalRole, TransferAssetKind,
+    TransferDecl,
 };
 use crate::compiler::CompiledProgram;
 use crate::interval::SourceTemplate;
@@ -24,16 +26,32 @@ pub(crate) struct PreparedBacktest {
     pub signal_roles: HashMap<usize, SignalRole>,
     pub signal_modules: HashMap<SignalRole, String>,
     pub order_templates: HashMap<SignalRole, OrderDecl>,
+    pub arb_surface: Option<PreparedArbSurface>,
+    pub transfer_surface: Option<PreparedTransferSurface>,
     pub risk_controls: Vec<RiskControlDecl>,
     pub portfolio_controls: Vec<PortfolioControlDecl>,
     pub portfolio_groups: Vec<PortfolioGroupDecl>,
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub last_exit_fields: Vec<LastExitFieldDecl>,
+    pub ledger_fields: Vec<LedgerFieldDecl>,
+    pub execution_price_fields: Vec<ExecutionPriceDecl>,
     pub exports: Vec<PreparedExport>,
 }
 
+pub(crate) struct PreparedArbSurface {
+    pub entry_signal: ArbSignalDecl,
+    pub exit_signal: ArbSignalDecl,
+    pub entry_order: ArbOrderDecl,
+    pub exit_order: ArbOrderDecl,
+}
+
+pub(crate) struct PreparedTransferSurface {
+    pub quote_transfer: Option<TransferDecl>,
+}
+
 pub(crate) struct ExecutionSource {
+    pub execution_id: u16,
     pub source_id: u16,
     pub template: SourceTemplate,
     pub symbol: String,
@@ -77,6 +95,7 @@ pub(crate) fn resolve_execution_source(
                 .map(|candidate| candidate.id)
                 .unwrap_or(source.id);
             ExecutionSource {
+                execution_id: source.id,
                 source_id: feed_source_id,
                 template: source.template,
                 symbol: source.symbol.clone(),
@@ -99,8 +118,23 @@ pub(crate) fn prepare_backtest_for_aliases(
     compiled: &CompiledProgram,
     executions: &[(String, SourceTemplate)],
 ) -> Result<PreparedBacktest, BacktestError> {
-    let signal_roles = resolve_signals(compiled)?;
-    let order_templates = explicit_orders_by_role(compiled);
+    let arb_surface = resolve_arb_surface(compiled)?;
+    let transfer_surface = resolve_transfer_surface(compiled)?;
+    let transfer_only_surface =
+        transfer_surface.is_some() && compiled.program.orders.is_empty() && arb_surface.is_none();
+    let signal_roles = if arb_surface.is_some() || transfer_only_surface {
+        HashMap::new()
+    } else {
+        resolve_signals(compiled)?
+    };
+    let order_templates = if arb_surface.is_some() {
+        if !compiled.program.orders.is_empty() || !signal_roles.is_empty() {
+            return Err(BacktestError::ArbitrageStandardSurfaceMixUnsupported);
+        }
+        HashMap::new()
+    } else {
+        explicit_orders_by_role(compiled)
+    };
 
     for (execution_alias, template) in executions {
         let venue = VenueOrderProfile::from_template(*template);
@@ -124,18 +158,117 @@ pub(crate) fn prepare_backtest_for_aliases(
         }
     }
 
+    for field in &compiled.program.ledger_fields {
+        let Some(execution) = compiled
+            .program
+            .declared_executions
+            .iter()
+            .find(|execution| execution.id == field.execution_id)
+        else {
+            return Err(BacktestError::UnknownExecutionSource {
+                alias: format!("execution#{}", field.execution_id),
+            });
+        };
+        if executions
+            .iter()
+            .all(|(alias, _)| alias != &execution.alias)
+        {
+            return Err(BacktestError::UnknownExecutionSource {
+                alias: execution.alias.clone(),
+            });
+        }
+    }
+
     Ok(PreparedBacktest {
         signal_roles,
         signal_modules: explicit_modules_by_role(compiled),
         order_templates,
+        arb_surface,
+        transfer_surface,
         risk_controls: compiled.program.risk_controls.clone(),
         portfolio_controls: compiled.program.portfolio_controls.clone(),
         portfolio_groups: compiled.program.portfolio_groups.clone(),
         position_fields: compiled.program.position_fields.clone(),
         position_event_fields: compiled.program.position_event_fields.clone(),
         last_exit_fields: compiled.program.last_exit_fields.clone(),
+        ledger_fields: compiled.program.ledger_fields.clone(),
+        execution_price_fields: compiled.program.execution_price_fields.clone(),
         exports: collect_exports(compiled),
     })
+}
+
+fn resolve_arb_surface(
+    compiled: &CompiledProgram,
+) -> Result<Option<PreparedArbSurface>, BacktestError> {
+    if compiled.program.arb_signals.is_empty() && compiled.program.arb_orders.is_empty() {
+        return Ok(None);
+    }
+    if !compiled.program.orders.is_empty()
+        || compiled
+            .program
+            .outputs
+            .iter()
+            .any(|decl| matches!(decl.kind, OutputKind::Trigger) && decl.signal_role.is_some())
+    {
+        return Err(BacktestError::ArbitrageStandardSurfaceMixUnsupported);
+    }
+
+    let entry_signal = compiled
+        .program
+        .arb_signals
+        .iter()
+        .find(|decl| matches!(decl.kind, ArbSignalKind::Entry))
+        .copied()
+        .ok_or(BacktestError::IncompleteArbitrageSurface)?;
+    let exit_signal = compiled
+        .program
+        .arb_signals
+        .iter()
+        .find(|decl| matches!(decl.kind, ArbSignalKind::Exit))
+        .copied()
+        .ok_or(BacktestError::IncompleteArbitrageSurface)?;
+    let entry_order = compiled
+        .program
+        .arb_orders
+        .iter()
+        .find(|decl| matches!(decl.kind, ArbSignalKind::Entry))
+        .cloned()
+        .ok_or(BacktestError::IncompleteArbitrageSurface)?;
+    let exit_order = compiled
+        .program
+        .arb_orders
+        .iter()
+        .find(|decl| matches!(decl.kind, ArbSignalKind::Exit))
+        .cloned()
+        .ok_or(BacktestError::IncompleteArbitrageSurface)?;
+
+    Ok(Some(PreparedArbSurface {
+        entry_signal,
+        exit_signal,
+        entry_order,
+        exit_order,
+    }))
+}
+
+fn resolve_transfer_surface(
+    compiled: &CompiledProgram,
+) -> Result<Option<PreparedTransferSurface>, BacktestError> {
+    if compiled.program.transfers.is_empty() {
+        return Ok(None);
+    }
+    let mut quote_transfer = None;
+    for transfer in &compiled.program.transfers {
+        match transfer.asset_kind {
+            TransferAssetKind::Quote => {
+                if quote_transfer.is_some() {
+                    return Err(BacktestError::UnsupportedTransferAsset);
+                }
+                quote_transfer = Some(*transfer);
+            }
+            TransferAssetKind::Base => return Err(BacktestError::UnsupportedTransferAsset),
+        }
+    }
+    Ok(Some(PreparedTransferSurface { quote_transfer }))
 }
 
 pub(crate) fn capture_request(

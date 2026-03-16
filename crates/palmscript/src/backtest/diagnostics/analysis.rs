@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 
 use crate::backtest::{
-    average, ratio, BacktestCaptureSummary, BacktestDiagnosticSummary, BacktestSummary,
-    BaselineComparisonSummary, BoolExportActiveTradeSummary, CohortDiagnostics,
+    average, ratio, ArbitrageBasketRecord, ArbitrageDiagnosticsSummary,
+    ArbitragePairDiagnosticSummary, BacktestCaptureSummary, BacktestDiagnosticSummary,
+    BacktestSummary, BaselineComparisonSummary, BoolExportActiveTradeSummary, CohortDiagnostics,
     DrawdownDiagnostics, EntryModuleDiagnosticSummary, EquityPoint,
     ExitClassificationDiagnosticSummary, ExportDiagnosticSummary, HoldingTimeBucket,
     HoldingTimeBucketSummary, HourDiagnosticSummary, ImprovementHint, ImprovementHintKind,
-    SideDiagnosticSummary, TimeBucketUtcDiagnosticSummary, TradeDiagnostic,
-    TradeExitClassification, WeekdayDiagnosticSummary,
+    SideDiagnosticSummary, SpotQuoteTransfer, TimeBucketUtcDiagnosticSummary, TradeDiagnostic,
+    TradeExitClassification, TransferDiagnosticsSummary, TransferRouteDiagnosticSummary,
+    WeekdayDiagnosticSummary,
 };
 use crate::position::PositionSide;
 
@@ -63,6 +65,277 @@ pub(crate) fn aggregate_time_bucket_summaries<'a>(
             },
         )
         .collect()
+}
+
+pub(crate) fn build_transfer_diagnostics(
+    transfers: &[SpotQuoteTransfer],
+) -> TransferDiagnosticsSummary {
+    let mut by_route = BTreeMap::<(String, String), Vec<&SpotQuoteTransfer>>::new();
+    for transfer in transfers {
+        by_route
+            .entry((transfer.from_alias.clone(), transfer.to_alias.clone()))
+            .or_default()
+            .push(transfer);
+    }
+
+    TransferDiagnosticsSummary {
+        quote_transfer_count: transfers.len(),
+        completed_quote_transfer_count: transfers
+            .iter()
+            .filter(|transfer| transfer.completed_bar_index.is_some())
+            .count(),
+        pending_quote_transfer_count: transfers
+            .iter()
+            .filter(|transfer| transfer.completed_bar_index.is_none())
+            .count(),
+        total_quote_amount: transfers.iter().map(|transfer| transfer.amount).sum(),
+        total_quote_fee: transfers.iter().map(|transfer| transfer.fee).sum(),
+        average_delay_bars: average(transfers.iter().map(|transfer| transfer.delay_bars as f64)),
+        by_route: by_route
+            .into_iter()
+            .map(
+                |((from_alias, to_alias), route_transfers)| TransferRouteDiagnosticSummary {
+                    from_alias,
+                    to_alias,
+                    transfer_count: route_transfers.len(),
+                    completed_transfer_count: route_transfers
+                        .iter()
+                        .filter(|transfer| transfer.completed_bar_index.is_some())
+                        .count(),
+                    total_amount: route_transfers.iter().map(|transfer| transfer.amount).sum(),
+                    total_fee: route_transfers.iter().map(|transfer| transfer.fee).sum(),
+                    average_delay_bars: average(
+                        route_transfers
+                            .iter()
+                            .map(|transfer| transfer.delay_bars as f64),
+                    ),
+                },
+            )
+            .collect(),
+    }
+}
+
+pub(crate) fn aggregate_transfer_diagnostics<'a>(
+    summaries: impl IntoIterator<Item = &'a TransferDiagnosticsSummary>,
+) -> TransferDiagnosticsSummary {
+    let collected = summaries.into_iter().collect::<Vec<_>>();
+    let mut by_route = BTreeMap::<(String, String), (usize, usize, f64, f64, Vec<f64>)>::new();
+    for summary in &collected {
+        for route in &summary.by_route {
+            let entry = by_route
+                .entry((route.from_alias.clone(), route.to_alias.clone()))
+                .or_insert((0, 0, 0.0, 0.0, Vec::new()));
+            entry.0 += route.transfer_count;
+            entry.1 += route.completed_transfer_count;
+            entry.2 += route.total_amount;
+            entry.3 += route.total_fee;
+            entry.4.push(route.average_delay_bars);
+        }
+    }
+
+    TransferDiagnosticsSummary {
+        quote_transfer_count: collected
+            .iter()
+            .map(|summary| summary.quote_transfer_count)
+            .sum(),
+        completed_quote_transfer_count: collected
+            .iter()
+            .map(|summary| summary.completed_quote_transfer_count)
+            .sum(),
+        pending_quote_transfer_count: collected
+            .iter()
+            .map(|summary| summary.pending_quote_transfer_count)
+            .sum(),
+        total_quote_amount: collected
+            .iter()
+            .map(|summary| summary.total_quote_amount)
+            .sum(),
+        total_quote_fee: collected
+            .iter()
+            .map(|summary| summary.total_quote_fee)
+            .sum(),
+        average_delay_bars: average(
+            collected
+                .iter()
+                .map(|summary| summary.average_delay_bars)
+                .filter(|value| value.is_finite()),
+        ),
+        by_route: by_route
+            .into_iter()
+            .map(
+                |(
+                    (from_alias, to_alias),
+                    (
+                        transfer_count,
+                        completed_transfer_count,
+                        total_amount,
+                        total_fee,
+                        average_delay_values,
+                    ),
+                )| TransferRouteDiagnosticSummary {
+                    from_alias,
+                    to_alias,
+                    transfer_count,
+                    completed_transfer_count,
+                    total_amount,
+                    total_fee,
+                    average_delay_bars: average(average_delay_values),
+                },
+            )
+            .collect(),
+    }
+}
+
+pub(crate) fn build_arbitrage_diagnostics(
+    baskets: &[ArbitrageBasketRecord],
+) -> ArbitrageDiagnosticsSummary {
+    let mut by_pair = BTreeMap::<(String, String), Vec<&ArbitrageBasketRecord>>::new();
+    for basket in baskets {
+        by_pair
+            .entry((basket.buy_alias.clone(), basket.sell_alias.clone()))
+            .or_default()
+            .push(basket);
+    }
+
+    ArbitrageDiagnosticsSummary {
+        basket_count: baskets.len(),
+        completed_basket_count: baskets
+            .iter()
+            .filter(|basket| basket.exit_bar_index.is_some())
+            .count(),
+        open_basket_count: baskets
+            .iter()
+            .filter(|basket| basket.exit_bar_index.is_none())
+            .count(),
+        total_realized_pnl: baskets
+            .iter()
+            .filter_map(|basket| basket.realized_pnl)
+            .sum(),
+        average_entry_spread_bps: average(baskets.iter().map(|basket| basket.entry_spread_bps)),
+        average_exit_spread_bps: average(
+            baskets.iter().filter_map(|basket| basket.exit_spread_bps),
+        ),
+        average_holding_bars: average(
+            baskets
+                .iter()
+                .filter_map(|basket| basket.holding_bars.map(|bars| bars as f64)),
+        ),
+        by_pair: by_pair
+            .into_iter()
+            .map(
+                |((buy_alias, sell_alias), pair_baskets)| ArbitragePairDiagnosticSummary {
+                    buy_alias,
+                    sell_alias,
+                    basket_count: pair_baskets.len(),
+                    completed_basket_count: pair_baskets
+                        .iter()
+                        .filter(|basket| basket.exit_bar_index.is_some())
+                        .count(),
+                    total_realized_pnl: pair_baskets
+                        .iter()
+                        .filter_map(|basket| basket.realized_pnl)
+                        .sum(),
+                    average_entry_spread_bps: average(
+                        pair_baskets.iter().map(|basket| basket.entry_spread_bps),
+                    ),
+                    average_exit_spread_bps: average(
+                        pair_baskets
+                            .iter()
+                            .filter_map(|basket| basket.exit_spread_bps),
+                    ),
+                    average_holding_bars: average(
+                        pair_baskets
+                            .iter()
+                            .filter_map(|basket| basket.holding_bars.map(|bars| bars as f64)),
+                    ),
+                },
+            )
+            .collect(),
+        baskets: baskets.to_vec(),
+    }
+}
+
+pub(crate) fn aggregate_arbitrage_diagnostics<'a>(
+    summaries: impl IntoIterator<Item = &'a ArbitrageDiagnosticsSummary>,
+) -> ArbitrageDiagnosticsSummary {
+    let collected = summaries.into_iter().collect::<Vec<_>>();
+    let mut by_pair =
+        BTreeMap::<(String, String), (usize, usize, f64, Vec<f64>, Vec<f64>, Vec<f64>)>::new();
+    let mut baskets = Vec::new();
+    for summary in &collected {
+        baskets.extend(summary.baskets.iter().cloned());
+        for pair in &summary.by_pair {
+            let entry = by_pair
+                .entry((pair.buy_alias.clone(), pair.sell_alias.clone()))
+                .or_insert((0, 0, 0.0, Vec::new(), Vec::new(), Vec::new()));
+            entry.0 += pair.basket_count;
+            entry.1 += pair.completed_basket_count;
+            entry.2 += pair.total_realized_pnl;
+            entry.3.push(pair.average_entry_spread_bps);
+            entry.4.push(pair.average_exit_spread_bps);
+            entry.5.push(pair.average_holding_bars);
+        }
+    }
+
+    ArbitrageDiagnosticsSummary {
+        basket_count: collected.iter().map(|summary| summary.basket_count).sum(),
+        completed_basket_count: collected
+            .iter()
+            .map(|summary| summary.completed_basket_count)
+            .sum(),
+        open_basket_count: collected
+            .iter()
+            .map(|summary| summary.open_basket_count)
+            .sum(),
+        total_realized_pnl: collected
+            .iter()
+            .map(|summary| summary.total_realized_pnl)
+            .sum(),
+        average_entry_spread_bps: average(
+            collected
+                .iter()
+                .map(|summary| summary.average_entry_spread_bps)
+                .filter(|value| value.is_finite()),
+        ),
+        average_exit_spread_bps: average(
+            collected
+                .iter()
+                .map(|summary| summary.average_exit_spread_bps)
+                .filter(|value| value.is_finite()),
+        ),
+        average_holding_bars: average(
+            collected
+                .iter()
+                .map(|summary| summary.average_holding_bars)
+                .filter(|value| value.is_finite()),
+        ),
+        by_pair: by_pair
+            .into_iter()
+            .map(
+                |(
+                    (buy_alias, sell_alias),
+                    (
+                        basket_count,
+                        completed_basket_count,
+                        total_realized_pnl,
+                        entry_spreads,
+                        exit_spreads,
+                        holding_bars,
+                    ),
+                )| ArbitragePairDiagnosticSummary {
+                    buy_alias,
+                    sell_alias,
+                    basket_count,
+                    completed_basket_count,
+                    total_realized_pnl,
+                    average_entry_spread_bps: average(entry_spreads),
+                    average_exit_spread_bps: average(exit_spreads),
+                    average_holding_bars: average(holding_bars),
+                },
+            )
+            .collect(),
+        baskets,
+    }
 }
 
 pub(crate) fn build_drawdown_diagnostics(equity_curve: &[EquityPoint]) -> DrawdownDiagnostics {

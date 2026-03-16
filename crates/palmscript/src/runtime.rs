@@ -654,6 +654,20 @@ impl RuntimeStepper {
             }
             self.engine.set_local_override(slot as usize, Value::NA)?;
         }
+        let default_ledger_slots: Vec<u16> = self
+            .engine
+            .compiled
+            .program
+            .ledger_fields
+            .iter()
+            .map(|decl| decl.slot)
+            .collect();
+        for slot in default_ledger_slots {
+            if overridden_slots.contains(&slot) {
+                continue;
+            }
+            self.engine.set_local_override(slot as usize, Value::NA)?;
+        }
         for (slot, value) in overrides {
             self.engine
                 .set_local_override(*slot as usize, value.clone())?;
@@ -680,6 +694,10 @@ impl RuntimeStepper {
 
     pub fn finish(self) -> Outputs {
         self.engine.finish()
+    }
+
+    pub(crate) fn local_value(&self, slot: u16) -> Option<&Value> {
+        self.engine.current_values.get(slot as usize)
     }
 
     pub fn source_alignment_diagnostics(&self) -> SourceAlignmentDiagnostics {
@@ -774,8 +792,22 @@ fn build_source_feed_cursors(
         }
     }
 
+    let mut declared_runtime_feeds = Vec::with_capacity(
+        compiled.program.declared_sources.len() + compiled.program.declared_executions.len(),
+    );
+    declared_runtime_feeds.extend(compiled.program.declared_sources.iter());
+    declared_runtime_feeds.extend(compiled.program.declared_executions.iter().filter(
+        |execution| {
+            base_slot_maps.contains_key(&execution.id)
+                || equal_slot_maps.contains_key(&execution.id)
+                || referenced
+                    .keys()
+                    .any(|(source_id, _)| *source_id == execution.id)
+        },
+    ));
+
     let mut base_cursors = Vec::new();
-    for source in &compiled.program.declared_sources {
+    for source in declared_runtime_feeds {
         let bars = base_feeds
             .remove(&source.id)
             .ok_or(RuntimeError::MissingSourceBaseFeed {
@@ -814,6 +846,13 @@ fn build_source_feed_cursors(
                 .declared_sources
                 .iter()
                 .find(|source| source.id == source_id)
+                .or_else(|| {
+                    compiled
+                        .program
+                        .declared_executions
+                        .iter()
+                        .find(|source| source.id == source_id)
+                })
                 .map(|source| source.alias.clone())
                 .unwrap_or_else(|| format!("src{source_id}")),
             interval,

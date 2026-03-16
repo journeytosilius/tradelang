@@ -6,24 +6,31 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::ast::{
-    Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl, InputOptimizationKind, NodeId, OrderSpec,
-    OrderSpecKind, PortfolioControlKind as AstPortfolioControlKind,
-    RiskControlKind as AstRiskControlKind, SignalRole as AstSignalRole, Stmt, StmtKind, UnaryOp,
+    ArbOrderSpec, ArbOrderSpecKind, ArbPairConstructor as AstArbPairConstructor,
+    ArbSignalKind as AstArbSignalKind, Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl,
+    InputOptimizationKind, NodeId, OrderSpec, OrderSpecKind,
+    PortfolioControlKind as AstPortfolioControlKind, RiskControlKind as AstRiskControlKind,
+    SignalRole as AstSignalRole, Stmt, StmtKind, TransferAssetKind as AstTransferAssetKind,
+    TransferSpec, UnaryOp,
 };
 use crate::builtins::{BuiltinArity, BuiltinId, BuiltinKind};
 use crate::bytecode::{
-    Constant, InputDecl, InputOptimizationDecl, InputOptimizationDeclKind, Instruction,
-    LastExitFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
+    ArbOrderDecl, ArbPairConstructor as CompiledArbPairConstructor, ArbSignalDecl,
+    ArbSignalKind as CompiledArbSignalKind, Constant, ExecutionPriceDecl, InputDecl,
+    InputOptimizationDecl, InputOptimizationDeclKind, Instruction, LastExitFieldDecl,
+    LedgerFieldDecl, LocalInfo, OpCode, OrderDecl, OrderFieldDecl, OutputDecl, OutputKind,
     PortfolioControlDecl, PortfolioControlKind as CompiledPortfolioControlKind,
     PortfolioGroupDecl as CompiledPortfolioGroupDecl, PositionEventFieldDecl, PositionFieldDecl,
     Program, RiskControlDecl, RiskControlKind as CompiledRiskControlKind,
     SignalModuleDecl as CompiledSignalModuleDecl, SignalRole as CompiledSignalRole,
+    TransferAssetKind as CompiledTransferAssetKind, TransferDecl,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::interval::{
     DeclaredExecutionTarget, DeclaredMarketSource, Interval, MarketBinding, MarketField,
     MarketSource, SourceIntervalRef,
 };
+use crate::ledger::LedgerField;
 use crate::lexer;
 use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 use crate::parser;
@@ -223,8 +230,12 @@ struct Analysis {
     resolved_let_slots: HashMap<NodeId, u16>,
     resolved_let_tuple_slots: HashMap<NodeId, Vec<u16>>,
     resolved_output_slots: HashMap<NodeId, u16>,
+    resolved_arb_signal_slots: HashMap<NodeId, u16>,
     resolved_order_field_slots: HashMap<NodeId, ResolvedOrderFieldSlots>,
+    resolved_arb_order_field_slots: HashMap<NodeId, ResolvedArbOrderFieldSlots>,
+    resolved_transfer_field_slots: HashMap<NodeId, ResolvedTransferFieldSlots>,
     resolved_order_specs: HashMap<NodeId, OrderSpec>,
+    resolved_arb_order_specs: HashMap<NodeId, ArbOrderSpec>,
     order_size_decls: HashMap<CompiledSignalRole, ResolvedOrderSizeDecl>,
     immutable_slots: HashMap<NodeId, u16>,
     immutable_bindings: HashMap<String, ExprInfo>,
@@ -240,6 +251,11 @@ struct Analysis {
     position_event_field_slots: HashMap<PositionEventField, u16>,
     last_exit_fields: Vec<LastExitFieldDecl>,
     last_exit_field_slots: HashMap<(LastExitScope, LastExitField), u16>,
+    ledger_fields: Vec<LedgerFieldDecl>,
+    ledger_field_slots: HashMap<(u16, LedgerField), u16>,
+    arb_signals: Vec<ArbSignalDecl>,
+    arb_orders: Vec<ArbOrderDecl>,
+    transfers: Vec<TransferDecl>,
     orders: Vec<OrderDecl>,
     risk_controls: Vec<RiskControlDecl>,
     portfolio_controls: Vec<PortfolioControlDecl>,
@@ -255,6 +271,29 @@ struct ResolvedOrderFieldSlots {
     expire_time_slot: Option<u16>,
     size_slot: Option<u16>,
     risk_stop_slot: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ResolvedArbOrderFieldSlots {
+    buy_venue_slot: u16,
+    sell_venue_slot: u16,
+    size_slot: u16,
+    buy_price_slot: Option<u16>,
+    sell_price_slot: Option<u16>,
+    tif_slot: Option<u16>,
+    post_only_slot: Option<u16>,
+    abort_on_partial_slot: Option<u16>,
+    max_leg_delay_bars_slot: Option<u16>,
+    max_leg_price_drift_bps_slot: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ResolvedTransferFieldSlots {
+    from_slot: u16,
+    to_slot: u16,
+    amount_slot: u16,
+    fee_slot: Option<u16>,
+    delay_bars_slot: Option<u16>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1146,6 +1185,7 @@ impl<'a> Analyzer<'a> {
             | ExprKind::PositionField { .. }
             | ExprKind::PositionEventField { .. }
             | ExprKind::LastExitField { .. }
+            | ExprKind::LedgerField { .. }
             | ExprKind::Index { .. } => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Type,
@@ -1186,7 +1226,10 @@ impl<'a> Analyzer<'a> {
     fn validate_function_expr(&mut self, expr: &Expr, params: &HashSet<&str>) {
         match &expr.kind {
             ExprKind::Ident(name) => {
-                if !params.contains(name.as_str()) && !self.is_function_visible_name(name) {
+                if !params.contains(name.as_str())
+                    && !self.is_function_visible_name(name)
+                    && self.declared_execution_target(name).is_none()
+                {
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
                         format!(
@@ -1205,6 +1248,7 @@ impl<'a> Analyzer<'a> {
             }
             ExprKind::PositionEventField { .. }
             | ExprKind::LastExitField { .. }
+            | ExprKind::LedgerField { .. }
             | ExprKind::SourceSeries { .. }
             | ExprKind::EnumVariant { .. } => {}
             ExprKind::Unary { expr, .. } => self.validate_function_expr(expr, params),
@@ -1451,11 +1495,20 @@ impl<'a> Analyzer<'a> {
             StmtKind::Signal { role, expr } => {
                 self.analyze_signal_stmt(stmt, *role, expr);
             }
+            StmtKind::ArbSignal { kind, expr } => {
+                self.analyze_arb_signal_stmt(stmt, *kind, expr);
+            }
             StmtKind::OrderTemplate { spec, .. } => {
                 self.analyze_order_template_stmt(stmt, spec);
             }
             StmtKind::Order { role, spec } => {
                 self.analyze_order_stmt(stmt, *role, spec);
+            }
+            StmtKind::ArbOrder { kind, spec } => {
+                self.analyze_arb_order_stmt(stmt, *kind, spec);
+            }
+            StmtKind::Transfer { asset_kind, spec } => {
+                self.analyze_transfer_stmt(stmt, *asset_kind, spec);
             }
             StmtKind::OrderSize { target, expr } => {
                 self.analyze_order_size_stmt(stmt, target, expr);
@@ -1506,6 +1559,27 @@ impl<'a> Analyzer<'a> {
             OutputKind::Trigger,
             Some(compiled_role),
         );
+    }
+
+    fn analyze_arb_signal_stmt(&mut self, stmt: &Stmt, kind: AstArbSignalKind, expr: &Expr) {
+        let expr_info = self.analyze_expr(expr);
+        if !expr_info.ty.allow_bool() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "arb signals require bool, series<bool>, or na",
+                expr.span,
+            ));
+            return;
+        }
+
+        let slot = self.allocate_hidden_series_slot(Type::Bool, expr_info.update_mask, 2);
+        self.analysis
+            .resolved_arb_signal_slots
+            .insert(stmt.id, slot);
+        self.analysis.arb_signals.push(ArbSignalDecl {
+            kind: compiled_arb_signal_kind(kind),
+            slot,
+        });
     }
 
     fn analyze_regime_stmt(&mut self, stmt: &Stmt, name: &str, expr: &Expr) {
@@ -1861,6 +1935,171 @@ impl<'a> Analyzer<'a> {
         self.analysis.orders.push(order);
     }
 
+    fn analyze_arb_order_stmt(&mut self, stmt: &Stmt, kind: AstArbSignalKind, spec: &ArbOrderSpec) {
+        let compiled_kind = compiled_arb_signal_kind(kind);
+        if self
+            .analysis
+            .arb_orders
+            .iter()
+            .any(|decl| decl.kind == compiled_kind)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                match kind {
+                    AstArbSignalKind::Entry => {
+                        "duplicate arbitrage order declaration for `arb_order entry`"
+                    }
+                    AstArbSignalKind::Exit => {
+                        "duplicate arbitrage order declaration for `arb_order exit`"
+                    }
+                },
+                stmt.span,
+            ));
+            return;
+        }
+
+        let ArbOrderSpecKind::Pair {
+            constructor,
+            buy_venue,
+            sell_venue,
+            size,
+            buy_price,
+            sell_price,
+            tif,
+            post_only,
+            abort_on_partial,
+            max_leg_delay_bars,
+            max_leg_price_drift_bps,
+        } = &spec.kind;
+
+        let Some(buy_venue_slot) = self.analyze_arb_alias_field(buy_venue, "buy_venue") else {
+            return;
+        };
+        let Some(sell_venue_slot) = self.analyze_arb_alias_field(sell_venue, "sell_venue") else {
+            return;
+        };
+        let Some(size_slot) = self.analyze_arb_numeric_field(size, "size") else {
+            return;
+        };
+
+        let buy_price_slot = buy_price
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_numeric_field(expr, "buy_price"));
+        let sell_price_slot = sell_price
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_numeric_field(expr, "sell_price"));
+        let tif_slot = tif
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_generic_field(expr, "tif"));
+        let post_only_slot = post_only
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_bool_field(expr, "post_only"));
+        let abort_on_partial_slot = abort_on_partial
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_bool_field(expr, "abort_on_partial"));
+        let max_leg_delay_bars_slot = max_leg_delay_bars
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_numeric_field(expr, "max_leg_delay_bars"));
+        let max_leg_price_drift_bps_slot = max_leg_price_drift_bps
+            .as_ref()
+            .and_then(|expr| self.analyze_arb_numeric_field(expr, "max_leg_price_drift_bps"));
+
+        self.analysis
+            .resolved_arb_order_specs
+            .insert(stmt.id, spec.clone());
+        self.analysis.resolved_arb_order_field_slots.insert(
+            stmt.id,
+            ResolvedArbOrderFieldSlots {
+                buy_venue_slot,
+                sell_venue_slot,
+                size_slot,
+                buy_price_slot,
+                sell_price_slot,
+                tif_slot,
+                post_only_slot,
+                abort_on_partial_slot,
+                max_leg_delay_bars_slot,
+                max_leg_price_drift_bps_slot,
+            },
+        );
+        self.analysis.arb_orders.push(ArbOrderDecl {
+            kind: compiled_kind,
+            constructor: compiled_arb_pair_constructor(*constructor),
+            buy_venue_slot,
+            sell_venue_slot,
+            size_slot,
+            buy_price_slot,
+            sell_price_slot,
+            tif_slot,
+            post_only_slot,
+            abort_on_partial_slot,
+            max_leg_delay_bars_slot,
+            max_leg_price_drift_bps_slot,
+        });
+    }
+
+    fn analyze_transfer_stmt(
+        &mut self,
+        stmt: &Stmt,
+        asset_kind: AstTransferAssetKind,
+        spec: &TransferSpec,
+    ) {
+        let compiled_asset_kind = compiled_transfer_asset_kind(asset_kind);
+        if self
+            .analysis
+            .transfers
+            .iter()
+            .any(|decl| decl.asset_kind == compiled_asset_kind)
+        {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!(
+                    "duplicate transfer declaration for `transfer {}`",
+                    transfer_asset_name(asset_kind)
+                ),
+                stmt.span,
+            ));
+            return;
+        }
+
+        let Some(from_slot) = self.analyze_transfer_alias_field(&spec.from, "from") else {
+            return;
+        };
+        let Some(to_slot) = self.analyze_transfer_alias_field(&spec.to, "to") else {
+            return;
+        };
+        let Some(amount_slot) = self.analyze_transfer_numeric_field(&spec.amount, "amount") else {
+            return;
+        };
+        let fee_slot = spec
+            .fee
+            .as_ref()
+            .and_then(|expr| self.analyze_transfer_numeric_field(expr, "fee"));
+        let delay_bars_slot = spec
+            .delay_bars
+            .as_ref()
+            .and_then(|expr| self.analyze_transfer_numeric_field(expr, "delay_bars"));
+
+        self.analysis.resolved_transfer_field_slots.insert(
+            stmt.id,
+            ResolvedTransferFieldSlots {
+                from_slot,
+                to_slot,
+                amount_slot,
+                fee_slot,
+                delay_bars_slot,
+            },
+        );
+        self.analysis.transfers.push(TransferDecl {
+            asset_kind: compiled_asset_kind,
+            from_slot,
+            to_slot,
+            amount_slot,
+            fee_slot,
+            delay_bars_slot,
+        });
+    }
+
     fn analyze_order_template_stmt(&mut self, stmt: &Stmt, spec: &OrderSpec) {
         let Some(spec) = self.resolve_order_template_spec(spec, &mut Vec::new()) else {
             return;
@@ -1870,6 +2109,92 @@ impl<'a> Analyzer<'a> {
             stmt.span,
             "order templates must declare explicit `venue = <execution_alias>` routing",
         );
+    }
+
+    fn analyze_arb_alias_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !matches!(
+            info.ty,
+            InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+        ) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("arbitrage pair field `{name}` requires an execution_alias expression"),
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::ExecutionAlias, info.update_mask, 2))
+    }
+
+    fn analyze_arb_numeric_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !info.ty.is_numeric_like() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("arbitrage pair field `{name}` requires a numeric expression"),
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::F64, info.update_mask, 2))
+    }
+
+    fn analyze_arb_bool_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !info.ty.allow_bool() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("arbitrage pair field `{name}` requires a bool expression"),
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::Bool, info.update_mask, 2))
+    }
+
+    fn analyze_arb_generic_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        match info.ty {
+            InferredType::Concrete(Type::Void) => {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("arbitrage pair field `{name}` cannot be void"),
+                    expr.span,
+                ));
+                None
+            }
+            _ => Some(self.allocate_hidden_series_slot(Type::F64, info.update_mask, 2)),
+        }
+    }
+
+    fn analyze_transfer_alias_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !matches!(
+            info.ty,
+            InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+        ) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("transfer field `{name}` requires an execution_alias expression"),
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::ExecutionAlias, info.update_mask, 2))
+    }
+
+    fn analyze_transfer_numeric_field(&mut self, expr: &Expr, name: &str) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !info.ty.is_numeric_like() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                format!("transfer field `{name}` requires a numeric expression"),
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::F64, info.update_mask, 2))
     }
 
     fn resolve_order_template_spec(
@@ -2529,6 +2854,40 @@ impl<'a> Analyzer<'a> {
         slot
     }
 
+    fn ledger_field_slot(
+        &mut self,
+        execution_id: u16,
+        execution_alias: &str,
+        field: LedgerField,
+    ) -> u16 {
+        if let Some(slot) = self
+            .analysis
+            .ledger_field_slots
+            .get(&(execution_id, field))
+            .copied()
+        {
+            return slot;
+        }
+        let name = format!("__ledger.{}.{}", execution_alias, field.as_str());
+        let slot = self.define_symbol(name, ExprInfo::scalar(ledger_field_type(field)), true, None);
+        self.analysis.ledger_fields.push(LedgerFieldDecl {
+            execution_id,
+            field,
+            slot,
+        });
+        self.analysis
+            .ledger_field_slots
+            .insert((execution_id, field), slot);
+        slot
+    }
+
+    fn declared_execution_target(&self, alias: &str) -> Option<&DeclaredExecutionTarget> {
+        self.analysis
+            .declared_executions
+            .iter()
+            .find(|execution| execution.alias == alias)
+    }
+
     fn analyze_block(&mut self, block: &Block) {
         for stmt in &block.statements {
             self.analyze_stmt(stmt);
@@ -2596,6 +2955,24 @@ impl<'a> Analyzer<'a> {
                 self.last_exit_field_slot(*scope, *field);
                 ExprInfo::scalar(last_exit_field_type(*field))
             }
+            ExprKind::LedgerField {
+                execution_alias,
+                alias_span,
+                field,
+                ..
+            } => {
+                let Some(execution) = self.declared_execution_target(execution_alias).cloned()
+                else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("unknown execution alias `{execution_alias}`"),
+                        *alias_span,
+                    ));
+                    return ExprInfo::scalar(Type::F64);
+                };
+                self.ledger_field_slot(execution.id, &execution.alias, *field);
+                ExprInfo::scalar(Type::F64)
+            }
             ExprKind::Ident(name) => {
                 let Some(symbol) = self.lookup_symbol(name) else {
                     if is_predefined_series_name(name) {
@@ -2607,6 +2984,9 @@ impl<'a> Analyzer<'a> {
                             expr.span,
                         ));
                         return ExprInfo::series(BASE_UPDATE_MASK);
+                    }
+                    if self.declared_execution_target(name).is_some() {
+                        return ExprInfo::scalar(Type::ExecutionAlias);
                     }
                     self.diagnostics.push(Diagnostic::new(
                         DiagnosticKind::Type,
@@ -2918,6 +3298,19 @@ impl<'a> Analyzer<'a> {
         slot
     }
 
+    fn allocate_hidden_series_slot(
+        &mut self,
+        ty: Type,
+        update_mask: u32,
+        history_capacity: usize,
+    ) -> u16 {
+        let slot = self.analysis.locals.len() as u16;
+        let mut local = LocalInfo::series(None, ty, true, update_mask, None);
+        local.history_capacity = history_capacity.max(2);
+        self.analysis.locals.push(local);
+        slot
+    }
+
     fn lookup_symbol(&self, name: &str) -> Option<AnalyzerSymbol> {
         self.scopes
             .iter()
@@ -3034,17 +3427,39 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                 update_mask: BASE_UPDATE_MASK,
             },
             ExprKind::LastExitField { field, .. } => ExprInfo::scalar(last_exit_field_type(*field)),
+            ExprKind::LedgerField {
+                execution_alias,
+                alias_span,
+                ..
+            } => {
+                if self
+                    .parent
+                    .declared_execution_target(execution_alias)
+                    .is_none()
+                {
+                    self.parent.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("unknown execution alias `{execution_alias}`"),
+                        *alias_span,
+                    ));
+                }
+                ExprInfo::scalar(Type::F64)
+            }
             ExprKind::Ident(name) => match self.lookup_symbol(name) {
                 Some(symbol) => symbol.info,
                 None => {
-                    self.parent.diagnostics.push(Diagnostic::new(
-                        DiagnosticKind::Type,
-                        format!(
-                            "function bodies may only reference parameters or declared source series; found `{name}`"
-                        ),
-                        expr.span,
-                    ));
-                    ExprInfo::scalar(Type::F64)
+                    if self.parent.declared_execution_target(name).is_some() {
+                        ExprInfo::scalar(Type::ExecutionAlias)
+                    } else {
+                        self.parent.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!(
+                                "function bodies may only reference parameters or declared source series; found `{name}`"
+                            ),
+                            expr.span,
+                        ));
+                        ExprInfo::scalar(Type::F64)
+                    }
                 }
             },
             ExprKind::SourceSeries { interval, .. } => {
@@ -3305,11 +3720,24 @@ fn collect_source_series_stmt(
         | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
+        | StmtKind::ArbSignal { expr, .. }
         | StmtKind::RiskControl { expr, .. }
         | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => collect_source_series_refs(expr, refs),
         StmtKind::OrderTemplate { spec, .. } => collect_order_spec_series_refs(spec, refs),
         StmtKind::Order { spec, .. } => collect_order_spec_series_refs(spec, refs),
+        StmtKind::ArbOrder { spec, .. } => collect_arb_order_spec_series_refs(spec, refs),
+        StmtKind::Transfer { spec, .. } => {
+            collect_source_series_refs(&spec.from, refs);
+            collect_source_series_refs(&spec.to, refs);
+            collect_source_series_refs(&spec.amount, refs);
+            if let Some(expr) = &spec.fee {
+                collect_source_series_refs(expr, refs);
+            }
+            if let Some(expr) = &spec.delay_bars {
+                collect_source_series_refs(expr, refs);
+            }
+        }
         StmtKind::OrderSize { expr, .. } => collect_source_series_refs(expr, refs),
         StmtKind::PortfolioGroup { .. } | StmtKind::Module { .. } => {}
         StmtKind::If {
@@ -3359,6 +3787,50 @@ fn collect_order_spec_series_refs(
     }
 }
 
+fn collect_arb_order_spec_series_refs(
+    spec: &ArbOrderSpec,
+    refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
+) {
+    let ArbOrderSpecKind::Pair {
+        buy_venue,
+        sell_venue,
+        size,
+        buy_price,
+        sell_price,
+        tif,
+        post_only,
+        abort_on_partial,
+        max_leg_delay_bars,
+        max_leg_price_drift_bps,
+        ..
+    } = &spec.kind;
+
+    collect_source_series_refs(buy_venue, refs);
+    collect_source_series_refs(sell_venue, refs);
+    collect_source_series_refs(size, refs);
+    if let Some(expr) = buy_price {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = sell_price {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = tif {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = post_only {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = abort_on_partial {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = max_leg_delay_bars {
+        collect_source_series_refs(expr, refs);
+    }
+    if let Some(expr) = max_leg_price_drift_bps {
+        collect_source_series_refs(expr, refs);
+    }
+}
+
 fn collect_source_series_refs(
     expr: &Expr,
     refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
@@ -3391,6 +3863,7 @@ fn collect_source_series_refs(
                 collect_source_series_refs(arg, refs);
             }
         }
+        ExprKind::LedgerField { .. } => {}
         ExprKind::Index { target, index } => {
             collect_source_series_refs(target, refs);
             collect_source_series_refs(index, refs);
@@ -3431,11 +3904,26 @@ fn stmt_source_ref_span(stmt: &Stmt, source: &str, target: Option<Interval>) -> 
         | StmtKind::Regime { expr, .. }
         | StmtKind::Trigger { expr, .. }
         | StmtKind::Signal { expr, .. }
+        | StmtKind::ArbSignal { expr, .. }
         | StmtKind::RiskControl { expr, .. }
         | StmtKind::PortfolioControl { expr, .. }
         | StmtKind::Expr(expr) => expr_source_ref_span(expr, source, target),
         StmtKind::OrderTemplate { spec, .. } => order_spec_source_ref_span(spec, source, target),
         StmtKind::Order { spec, .. } => order_spec_source_ref_span(spec, source, target),
+        StmtKind::ArbOrder { spec, .. } => arb_order_spec_source_ref_span(spec, source, target),
+        StmtKind::Transfer { spec, .. } => expr_source_ref_span(&spec.from, source, target)
+            .or_else(|| expr_source_ref_span(&spec.to, source, target))
+            .or_else(|| expr_source_ref_span(&spec.amount, source, target))
+            .or_else(|| {
+                spec.fee
+                    .as_ref()
+                    .and_then(|expr| expr_source_ref_span(expr, source, target))
+            })
+            .or_else(|| {
+                spec.delay_bars
+                    .as_ref()
+                    .and_then(|expr| expr_source_ref_span(expr, source, target))
+            }),
         StmtKind::OrderSize { expr, .. } => expr_source_ref_span(expr, source, target),
         StmtKind::PortfolioGroup { .. } | StmtKind::Module { .. } => None,
         StmtKind::If {
@@ -3488,6 +3976,64 @@ fn order_spec_source_ref_span(
     }
 }
 
+fn arb_order_spec_source_ref_span(
+    spec: &ArbOrderSpec,
+    source: &str,
+    target: Option<Interval>,
+) -> Option<Span> {
+    let ArbOrderSpecKind::Pair {
+        buy_venue,
+        sell_venue,
+        size,
+        buy_price,
+        sell_price,
+        tif,
+        post_only,
+        abort_on_partial,
+        max_leg_delay_bars,
+        max_leg_price_drift_bps,
+        ..
+    } = &spec.kind;
+
+    expr_source_ref_span(buy_venue, source, target)
+        .or_else(|| expr_source_ref_span(sell_venue, source, target))
+        .or_else(|| expr_source_ref_span(size, source, target))
+        .or_else(|| {
+            buy_price
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            sell_price
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            tif.as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            post_only
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            abort_on_partial
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            max_leg_delay_bars
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+        .or_else(|| {
+            max_leg_price_drift_bps
+                .as_ref()
+                .and_then(|expr| expr_source_ref_span(expr, source, target))
+        })
+}
+
 fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> Option<Span> {
     match &expr.kind {
         ExprKind::SourceSeries {
@@ -3508,6 +4054,7 @@ fn expr_source_ref_span(expr: &Expr, source: &str, target: Option<Interval>) -> 
         ExprKind::Call { args, .. } => args
             .iter()
             .find_map(|arg| expr_source_ref_span(arg, source, target)),
+        ExprKind::LedgerField { .. } => None,
         ExprKind::Index {
             target: inner,
             index,
@@ -3565,6 +4112,7 @@ fn collect_called_user_functions<'a>(
                 collect_called_user_functions(arg, functions_by_name, calls);
             }
         }
+        ExprKind::LedgerField { .. } => {}
         ExprKind::Index { target, index } => {
             collect_called_user_functions(target, functions_by_name, calls);
             collect_called_user_functions(index, functions_by_name, calls);
@@ -3764,6 +4312,10 @@ fn infer_conditional(
             InferredType::Concrete(Type::TriggerReference),
             InferredType::Concrete(Type::TriggerReference),
         ) => InferredType::Concrete(Type::TriggerReference),
+        (
+            InferredType::Concrete(Type::ExecutionAlias),
+            InferredType::Concrete(Type::ExecutionAlias),
+        ) => InferredType::Concrete(Type::ExecutionAlias),
         (
             InferredType::Concrete(Type::PositionSide),
             InferredType::Concrete(Type::PositionSide),
@@ -5108,6 +5660,46 @@ fn analyze_helper_builtin(
                 update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
             }
         }
+        BuiltinKind::VenueAliasSelector => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires declared execution-alias arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::ExecutionAlias),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
+        BuiltinKind::VenueSpread => {
+            for (arg, info) in args.iter().zip(arg_info.iter()) {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires execution-alias arguments"),
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::F64),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
         BuiltinKind::Plot | BuiltinKind::MarketSeries => unreachable!(),
     }
 }
@@ -5197,6 +5789,8 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::AnchoredPriceVolume
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
+        BuiltinKind::VenueAliasSelector => ExprInfo::scalar(Type::ExecutionAlias),
+        BuiltinKind::VenueSpread => ExprInfo::scalar(Type::F64),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
     }
 }
@@ -5364,6 +5958,35 @@ fn compiled_signal_role(role: AstSignalRole) -> CompiledSignalRole {
     }
 }
 
+fn compiled_arb_signal_kind(kind: AstArbSignalKind) -> CompiledArbSignalKind {
+    match kind {
+        AstArbSignalKind::Entry => CompiledArbSignalKind::Entry,
+        AstArbSignalKind::Exit => CompiledArbSignalKind::Exit,
+    }
+}
+
+fn compiled_arb_pair_constructor(constructor: AstArbPairConstructor) -> CompiledArbPairConstructor {
+    match constructor {
+        AstArbPairConstructor::MarketPair => CompiledArbPairConstructor::MarketPair,
+        AstArbPairConstructor::LimitPair => CompiledArbPairConstructor::LimitPair,
+        AstArbPairConstructor::MixedPair => CompiledArbPairConstructor::MixedPair,
+    }
+}
+
+fn compiled_transfer_asset_kind(kind: AstTransferAssetKind) -> CompiledTransferAssetKind {
+    match kind {
+        AstTransferAssetKind::Quote => CompiledTransferAssetKind::Quote,
+        AstTransferAssetKind::Base => CompiledTransferAssetKind::Base,
+    }
+}
+
+fn transfer_asset_name(kind: AstTransferAssetKind) -> &'static str {
+    match kind {
+        AstTransferAssetKind::Quote => "quote",
+        AstTransferAssetKind::Base => "base",
+    }
+}
+
 fn legacy_compiled_signal_role(name: &str) -> Option<CompiledSignalRole> {
     match name {
         "long_entry" => Some(CompiledSignalRole::LongEntry),
@@ -5422,6 +6045,25 @@ fn compiled_portfolio_control_kind(kind: AstPortfolioControlKind) -> CompiledPor
             CompiledPortfolioControlKind::MaxNetExposurePct
         }
     }
+}
+
+fn emit_optional_arb_field(
+    compiler: &mut Compiler<'_>,
+    expr: Option<&Expr>,
+    slot: Option<u16>,
+    expr_info: &HashMap<NodeId, ExprInfo>,
+    user_calls: &HashMap<NodeId, FunctionSpecializationKey>,
+    span: Span,
+) {
+    let (Some(expr), Some(slot)) = (expr, slot) else {
+        return;
+    };
+    compiler.emit_expr(expr, expr_info, user_calls);
+    compiler.emit(
+        Instruction::new(OpCode::StoreLocal)
+            .with_a(slot)
+            .with_span(span),
+    );
 }
 
 fn risk_control_name(kind: CompiledRiskControlKind) -> &'static str {
@@ -5497,6 +6139,7 @@ fn eval_immutable_expr(expr: &Expr, values: &HashMap<String, Value>) -> Option<V
         | ExprKind::PositionField { .. }
         | ExprKind::PositionEventField { .. }
         | ExprKind::LastExitField { .. }
+        | ExprKind::LedgerField { .. }
         | ExprKind::Index { .. } => None,
     }
 }
@@ -5611,6 +6254,7 @@ fn eq_values_const(left: &Value, right: &Value) -> Option<bool> {
         (Value::MaType(left), Value::MaType(right)) => Some(left == right),
         (Value::TimeInForce(left), Value::TimeInForce(right)) => Some(left == right),
         (Value::TriggerReference(left), Value::TriggerReference(right)) => Some(left == right),
+        (Value::ExecutionAlias(left), Value::ExecutionAlias(right)) => Some(left == right),
         (Value::PositionSide(left), Value::PositionSide(right)) => Some(left == right),
         (Value::ExitKind(left), Value::ExitKind(right)) => Some(left == right),
         (Value::NA, Value::NA) => Some(true),
@@ -5693,6 +6337,7 @@ fn expected_arity_message(callee: &str, arity: BuiltinArity) -> String {
                 if exact == 1 { "" } else { "s" }
             )
         }
+        BuiltinArity::AtLeast(min) => format!("{callee} expects at least {min} arguments"),
         BuiltinArity::Range { min, max } if max == min + 1 => {
             let left = match min {
                 1 => "one".to_string(),
@@ -5823,6 +6468,7 @@ fn scalar_type_for_value(value: &Value) -> Type {
         Value::MaType(_) => Type::MaType,
         Value::TimeInForce(_) => Type::TimeInForce,
         Value::TriggerReference(_) => Type::TriggerReference,
+        Value::ExecutionAlias(_) => Type::ExecutionAlias,
         Value::PositionSide(_) => Type::PositionSide,
         Value::ExitKind(_) => Type::ExitKind,
         Value::NA => Type::F64,
@@ -5844,6 +6490,10 @@ fn position_field_type(field: PositionField) -> Type {
         | PositionField::Mae
         | PositionField::Mfe => Type::F64,
     }
+}
+
+fn ledger_field_type(_field: LedgerField) -> Type {
+    Type::F64
 }
 
 fn last_exit_field_type(field: LastExitField) -> Type {
@@ -5900,6 +6550,7 @@ fn output_series_type(
             | InferredType::Concrete(Type::MaType)
             | InferredType::Concrete(Type::TimeInForce)
             | InferredType::Concrete(Type::TriggerReference)
+            | InferredType::Concrete(Type::ExecutionAlias)
             | InferredType::Concrete(Type::PositionSide)
             | InferredType::Concrete(Type::ExitKind)
             | InferredType::Tuple2(_)
@@ -5950,6 +6601,13 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn declared_execution_target(&self, alias: &str) -> Option<&DeclaredExecutionTarget> {
+        self.analysis
+            .declared_executions
+            .iter()
+            .find(|execution| execution.alias == alias)
+    }
+
     fn compile(mut self) -> Result<CompiledProgram, CompileError> {
         self.analysis = Analyzer::new(self.ast).analyze(self.ast)?;
         self.program.locals = self.analysis.locals.clone();
@@ -5960,6 +6618,10 @@ impl<'a> Compiler<'a> {
         self.program.position_fields = self.analysis.position_fields.clone();
         self.program.position_event_fields = self.analysis.position_event_fields.clone();
         self.program.last_exit_fields = self.analysis.last_exit_fields.clone();
+        self.program.ledger_fields = self.analysis.ledger_fields.clone();
+        self.program.arb_signals = self.analysis.arb_signals.clone();
+        self.program.arb_orders = self.analysis.arb_orders.clone();
+        self.program.transfers = self.analysis.transfers.clone();
         self.program.orders = self.analysis.orders.clone();
         self.program.risk_controls = self.analysis.risk_controls.clone();
         self.program.portfolio_controls = self.analysis.portfolio_controls.clone();
@@ -6083,6 +6745,26 @@ impl<'a> Compiler<'a> {
                         .with_span(stmt.span),
                 );
             }
+            StmtKind::ArbSignal { expr, .. } => {
+                self.emit_expr(expr, expr_info, user_calls);
+                let Some(slot) = self
+                    .analysis
+                    .resolved_arb_signal_slots
+                    .get(&stmt.id)
+                    .copied()
+                else {
+                    self.push_internal_compile_error(
+                        "missing compiled arbitrage signal slot",
+                        stmt.span,
+                    );
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(slot)
+                        .with_span(stmt.span),
+                );
+            }
             StmtKind::OrderTemplate { .. } => {}
             StmtKind::Order { .. } => {
                 let Some(spec) = self.resolved_order_spec(stmt.id, stmt.span) else {
@@ -6155,6 +6837,157 @@ impl<'a> Compiler<'a> {
                         }
                     }
                 }
+            }
+            StmtKind::ArbOrder { spec, .. } => {
+                let Some(resolved) = self
+                    .analysis
+                    .resolved_arb_order_field_slots
+                    .get(&stmt.id)
+                    .copied()
+                else {
+                    self.push_internal_compile_error(
+                        "missing compiled arbitrage order field slots",
+                        stmt.span,
+                    );
+                    return;
+                };
+                let ArbOrderSpecKind::Pair {
+                    buy_venue,
+                    sell_venue,
+                    size,
+                    buy_price,
+                    sell_price,
+                    tif,
+                    post_only,
+                    abort_on_partial,
+                    max_leg_delay_bars,
+                    max_leg_price_drift_bps,
+                    ..
+                } = &spec.kind;
+
+                self.emit_expr(buy_venue, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.buy_venue_slot)
+                        .with_span(stmt.span),
+                );
+                self.emit_expr(sell_venue, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.sell_venue_slot)
+                        .with_span(stmt.span),
+                );
+                self.emit_expr(size, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.size_slot)
+                        .with_span(stmt.span),
+                );
+
+                emit_optional_arb_field(
+                    self,
+                    buy_price.as_ref(),
+                    resolved.buy_price_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    sell_price.as_ref(),
+                    resolved.sell_price_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    tif.as_ref(),
+                    resolved.tif_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    post_only.as_ref(),
+                    resolved.post_only_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    abort_on_partial.as_ref(),
+                    resolved.abort_on_partial_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    max_leg_delay_bars.as_ref(),
+                    resolved.max_leg_delay_bars_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    max_leg_price_drift_bps.as_ref(),
+                    resolved.max_leg_price_drift_bps_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+            }
+            StmtKind::Transfer { spec, .. } => {
+                let Some(resolved) = self
+                    .analysis
+                    .resolved_transfer_field_slots
+                    .get(&stmt.id)
+                    .copied()
+                else {
+                    self.push_internal_compile_error(
+                        "missing compiled transfer field slots",
+                        stmt.span,
+                    );
+                    return;
+                };
+                self.emit_expr(&spec.from, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.from_slot)
+                        .with_span(stmt.span),
+                );
+                self.emit_expr(&spec.to, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.to_slot)
+                        .with_span(stmt.span),
+                );
+                self.emit_expr(&spec.amount, expr_info, user_calls);
+                self.emit(
+                    Instruction::new(OpCode::StoreLocal)
+                        .with_a(resolved.amount_slot)
+                        .with_span(stmt.span),
+                );
+                emit_optional_arb_field(
+                    self,
+                    spec.fee.as_ref(),
+                    resolved.fee_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
+                emit_optional_arb_field(
+                    self,
+                    spec.delay_bars.as_ref(),
+                    resolved.delay_bars_slot,
+                    expr_info,
+                    user_calls,
+                    stmt.span,
+                );
             }
             StmtKind::OrderSize { expr, .. } => {
                 let Some(resolved) = self.resolved_order_field_slots(stmt.id, stmt.span) else {
@@ -6346,6 +7179,45 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            ExprKind::LedgerField {
+                execution_alias,
+                field,
+                ..
+            } => {
+                let Some(execution_id) = self
+                    .declared_execution_target(execution_alias)
+                    .map(|execution| execution.id)
+                else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!("unknown execution alias `{execution_alias}` during emission"),
+                        expr.span,
+                    ));
+                    return;
+                };
+                let Some(slot) = self
+                    .analysis
+                    .ledger_field_slots
+                    .get(&(execution_id, *field))
+                    .copied()
+                else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        format!(
+                            "missing compiled ledger slot for `ledger({}).{}`",
+                            execution_alias,
+                            field.as_str()
+                        ),
+                        expr.span,
+                    ));
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             ExprKind::String(_) => {
                 self.diagnostics.push(Diagnostic::new(
                     DiagnosticKind::Compile,
@@ -6359,11 +7231,25 @@ impl<'a> Compiler<'a> {
                         .with_a(symbol.slot)
                         .with_span(expr.span),
                 ),
-                None => self.diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Compile,
-                    format!("unknown identifier `{name}` during emission"),
-                    expr.span,
-                )),
+                None => {
+                    if let Some(execution_id) = self
+                        .declared_execution_target(name)
+                        .map(|execution| execution.id)
+                    {
+                        let index = self.push_constant(Value::ExecutionAlias(execution_id));
+                        self.emit(
+                            Instruction::new(OpCode::LoadConst)
+                                .with_a(index)
+                                .with_span(expr.span),
+                        );
+                    } else {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Compile,
+                            format!("unknown identifier `{name}` during emission"),
+                            expr.span,
+                        ));
+                    }
+                }
             },
             ExprKind::SourceSeries {
                 source,
@@ -6635,6 +7521,12 @@ impl<'a> Compiler<'a> {
             | BuiltinId::HtTrendline
             | BuiltinId::HtTrendmode
             | BuiltinId::Mama => {
+                self.emit_runtime_builtin_call(
+                    builtin, expr, args, expr_info, user_calls, callsite,
+                );
+            }
+            BuiltinId::Cheapest | BuiltinId::Richest | BuiltinId::SpreadBps => {
+                self.ensure_execution_price_slots();
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
@@ -7852,6 +8744,18 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
+            BuiltinKind::VenueAliasSelector | BuiltinKind::VenueSpread => {
+                for arg in args {
+                    self.emit_expr(arg, expr_info, user_calls);
+                }
+                self.emit(
+                    Instruction::new(OpCode::CallBuiltin)
+                        .with_a(builtin as u16)
+                        .with_b(args.len() as u16)
+                        .with_c(callsite)
+                        .with_span(expr.span),
+                );
+            }
             _ => unreachable!(),
         }
     }
@@ -8084,12 +8988,83 @@ impl<'a> Compiler<'a> {
         slot
     }
 
+    fn allocate_hidden_market_slot(
+        &mut self,
+        ty: Type,
+        update_mask: u32,
+        history_capacity: usize,
+        market_binding: MarketBinding,
+    ) -> u16 {
+        let slot = self.program.locals.len() as u16;
+        let mut local = LocalInfo::series(None, ty, true, update_mask, Some(market_binding));
+        local.history_capacity = history_capacity.max(2);
+        self.program.locals.push(local);
+        slot
+    }
+
     fn bump_slot_history(&mut self, slot: u16, required_history: usize) {
         if let Some(local) = self.program.locals.get_mut(slot as usize) {
             if matches!(local.kind, SlotKind::Series) {
                 local.history_capacity = local.history_capacity.max(required_history.max(2));
             }
         }
+    }
+
+    fn ensure_execution_price_slots(&mut self) {
+        let execution_ids: Vec<u16> = self
+            .analysis
+            .declared_executions
+            .iter()
+            .map(|execution| execution.id)
+            .collect();
+        for execution_id in execution_ids {
+            self.ensure_execution_price_slot(execution_id);
+        }
+    }
+
+    fn ensure_execution_price_slot(&mut self, execution_id: u16) -> u16 {
+        if let Some(existing) = self
+            .program
+            .execution_price_fields
+            .iter()
+            .find(|decl| decl.execution_id == execution_id)
+            .map(|decl| decl.slot)
+        {
+            return existing;
+        }
+        if let Some(existing) = self
+            .analysis
+            .source_slots
+            .get(&(execution_id, None, MarketField::Close))
+            .copied()
+        {
+            self.program
+                .execution_price_fields
+                .push(ExecutionPriceDecl {
+                    execution_id,
+                    slot: existing,
+                });
+            return existing;
+        }
+        let slot = self.allocate_hidden_market_slot(
+            Type::SeriesF64,
+            BASE_UPDATE_MASK,
+            2,
+            MarketBinding {
+                source: MarketSource::Named {
+                    source_id: execution_id,
+                    interval: None,
+                },
+                field: MarketField::Close,
+            },
+        );
+        self.analysis
+            .source_slots
+            .insert((execution_id, None, MarketField::Close), slot);
+        self.program
+            .execution_price_fields
+            .push(ExecutionPriceDecl { execution_id, slot });
+        slot
     }
 
     fn source_slot(

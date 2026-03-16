@@ -7,6 +7,7 @@ use crate::order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerRefe
 use crate::position::{LastExitField, LastExitScope, PositionEventField, PositionField};
 use crate::span::Span;
 use crate::types::{SlotKind, Type, Value};
+use crate::LedgerField;
 use crate::{DeclaredExecutionTarget, DeclaredMarketSource, MarketBinding, SourceIntervalRef};
 use serde::{Deserialize, Serialize};
 
@@ -297,6 +298,70 @@ pub struct LastExitFieldDecl {
     pub slot: u16,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LedgerFieldDecl {
+    pub execution_id: u16,
+    pub field: LedgerField,
+    pub slot: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbSignalKind {
+    Entry,
+    Exit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbPairConstructor {
+    MarketPair,
+    LimitPair,
+    MixedPair,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransferAssetKind {
+    Quote,
+    Base,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArbSignalDecl {
+    pub kind: ArbSignalKind,
+    pub slot: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArbOrderDecl {
+    pub kind: ArbSignalKind,
+    pub constructor: ArbPairConstructor,
+    pub buy_venue_slot: u16,
+    pub sell_venue_slot: u16,
+    pub size_slot: u16,
+    pub buy_price_slot: Option<u16>,
+    pub sell_price_slot: Option<u16>,
+    pub tif_slot: Option<u16>,
+    pub post_only_slot: Option<u16>,
+    pub abort_on_partial_slot: Option<u16>,
+    pub max_leg_delay_bars_slot: Option<u16>,
+    pub max_leg_price_drift_bps_slot: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransferDecl {
+    pub asset_kind: TransferAssetKind,
+    pub from_slot: u16,
+    pub to_slot: u16,
+    pub amount_slot: u16,
+    pub fee_slot: Option<u16>,
+    pub delay_bars_slot: Option<u16>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPriceDecl {
+    pub execution_id: u16,
+    pub slot: u16,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InputDecl {
     pub name: String,
@@ -400,6 +465,11 @@ pub struct Program {
     pub position_fields: Vec<PositionFieldDecl>,
     pub position_event_fields: Vec<PositionEventFieldDecl>,
     pub last_exit_fields: Vec<LastExitFieldDecl>,
+    pub ledger_fields: Vec<LedgerFieldDecl>,
+    pub arb_signals: Vec<ArbSignalDecl>,
+    pub arb_orders: Vec<ArbOrderDecl>,
+    pub transfers: Vec<TransferDecl>,
+    pub execution_price_fields: Vec<ExecutionPriceDecl>,
     pub orders: Vec<OrderDecl>,
     pub risk_controls: Vec<RiskControlDecl>,
     pub portfolio_controls: Vec<PortfolioControlDecl>,

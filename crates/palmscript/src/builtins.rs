@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub enum BuiltinArity {
     NonCallable,
     Exact(usize),
+    AtLeast(usize),
     Range { min: usize, max: usize },
 }
 
@@ -18,6 +19,7 @@ impl BuiltinArity {
         match self {
             Self::NonCallable => false,
             Self::Exact(expected) => found == expected,
+            Self::AtLeast(min) => found >= min,
             Self::Range { min, max } => found >= min && found <= max,
         }
     }
@@ -82,6 +84,8 @@ pub enum BuiltinKind {
     ParabolicSarExt,
     RollingHighLowCloseBands,
     AdaptiveCycleTuple,
+    VenueAliasSelector,
+    VenueSpread,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -228,10 +232,13 @@ pub enum BuiltinId {
     Percentile = 138,
     Zscore = 139,
     UlcerIndex = 140,
+    Cheapest = 141,
+    Richest = 142,
+    SpreadBps = 143,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 141] = [
+    pub const RESERVED: [Self; 144] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -373,9 +380,12 @@ impl BuiltinId {
         Self::Percentile,
         Self::Zscore,
         Self::UlcerIndex,
+        Self::Cheapest,
+        Self::Richest,
+        Self::SpreadBps,
     ];
 
-    pub const CALLABLE: [Self; 128] = [
+    pub const CALLABLE: [Self; 131] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -504,6 +514,9 @@ impl BuiltinId {
         Self::Percentile,
         Self::Zscore,
         Self::UlcerIndex,
+        Self::Cheapest,
+        Self::Richest,
+        Self::SpreadBps,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -649,6 +662,9 @@ impl BuiltinId {
             "percentile" => Some(Self::Percentile),
             "zscore" => Some(Self::Zscore),
             "ulcer_index" => Some(Self::UlcerIndex),
+            "cheapest" => Some(Self::Cheapest),
+            "richest" => Some(Self::Richest),
+            "spread_bps" => Some(Self::SpreadBps),
             _ => None,
         }
     }
@@ -796,6 +812,9 @@ impl BuiltinId {
             138 => Some(Self::Percentile),
             139 => Some(Self::Zscore),
             140 => Some(Self::UlcerIndex),
+            141 => Some(Self::Cheapest),
+            142 => Some(Self::Richest),
+            143 => Some(Self::SpreadBps),
             _ => None,
         }
     }
@@ -943,6 +962,9 @@ impl BuiltinId {
             Self::Percentile => "percentile",
             Self::Zscore => "zscore",
             Self::UlcerIndex => "ulcer_index",
+            Self::Cheapest => "cheapest",
+            Self::Richest => "richest",
+            Self::SpreadBps => "spread_bps",
         }
     }
 
@@ -1055,6 +1077,8 @@ impl BuiltinId {
             }
             Self::HtPhasor | Self::HtSine => BuiltinKind::RollingSingleInputTuple,
             Self::Mama => BuiltinKind::AdaptiveCycleTuple,
+            Self::Cheapest | Self::Richest => BuiltinKind::VenueAliasSelector,
+            Self::SpreadBps => BuiltinKind::VenueSpread,
         }
     }
 
@@ -1196,6 +1220,8 @@ impl BuiltinId {
             | Self::HtTrendmode => BuiltinArity::Exact(1),
             Self::Mama => BuiltinArity::Range { min: 1, max: 3 },
             Self::Supertrend => BuiltinArity::Range { min: 3, max: 5 },
+            Self::Cheapest | Self::Richest => BuiltinArity::AtLeast(2),
+            Self::SpreadBps => BuiltinArity::Exact(2),
         }
     }
 
@@ -1287,6 +1313,9 @@ impl BuiltinId {
             Self::Percentile => "percentile(series[, length=20[, percentage=50.0]])",
             Self::Zscore => "zscore(series[, length=20])",
             Self::UlcerIndex => "ulcer_index(series[, length=14])",
+            Self::Cheapest => "cheapest(exec0, exec1[, execN...])",
+            Self::Richest => "richest(exec0, exec1[, execN...])",
+            Self::SpreadBps => "spread_bps(buy_exec, sell_exec)",
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1494,6 +1523,9 @@ impl BuiltinId {
             Self::Percentile => "Rolling percentile over a trailing window with clamped 0..100 percentage.",
             Self::Zscore => "Rolling z-score of the current value against its trailing window.",
             Self::UlcerIndex => "Ulcer Index drawdown severity over a trailing window.",
+            Self::Cheapest => "Return the declared execution alias with the lowest current close across the provided execution venues.",
+            Self::Richest => "Return the declared execution alias with the highest current close across the provided execution venues.",
+            Self::SpreadBps => "Return the current cross-venue spread in basis points from buy execution close to sell execution close.",
         }
     }
 }

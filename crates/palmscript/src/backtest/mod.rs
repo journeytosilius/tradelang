@@ -293,6 +293,90 @@ pub struct SpotQuoteTransfer {
     pub bar_index: usize,
     pub time: f64,
     pub amount: f64,
+    #[serde(default)]
+    pub fee: f64,
+    #[serde(default)]
+    pub delay_bars: usize,
+    #[serde(default)]
+    pub completed_bar_index: Option<usize>,
+    #[serde(default)]
+    pub completed_time: Option<f64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArbitrageBasketRecord {
+    pub buy_alias: String,
+    pub sell_alias: String,
+    pub entry_bar_index: usize,
+    pub entry_time: f64,
+    pub quantity: f64,
+    pub buy_entry_price: f64,
+    pub sell_entry_price: f64,
+    pub entry_spread_bps: f64,
+    #[serde(default)]
+    pub exit_bar_index: Option<usize>,
+    #[serde(default)]
+    pub exit_time: Option<f64>,
+    #[serde(default)]
+    pub buy_exit_price: Option<f64>,
+    #[serde(default)]
+    pub sell_exit_price: Option<f64>,
+    #[serde(default)]
+    pub exit_spread_bps: Option<f64>,
+    #[serde(default)]
+    pub realized_pnl: Option<f64>,
+    #[serde(default)]
+    pub holding_bars: Option<usize>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArbitragePairDiagnosticSummary {
+    pub buy_alias: String,
+    pub sell_alias: String,
+    pub basket_count: usize,
+    pub completed_basket_count: usize,
+    pub total_realized_pnl: f64,
+    pub average_entry_spread_bps: f64,
+    pub average_exit_spread_bps: f64,
+    pub average_holding_bars: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ArbitrageDiagnosticsSummary {
+    pub basket_count: usize,
+    pub completed_basket_count: usize,
+    pub open_basket_count: usize,
+    pub total_realized_pnl: f64,
+    pub average_entry_spread_bps: f64,
+    pub average_exit_spread_bps: f64,
+    pub average_holding_bars: f64,
+    #[serde(default)]
+    pub by_pair: Vec<ArbitragePairDiagnosticSummary>,
+    #[serde(default)]
+    pub baskets: Vec<ArbitrageBasketRecord>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TransferRouteDiagnosticSummary {
+    pub from_alias: String,
+    pub to_alias: String,
+    pub transfer_count: usize,
+    pub completed_transfer_count: usize,
+    pub total_amount: f64,
+    pub total_fee: f64,
+    pub average_delay_bars: f64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct TransferDiagnosticsSummary {
+    pub quote_transfer_count: usize,
+    pub completed_quote_transfer_count: usize,
+    pub pending_quote_transfer_count: usize,
+    pub total_quote_amount: f64,
+    pub total_quote_fee: f64,
+    pub average_delay_bars: f64,
+    #[serde(default)]
+    pub by_route: Vec<TransferRouteDiagnosticSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -860,6 +944,10 @@ pub struct BacktestDiagnostics {
     #[serde(default)]
     pub spot_quote_transfers: Vec<SpotQuoteTransfer>,
     #[serde(default)]
+    pub transfer_summary: TransferDiagnosticsSummary,
+    #[serde(default)]
+    pub arbitrage: ArbitrageDiagnosticsSummary,
+    #[serde(default)]
     pub starting_ledgers: Vec<ExchangeLedgerSnapshot>,
     #[serde(default)]
     pub ending_ledgers: Vec<ExchangeLedgerSnapshot>,
@@ -972,6 +1060,54 @@ pub enum BacktestError {
         "spot virtual rebalance does not support short spot roles; alias=`{alias}` role={role:?}"
     )]
     SpotVirtualRebalanceShortRoleUnsupported { alias: String, role: SignalRole },
+    #[error(
+        "arbitrage declarations require portfolio mode with at least two selected execution aliases"
+    )]
+    ArbitrageRequiresPortfolioMode,
+    #[error(
+        "arbitrage scripts may not mix `arb_*` declarations with standard `entry`/`exit` orders in the same strategy"
+    )]
+    ArbitrageStandardSurfaceMixUnsupported,
+    #[error(
+        "arbitrage scripts require `arb_entry`, `arb_exit`, `arb_order entry`, and `arb_order exit`"
+    )]
+    IncompleteArbitrageSurface,
+    #[error("arbitrage basket execution currently supports spot execution aliases only, but `{alias}` is `{template:?}`")]
+    ArbitrageRequiresSpotAliases {
+        alias: String,
+        template: SourceTemplate,
+    },
+    #[error("arbitrage basket execution currently supports `market_pair(...)` only")]
+    UnsupportedArbitragePairConstructor,
+    #[error("arbitrage basket size must be finite and > 0, found {value}")]
+    InvalidArbitrageSize { value: f64 },
+    #[error("arbitrage basket buy and sell venues must differ")]
+    ArbitrageSameVenue,
+    #[error("arbitrage basket exit venues must close the active basket on the opposite legs")]
+    ArbitrageExitVenueMismatch,
+    #[error("arbitrage basket exit size must match the active basket size; expected {expected}, found {actual}")]
+    ArbitrageExitSizeMismatch { expected: f64, actual: f64 },
+    #[error("arbitrage basket references undeclared execution source `{alias}`")]
+    ArbitrageUnknownExecutionSource { alias: String },
+    #[error("spot virtual rebalance cannot be combined with `arb_*` basket execution")]
+    ArbitrageSpotVirtualRebalanceUnsupported,
+    #[error(
+        "transfer declarations require portfolio mode with at least two selected execution aliases"
+    )]
+    TransferRequiresPortfolioMode,
+    #[error("transfer runtime currently supports quote transfers only")]
+    UnsupportedTransferAsset,
+    #[error("quote transfer runtime currently supports spot execution aliases only, but `{alias}` is `{template:?}`")]
+    TransferRequiresSpotAliases {
+        alias: String,
+        template: SourceTemplate,
+    },
+    #[error("transfer amount must be finite and >= 0, found {value}")]
+    InvalidTransferAmount { value: f64 },
+    #[error("transfer fee must be finite and >= 0, found {value}")]
+    InvalidTransferFee { value: f64 },
+    #[error("transfer delay_bars must be finite and >= 0, found {value}")]
+    InvalidTransferDelayBars { value: f64 },
     #[error("walk-forward train_bars must be > 0, found {value}")]
     InvalidWalkForwardTrainBars { value: usize },
     #[error("walk-forward test_bars must be > 0, found {value}")]
@@ -1104,6 +1240,7 @@ fn run_portfolio_backtest_with_sources(
             execution_bars(&runtime, execution.source_id, alias).map(|bars| {
                 (
                     alias.clone(),
+                    execution.execution_id,
                     execution.source_id,
                     execution.template,
                     execution.symbol.clone(),

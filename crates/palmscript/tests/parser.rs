@@ -185,6 +185,118 @@ plot(spot.close)",
 }
 
 #[test]
+fn parses_ledger_execution_namespace_fields() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution exec = binance.spot(\"BTCUSDT\")
+export quote_free = ledger(exec).quote_free
+export mark_value = ledger(exec).mark_value_quote
+plot(spot.close)",
+    )
+    .expect("ledger namespace fields should compile");
+}
+
+#[test]
+fn parses_execution_alias_venue_selection_builtins() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+export best_is_bn = cheapest(bn, gt) == bn
+export worst_is_gt = richest(bn, gt) == gt
+export spread = spread_bps(bn, gt)
+plot(spot.close)",
+    )
+    .expect("venue-selection builtins should compile");
+}
+
+#[test]
+fn parses_arb_signals_and_market_pair_orders() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+let cheap = cheapest(bn, gt)
+let rich = richest(bn, gt)
+arb_entry = spread_bps(cheap, rich) > 5
+arb_exit = spread_bps(cheap, rich) < 1
+arb_order entry = market_pair(
+    buy_venue = cheap,
+    sell_venue = rich,
+    size = 0.25,
+    abort_on_partial = true,
+    max_leg_delay_bars = 1
+)
+arb_order exit = market_pair(
+    buy_venue = rich,
+    sell_venue = cheap,
+    size = 0.25
+)
+plot(spot.close)",
+    )
+    .expect("arb syntax should compile");
+}
+
+#[test]
+fn parses_quote_transfer_declarations() {
+    compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+transfer quote = quote_transfer(
+    from = gt,
+    to = bn,
+    amount = 100,
+    fee = 1,
+    delay_bars = 2
+)
+plot(spot.close)",
+    )
+    .expect("quote transfer declarations should compile");
+}
+
+#[test]
+fn rejects_positional_arb_pair_constructor_arguments() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+arb_entry = true
+arb_order entry = market_pair(bn, gt, 0.25)
+plot(spot.close)",
+    );
+    assert!(message.contains("arbitrage pair constructors must use named arguments"));
+}
+
+#[test]
+fn rejects_non_execution_alias_venue_selection_arguments() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+plot(cheapest(spot.close, bn))",
+    );
+    assert!(message.contains("cheapest requires declared execution-alias arguments"));
+}
+
+#[test]
+fn rejects_unknown_ledger_execution_alias() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution exec = binance.spot(\"BTCUSDT\")
+plot(ledger(other).quote_free)",
+    );
+    assert!(message.contains("unknown execution alias `other`"));
+}
+
+#[test]
 fn rejects_module_declarations_without_matching_signal() {
     let message = compile_err(
         "interval 1m

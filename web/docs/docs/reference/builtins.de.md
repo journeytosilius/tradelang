@@ -30,6 +30,7 @@ PalmScript exponiert derzeit diese Builtin-Kategorien:
   und [Mathematik, Preis und Statistik](indicators-math-price-statistics.md)
 - relationale Helper: `above`, `below`, `between`, `outside`
 - Kreuzungs-Helper: `cross`, `crossover`, `crossunder`
+- Venue-Selection-Helper: `cheapest`, `richest`, `spread_bps`
 - Null-Helper: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - Serien- und Fenster-Helper: `change`, `highest`, `lowest`, `highestbars`,
@@ -42,6 +43,44 @@ PalmScript exponiert derzeit diese Builtin-Kategorien:
 Marktfelder werden ueber quellqualifizierte Serien wie `spot.open`,
 `spot.close` oder `bb.1h.volume` ausgewaehlt. Nur Identifikatoren sind
 aufrufbar, daher wird `spot.close()` abgelehnt.
+
+## Venue-Selection-Helper
+
+### `cheapest(exec_a, exec_b, ...)` und `richest(exec_a, exec_b, ...)`
+
+Regeln:
+
+- sie benoetigen mindestens zwei deklarierte `execution`-Aliasse
+- jedes Argument muss ein `execution_alias` oder `na` sein
+- sie vergleichen den aktuellen Execution-Close jedes Alias auf der aktiven Bar
+- `cheapest(...)` liefert den Alias mit dem niedrigsten aktuellen Close
+- `richest(...)` liefert den Alias mit dem hoechsten aktuellen Close
+- wenn ein referenzierter Alias auf der aktiven Bar keinen aktuellen Execution-Close hat, ist das Ergebnis `na`
+- der Ergebnistyp ist `execution_alias`
+
+Die Selektor-Ergebnisse sind fuer weitere Execution-Alias-Logik wie
+Gleichheitsvergleiche oder Spread-Helper gedacht. Sie werden nicht direkt
+exportiert.
+
+### `spread_bps(buy_exec, sell_exec)`
+
+Regeln:
+
+- benoetigt genau zwei deklarierte `execution`-Aliasse
+- beide Argumente muessen `execution_alias` oder `na` sein
+- wird als `((sell_close - buy_close) / buy_close) * 10000` ausgewertet
+- wenn einer der referenzierten Aliasse auf der aktiven Bar keinen aktuellen Execution-Close hat, ist das Ergebnis `na`
+- der Ergebnistyp ist `float` oder `series<float>` gemaess dem aktiven Aktualisierungstakt
+
+Beispiel:
+
+```palmscript
+execution bn = binance.spot("BTCUSDT")
+execution gt = gate.spot("BTC_USDT")
+
+export buy_gate = cheapest(bn, gt) == gt
+export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+```
 
 ## Tupelwertige Builtins
 

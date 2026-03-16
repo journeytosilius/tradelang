@@ -42,6 +42,7 @@ stmt                   ::= let_stmt
                          | attached_exit_stmt
                          | order_template_stmt
                          | order_stmt
+                         | transfer_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -63,6 +64,7 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
+transfer_stmt          ::= "transfer" ("quote" | "base") "=" transfer_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= ident
                          | "market" "(" ")"
@@ -71,6 +73,8 @@ order_spec             ::= ident
                          | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
                          | "take_profit_market" "(" expr "," expr ")"
                          | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+transfer_spec          ::= "quote_transfer" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "base_transfer" "(" named_order_arg ("," named_order_arg)* ")"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -175,6 +179,7 @@ ademas exige:
 - `position_event.*` es un namespace `series<bool>` impulsado por backtests
 - `last_exit.*`, `last_long_exit.*` y `last_short_exit.*` son namespaces del
   ultimo trade cerrado impulsados por backtests
+- `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` es un namespace de ledger de ejecucion impulsado por backtests
 - `entry1..3 long|short`, `target1..3 long|short` y
   `protect_after_target1..3 long|short` son declaraciones escalonadas validas
   en v1
@@ -202,6 +207,12 @@ ademas exige:
   describen en las otras paginas de `Reference`
 
 ## Nota Sobre `input ... optimize(...)`
+
+## Arbitrage Basket Runtime
+
+- los backtests de portfolio ahora ejecutan `market_pair(...)` cuando se seleccionan al menos dos aliases `execution` spot
+- en la v1, `size = ...` significa cantidad del activo base
+- `limit_pair(...)` y `mixed_pair(...)` siguen compilando pero fallan en runtime hasta que exista el soporte de pair orders resting
 
 La superficie del parser ahora acepta un sufijo opcional `optimize(...)` en declaraciones `input`. Ese sufijo puede describir un rango entero, un rango float o una lista `choice`, pero sigue sujeto a validacion semantica adicional.
 

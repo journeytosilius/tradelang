@@ -720,10 +720,6 @@ pub(crate) fn open_position(
     sizing: EntrySizingSpec,
     cash: &mut f64,
 ) -> Result<(PositionState, OpenTrade, Fill, SizingResolution), OrderEndReason> {
-    let action = match side {
-        PositionSide::Long => FillAction::Buy,
-        PositionSide::Short => FillAction::Sell,
-    };
     let sizing = resolve_entry_sizing(
         *cash,
         sizing,
@@ -732,7 +728,25 @@ pub(crate) fn open_position(
         context.execution.execution_price,
         context.fee_rate,
     )?;
-    let quantity = sizing.quantity;
+    let (position, trade, fill) =
+        open_position_with_quantity(context, side, entry_context, sizing.quantity, cash)?;
+    Ok((position, trade, fill, sizing))
+}
+
+pub(crate) fn open_position_with_quantity(
+    context: PositionFillContext<'_>,
+    side: PositionSide,
+    entry_context: TradeEntryContext,
+    quantity: f64,
+    cash: &mut f64,
+) -> Result<(PositionState, OpenTrade, Fill), OrderEndReason> {
+    let action = match side {
+        PositionSide::Long => FillAction::Buy,
+        PositionSide::Short => FillAction::Sell,
+    };
+    if !quantity.is_finite() || quantity <= EPSILON {
+        return Err(OrderEndReason::InvalidSizeFraction);
+    }
     let notional = quantity * context.execution.execution_price;
     let fee = notional * context.fee_rate;
     let isolated_margin = match context.accounting {
@@ -787,7 +801,7 @@ pub(crate) fn open_position(
         mfe_price_delta: 0.0,
         remaining_entry_fee: fill.fee,
     };
-    Ok((position, trade, fill, sizing))
+    Ok((position, trade, fill))
 }
 
 pub(crate) fn add_to_position(

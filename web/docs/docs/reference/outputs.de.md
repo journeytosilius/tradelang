@@ -192,6 +192,15 @@ Regeln:
 
 ## Angehaengte Exits
 
+## Arbitrage-Oberflaeche
+
+- Portfolio-Backtests fuehren jetzt `arb_entry` / `arb_exit` mit `arb_order ... = market_pair(...)` aus, wenn mindestens zwei Spot-`execution`-Aliase ausgewaehlt sind
+- in v1 bedeutet `size = ...` die Basis-Asset-Menge und jeder gefuellte Basket erscheint als zwei Long/Short-Leg-Fills bzw. Trades
+- `limit_pair(...)` und `mixed_pair(...)` kompilieren weiter, werden zur Laufzeit aber abgelehnt, bis Resting-Pair-Orders unterstuetzt sind
+- Portfolio-Backtests fuehren jetzt auch `transfer quote = quote_transfer(...)` aus; die Quelle wird am naechsten Bar-Open belastet und das Ziel nach `delay_bars` gutgeschrieben
+- Backtest-Diagnosen exponieren jetzt auch typisierte `arbitrage`- und `transfer_summary`-Abschnitte; Walk-Forward-Stitching und Optimize-Direct-Validation verwenden dieselben Summary-Formen
+- `transfer base = base_transfer(...)` bleibt in v1 reserviert, wird zur Laufzeit aber weiter abgelehnt
+
 PalmScript stellt ausserdem erstklassige angehaengte Exits bereit, sodass das
 diskretionaere `exit`-Signal frei bleibt:
 
@@ -264,6 +273,9 @@ Regeln:
   sowie entsprechende Felder fuer die Short-Seite
 - `last_exit.*`, `last_long_exit.*` und `last_short_exit.*` exponieren den
   juengsten Closed-Trade-Snapshot global oder pro Seite
+- `ledger(exec).base_free`, `quote_free`, `base_total`, `quote_total` und
+  `mark_value_quote` exponieren den aktuellen Backtest-Ledger-Status fuer einen
+  deklarierten `execution`-Alias
 - `last_*_exit.kind` wird mit typisierten Enum-Literalen wie
   `exit_kind.target` und `exit_kind.liquidation` verglichen
 - `last_*_exit.stage` exponiert die gestufte Target-/Protect-Stufennummer, wenn
@@ -272,6 +284,7 @@ Regeln:
   jedem Schritt zu `false`
 - ausserhalb von Backtests ist `last_*_exit.*` definiert, evaluiert aber zu
   `na`
+- ausserhalb von Backtests ist `ledger(...)` definiert, evaluiert aber zu `na`
 
 ## Reserved Trading Trigger Names
 

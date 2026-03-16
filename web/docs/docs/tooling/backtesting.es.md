@@ -104,6 +104,12 @@ palmscript run backtest portfolio_caps_backtest.ps \
 
 Portfolio mode now seeds one explicit ledger per selected execution alias from `initial_capital`. Spot aliases keep quote/base balances per venue, while USD-M aliases keep quote-collateral balances plus isolated-margin positions. Without `--spot-virtual-rebalance`, multi-venue spot entries can only spend the local quote balance already sitting on that alias. Pass `--spot-virtual-rebalance` when every selected execution alias is spot and you want PalmScript to transfer quote between those spot venue ledgers automatically before long entries. That virtual-rebalance mode is spot-only and long/flat-only in v1. Entry-cap declarations such as `max_positions` and `max_gross_exposure_pct` only block new entries; they do not shrink orders or force exits after the portfolio is already open.
 
+El portfolio mode tambien impulsa el runtime v1 de baskets de arbitraje. Cuando un script declara `arb_entry`, `arb_exit` y `arb_order entry|exit = market_pair(...)`, PalmScript ejecuta una pierna de compra y una de venta sobre los aliases spot seleccionados en la siguiente apertura de barra. En la v1, el primer alias de portfolio seleccionado actua como runtime controlador, `size = ...` se interpreta como cantidad del activo base, y `limit_pair(...)` / `mixed_pair(...)` aun fallan en runtime.
+
+Ese mismo runtime controlador ahora tambien evalua `transfer quote = quote_transfer(...)`. En la v1, el quote de origen se debita en la siguiente apertura de barra y el destino se acredita despues de `delay_bars`. `transfer base = base_transfer(...)` sigue reservado, pero aun se rechaza en runtime.
+
+Los payloads de resultados orientados a backtest ahora tambien resumen esa mecanica de portfolio de forma explicita. `run backtest` expone secciones tipadas `arbitrage` y `transfer_summary`, `run walk-forward` arrastra esos mismos datos en stitched y holdout, y `run optimize --direct-validate-top` devuelve los mismos resúmenes para cada replay directo superviviente.
+
 Backtest results depend on the script, venue, time window, fees, and slippage.
 Treat any performance report as strategy-specific rather than a property of the
 backtester itself.
@@ -697,6 +703,13 @@ Latest closed-trade state:
 - available fields are `kind`, `side`, `price`, `time`, `bar_index`, `realized_pnl`, `realized_return`, and `bars_held`
 - `last_*_exit.kind` compares against `exit_kind.protect`, `exit_kind.target`, `exit_kind.signal`, `exit_kind.reversal`, and `exit_kind.liquidation`
 - outside backtests, `last_*_exit.*` evaluates to `na`
+
+Execution ledgers:
+
+- `ledger(exec).base_free`, `quote_free`, `base_total`, `quote_total`, and `mark_value_quote` expose the current backtest ledger snapshot for a declared execution alias
+- spot aliases report venue base/quote balances, while USD-M aliases expose quote-collateral totals and return `na` for base fields
+- in portfolio mode you can read any selected execution alias ledger from the same script, which makes cross-venue inventory logic deterministic during backtests
+- outside backtests, `ledger(...)` evaluates to `na`
 
 Reserved trading trigger names:
 

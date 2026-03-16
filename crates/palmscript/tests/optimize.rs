@@ -217,6 +217,7 @@ fn optimize_can_direct_validate_top_feasible_survivors() {
     let OptimizeEvaluationSummary::Backtest {
         summary,
         capture_summary,
+        ..
     } = &result.best_candidate.summary
     else {
         panic!("expected backtest candidate summary");

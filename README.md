@@ -107,6 +107,38 @@ at signal time, for example
 
 Backtests can also run in portfolio mode when you repeat `--execution-source`. PalmScript now seeds one explicit ledger per selected execution alias from `initial_capital`: spot aliases hold quote/base balances per venue, while USD-M aliases hold quote-collateral balances plus isolated-margin positions. Without `--spot-virtual-rebalance`, multi-venue spot entries can only spend the local venue quote balance on that alias. Pass `--spot-virtual-rebalance` on multi-venue spot backtests, walk-forward runs, walk-forward sweeps, or optimize runs when you want PalmScript to transfer quote between those spot venue ledgers automatically before long entries. That virtual-rebalance mode is long/flat only for spot aliases in v1. Top-level declarations such as `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group "name" = [alias, ...]` block only the new entries that would exceed the configured shared caps.
 
+Strategy logic can now read those backtest ledgers directly with `ledger(<execution_alias>).base_free`, `quote_free`, `base_total`, `quote_total`, and `mark_value_quote`. Outside backtests those `ledger(...)` fields stay defined but evaluate to `na`, which keeps scripts deterministic across `run market` and compiled analysis flows.
+
+Venue-selection builtins can also compare declared execution aliases on the
+current bar: `cheapest(exec_a, exec_b, ...)`, `richest(exec_a, exec_b, ...)`,
+and `spread_bps(buy_exec, sell_exec)`. The selector helpers return
+`execution_alias` values so they can be compared to aliases or fed into other
+helpers, while `spread_bps` returns the current close-to-close spread in basis
+points. If any referenced execution alias has no current price on the active
+bar, the affected helper returns `na`.
+
+PalmScript now also reserves first-class arbitrage declarations:
+`arb_entry = ...`, `arb_exit = ...`, and `arb_order entry|exit = market_pair(...)`
+/ `limit_pair(...)` / `mixed_pair(...)`. Portfolio backtests now execute the
+`market_pair(...)` subset against the existing per-execution spot ledgers when
+at least two spot execution aliases are selected. In v1 the first selected
+portfolio execution alias acts as the controller runtime, `size = ...` is the
+base-asset quantity, and each basket currently surfaces as paired long/short
+leg fills and trades. `limit_pair(...)` and `mixed_pair(...)` still compile but
+reject at runtime until resting paired-order semantics land.
+
+Spot portfolio scripts can also declare first-class quote transfers with
+`transfer quote = quote_transfer(...)`. The controller runtime evaluates that
+declaration each bar, debits the source ledger on the next bar open, and credits
+the destination ledger after `delay_bars`. In v1 only quote transfers execute;
+`transfer base = base_transfer(...)` remains reserved but unsupported.
+
+Those portfolio runs now report typed basket and transfer summaries too.
+Backtests expose top-level `arbitrage` diagnostics with per-pair basket counts,
+spreads, and realized PnL, plus `transfer_summary` diagnostics with route
+counts, fees, and delay statistics. Walk-forward stitched summaries, holdout
+windows, and optimize direct validations carry the same summary shapes.
+
 Fee modeling now requires explicit live-like maker/taker schedules on execution-oriented CLI runs. `--maker-fee-bps` and `--taker-fee-bps` set the default schedule, and `--fee-schedule <alias:maker:taker>` overrides one selected execution alias so portfolio backtests can simulate different exchange fee tiers in the same run.
 
 Backtest-oriented CLI commands now also expose a richer diagnostics surface. `run backtest`, `run walk-forward`, and `run optimize` accept `--diagnostics summary|full-trace`. Summary mode keeps compact machine-readable cohort, drawdown, Sharpe, baseline-comparison, source-alignment, holdout-drift, robustness, overfitting-risk, validation-constraint, and hint data, including fixed 4-hour UTC time-bucket cohort summaries, explicit `starting_ledgers` / `ending_ledgers` / `ledger_events`, and top-level backtests also add bounded date-perturbation reruns. `run backtest` and `run walk-forward` can replay saved optimize survivors directly with `--preset <path> --preset-trial-id <trial_id>`, and `--set name=value` can mutate that saved survivor in-place without editing the preset file. `run walk-forward` and `run optimize` also accept explicit quality gates such as `--min-trades`, `--min-sharpe`, `--max-zero-trade-segments`, `--min-holdout-trades`, `--require-positive-holdout`, `--min-holdout-pass-rate`, `--min-date-perturbation-positive-ratio`, `--min-date-perturbation-outperform-ratio`, and `--max-overfitting-risk`. `run optimize` now chooses winners from the validated feasible survivor set when one exists, supports `--direct-validate-top <N>` to replay top feasible survivors over the full window, and the final JSON/text output reports typed constraint summaries, validated/feasible/infeasible candidate counts, best-infeasible fallback data, constraint-failure breakdowns, direct-validation drift summaries, optimize holdout pass rate, and candidate/direct-validation time-bucket cohort summaries. Full-trace mode adds one typed per-bar decision trace per execution bar so agents can inspect why a signal or order was queued, blocked, expired, or forced out. Saved outputs artifacts can now be queried directly with `palmscript inspect exports`, `palmscript inspect export`, and `palmscript inspect overlap` instead of ad hoc JSON-scraping scripts.

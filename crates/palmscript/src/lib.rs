@@ -17,6 +17,7 @@ pub mod ide;
 pub mod ide_lsp;
 mod indicators;
 pub mod interval;
+pub mod ledger;
 pub mod lexer;
 mod order;
 pub mod output;
@@ -31,7 +32,8 @@ pub mod vm;
 
 pub use backtest::{
     run_backtest_with_sources, run_optimize_with_source, run_optimize_with_source_resume,
-    run_walk_forward_sweep_with_source, run_walk_forward_with_sources, AssetLedgerBalance,
+    run_walk_forward_sweep_with_source, run_walk_forward_with_sources, ArbitrageBasketRecord,
+    ArbitrageDiagnosticsSummary, ArbitragePairDiagnosticSummary, AssetLedgerBalance,
     BacktestCaptureSummary, BacktestConfig, BacktestDiagnosticSummary, BacktestDiagnostics,
     BacktestError, BacktestResult, BacktestSummary, BaselineComparisonSummary,
     BoolExportDiagnosticSummary, CohortDiagnostics, ConstraintFailureBreakdown,
@@ -49,7 +51,8 @@ pub use backtest::{
     OrderStatus, OverfittingRiskLevel, OverfittingRiskReason, OverfittingRiskReasonKind,
     OverfittingRiskSummary, PerpBacktestConfig, PerpBacktestContext, PerpBacktestMetadata,
     PerpMarginMode, PositionSnapshot, SideDiagnosticSummary, TimeBucketUtcDiagnosticSummary, Trade,
-    TradeDiagnostic, TradeExitClassification, ValidationConstraintConfig, ValidationConstraintKind,
+    TradeDiagnostic, TradeExitClassification, TransferDiagnosticsSummary,
+    TransferRouteDiagnosticSummary, ValidationConstraintConfig, ValidationConstraintKind,
     ValidationConstraintSummary, ValidationConstraintViolation, WalkForwardConfig,
     WalkForwardEquityPoint, WalkForwardResult, WalkForwardSegmentDiagnostics,
     WalkForwardSegmentResult, WalkForwardStitchedSummary, WalkForwardSweepCandidateSummary,
@@ -82,6 +85,7 @@ pub use interval::{
     DeclaredExecutionTarget, DeclaredMarketSource, Interval, MarketBinding, MarketField,
     MarketSource, SourceIntervalRef, SourceTemplate, INTERVAL_SPECS,
 };
+pub use ledger::LedgerField;
 pub use order::{OrderFieldKind, OrderKind, SizeMode, TimeInForce, TriggerReference};
 pub use output::{
     Alert, OrderFieldSample, OrderFieldSeries, OutputSample, OutputSeries, OutputValue, Outputs,

@@ -13,13 +13,14 @@ use crate::backtest::diagnostics::aggregate_time_bucket_summaries;
 use crate::backtest::overfitting::build_optimize_overfitting_risk;
 use crate::backtest::{
     bridge, run_backtest_with_sources, run_backtest_with_sources_internal,
-    run_walk_forward_with_sources, BacktestCaptureSummary, BacktestConfig, BacktestError,
-    BacktestSummary, BaselineComparisonSummary, ConstraintFailureBreakdown,
-    DatePerturbationDiagnostics, DiagnosticsDetailMode, ImprovementHint, ImprovementHintKind,
-    OverfittingRiskLevel, OverfittingRiskSummary, TimeBucketUtcDiagnosticSummary,
-    ValidationConstraintConfig, ValidationConstraintKind, ValidationConstraintSummary,
-    ValidationConstraintViolation, WalkForwardConfig, WalkForwardResult,
-    WalkForwardSegmentDiagnostics, WalkForwardStitchedSummary, WalkForwardWindowSummary,
+    run_walk_forward_with_sources, ArbitrageDiagnosticsSummary, BacktestCaptureSummary,
+    BacktestConfig, BacktestError, BacktestSummary, BaselineComparisonSummary,
+    ConstraintFailureBreakdown, DatePerturbationDiagnostics, DiagnosticsDetailMode,
+    ImprovementHint, ImprovementHintKind, OverfittingRiskLevel, OverfittingRiskSummary,
+    TimeBucketUtcDiagnosticSummary, TransferDiagnosticsSummary, ValidationConstraintConfig,
+    ValidationConstraintKind, ValidationConstraintSummary, ValidationConstraintViolation,
+    WalkForwardConfig, WalkForwardResult, WalkForwardSegmentDiagnostics,
+    WalkForwardStitchedSummary, WalkForwardWindowSummary,
 };
 use crate::compiler::compile_with_input_overrides;
 use crate::diagnostic::CompileError;
@@ -238,6 +239,10 @@ pub struct OptimizeDirectValidationResult {
     pub overfitting_risk: OverfittingRiskSummary,
     #[serde(default)]
     pub time_bucket_cohorts: Vec<TimeBucketUtcDiagnosticSummary>,
+    #[serde(default)]
+    pub arbitrage: ArbitrageDiagnosticsSummary,
+    #[serde(default)]
+    pub transfer_summary: TransferDiagnosticsSummary,
     pub drift: DirectValidationDriftSummary,
 }
 
@@ -255,6 +260,10 @@ pub enum OptimizeEvaluationSummary {
     Backtest {
         summary: BacktestSummary,
         capture_summary: BacktestCaptureSummary,
+        #[serde(default)]
+        arbitrage: ArbitrageDiagnosticsSummary,
+        #[serde(default)]
+        transfer_summary: TransferDiagnosticsSummary,
     },
 }
 
@@ -1377,6 +1386,7 @@ fn evaluate_holdout(
     let summary = super::walk_forward::summarize_window(
         &result.equity_curve,
         &result.trades,
+        &result.diagnostics,
         plan.split_index,
         result.equity_curve.len(),
         starting_equity,
@@ -1711,6 +1721,8 @@ fn run_direct_validations(
                 date_perturbation: result.diagnostics.date_perturbation,
                 overfitting_risk: result.diagnostics.overfitting_risk,
                 time_bucket_cohorts: result.diagnostics.cohorts.by_time_bucket_utc,
+                arbitrage: result.diagnostics.arbitrage,
+                transfer_summary: result.diagnostics.transfer_summary,
             })
         })
         .collect()
@@ -1742,6 +1754,7 @@ fn build_direct_validation_drift(
         OptimizeEvaluationSummary::Backtest {
             summary,
             capture_summary,
+            ..
         } => DirectValidationDriftSummary {
             total_return_delta: direct_summary.total_return - summary.total_return,
             execution_asset_return_delta: direct_capture_summary.execution_asset_return
@@ -1934,6 +1947,8 @@ fn evaluate_candidate(
                 OptimizeEvaluationSummary::Backtest {
                     summary: result.summary,
                     capture_summary: result.diagnostics.capture_summary,
+                    arbitrage: result.diagnostics.arbitrage,
+                    transfer_summary: result.diagnostics.transfer_summary,
                 },
                 result.diagnostics.cohorts.by_time_bucket_utc,
             )
@@ -1977,10 +1992,9 @@ fn score_candidate(objective: OptimizeObjective, summary: &OptimizeEvaluationSum
             losing_trade_count: _,
             win_rate: _,
         } => score_walk_forward_candidate(objective, stitched_summary, *zero_trade_segment_count),
-        OptimizeEvaluationSummary::Backtest {
-            summary,
-            capture_summary: _,
-        } => score_backtest_candidate(objective, summary),
+        OptimizeEvaluationSummary::Backtest { summary, .. } => {
+            score_backtest_candidate(objective, summary)
+        }
     }
 }
 
@@ -2388,6 +2402,8 @@ mod tests {
                     peak_open_position_count: 1,
                 },
                 capture_summary: BacktestCaptureSummary::default(),
+                arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
             },
             time_bucket_cohorts: Vec::new(),
             constraints: ValidationConstraintSummary {

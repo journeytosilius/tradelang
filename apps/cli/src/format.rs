@@ -506,15 +506,31 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
         for transfer in &result.diagnostics.spot_quote_transfers {
             let _ = writeln!(
                 out,
-                "from_alias={} to_alias={} bar_index={} time={} amount={:.4}",
+                "from_alias={} to_alias={} bar_index={} time={} amount={:.4} fee={:.4} delay_bars={} completed_bar_index={} completed_time={}",
                 transfer.from_alias,
                 transfer.to_alias,
                 transfer.bar_index,
                 transfer.time,
                 transfer.amount,
+                transfer.fee,
+                transfer.delay_bars,
+                transfer
+                    .completed_bar_index
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                transfer
+                    .completed_time
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
             );
         }
     }
+    render_transfer_summary_text(
+        &mut out,
+        "Transfer Summary",
+        &result.diagnostics.transfer_summary,
+    );
+    render_arbitrage_summary_text(&mut out, "Arbitrage Summary", &result.diagnostics.arbitrage);
     if !result.diagnostics.starting_ledgers.is_empty() {
         out.push_str("Starting Ledgers\n");
         for ledger in &result.diagnostics.starting_ledgers {
@@ -1027,6 +1043,16 @@ pub fn render_walk_forward_text(result: &WalkForwardResult) -> String {
         render_constraint_summary_text(&mut out, "Validation Constraints", &result.constraints);
     }
     render_overfitting_risk_text(&mut out, "Overfitting Risk", &result.overfitting_risk);
+    render_arbitrage_summary_text(
+        &mut out,
+        "Stitched Arbitrage",
+        &result.stitched_summary.arbitrage,
+    );
+    render_transfer_summary_text(
+        &mut out,
+        "Stitched Transfers",
+        &result.stitched_summary.transfer_summary,
+    );
 
     if !result.segments.is_empty() {
         out.push_str("Recent Segments\n");
@@ -1297,6 +1323,12 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
                 validation.drift.trade_count_delta,
                 validation.drift.max_drawdown_delta
             );
+            render_arbitrage_summary_text(&mut out, "direct_arbitrage", &validation.arbitrage);
+            render_transfer_summary_text(
+                &mut out,
+                "direct_transfers",
+                &validation.transfer_summary,
+            );
             render_time_bucket_cohorts_text(
                 &mut out,
                 "direct_time_bucket_cohorts",
@@ -1352,6 +1384,12 @@ pub fn render_optimize_text(result: &OptimizeResult, preset_out: Option<&Path>) 
             out,
             "opportunity_cost_return_pct={:.2}",
             holdout.diagnostics.capture_summary.opportunity_cost_return * 100.0
+        );
+        render_arbitrage_summary_text(&mut out, "holdout_arbitrage", &holdout.summary.arbitrage);
+        render_transfer_summary_text(
+            &mut out,
+            "holdout_transfers",
+            &holdout.summary.transfer_summary,
         );
         if !holdout.constraints.passed || !holdout.constraints.violations.is_empty() {
             render_constraint_summary_text(&mut out, "Holdout Constraints", &holdout.constraints);
@@ -1470,10 +1508,18 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
                 stitched_summary.negative_segment_count
             );
             let _ = writeln!(out, "zero_trade_segment_count={zero_trade_segment_count}");
+            render_arbitrage_summary_text(out, "candidate_arbitrage", &stitched_summary.arbitrage);
+            render_transfer_summary_text(
+                out,
+                "candidate_transfers",
+                &stitched_summary.transfer_summary,
+            );
         }
         OptimizeEvaluationSummary::Backtest {
             summary,
             capture_summary,
+            arbitrage,
+            transfer_summary,
         } => {
             let _ = writeln!(out, "runner_summary=backtest");
             let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
@@ -1485,6 +1531,8 @@ fn render_optimize_candidate_summary(out: &mut String, candidate: &OptimizeCandi
                 "execution_asset_return_pct={:.2}",
                 capture_summary.execution_asset_return * 100.0
             );
+            render_arbitrage_summary_text(out, "candidate_arbitrage", arbitrage);
+            render_transfer_summary_text(out, "candidate_transfers", transfer_summary);
         }
     }
     render_time_bucket_cohorts_text(out, "time_bucket_cohorts", &candidate.time_bucket_cohorts);
@@ -1536,6 +1584,78 @@ fn render_time_bucket_cohorts_text(
             summary.win_rate * 100.0,
             summary.total_realized_pnl,
             summary.average_realized_pnl
+        );
+    }
+}
+
+fn render_transfer_summary_text(
+    out: &mut String,
+    heading: &str,
+    summary: &palmscript::TransferDiagnosticsSummary,
+) {
+    if summary.quote_transfer_count == 0 {
+        return;
+    }
+    out.push_str(heading);
+    out.push('\n');
+    let _ = writeln!(
+        out,
+        "quote_transfer_count={} completed_quote_transfer_count={} pending_quote_transfer_count={} total_quote_amount={:.4} total_quote_fee={:.4} average_delay_bars={:.2}",
+        summary.quote_transfer_count,
+        summary.completed_quote_transfer_count,
+        summary.pending_quote_transfer_count,
+        summary.total_quote_amount,
+        summary.total_quote_fee,
+        summary.average_delay_bars,
+    );
+    for route in summary.by_route.iter().take(6) {
+        let _ = writeln!(
+            out,
+            "from_alias={} to_alias={} transfer_count={} completed_transfer_count={} total_amount={:.4} total_fee={:.4} average_delay_bars={:.2}",
+            route.from_alias,
+            route.to_alias,
+            route.transfer_count,
+            route.completed_transfer_count,
+            route.total_amount,
+            route.total_fee,
+            route.average_delay_bars,
+        );
+    }
+}
+
+fn render_arbitrage_summary_text(
+    out: &mut String,
+    heading: &str,
+    summary: &palmscript::ArbitrageDiagnosticsSummary,
+) {
+    if summary.basket_count == 0 {
+        return;
+    }
+    out.push_str(heading);
+    out.push('\n');
+    let _ = writeln!(
+        out,
+        "basket_count={} completed_basket_count={} open_basket_count={} total_realized_pnl={:.4} average_entry_spread_bps={:.2} average_exit_spread_bps={:.2} average_holding_bars={:.2}",
+        summary.basket_count,
+        summary.completed_basket_count,
+        summary.open_basket_count,
+        summary.total_realized_pnl,
+        summary.average_entry_spread_bps,
+        summary.average_exit_spread_bps,
+        summary.average_holding_bars,
+    );
+    for pair in summary.by_pair.iter().take(6) {
+        let _ = writeln!(
+            out,
+            "buy_alias={} sell_alias={} basket_count={} completed_basket_count={} total_realized_pnl={:.4} average_entry_spread_bps={:.2} average_exit_spread_bps={:.2} average_holding_bars={:.2}",
+            pair.buy_alias,
+            pair.sell_alias,
+            pair.basket_count,
+            pair.completed_basket_count,
+            pair.total_realized_pnl,
+            pair.average_entry_spread_bps,
+            pair.average_exit_spread_bps,
+            pair.average_holding_bars,
         );
     }
 }
@@ -1654,6 +1774,7 @@ fn fmt_value(value: &Value) -> String {
         Value::MaType(value) => format!("ma_type.{}", value.as_str()),
         Value::TimeInForce(value) => format!("tif.{}", value.as_str()),
         Value::TriggerReference(value) => format!("trigger_ref.{}", value.as_str()),
+        Value::ExecutionAlias(value) => format!("execution_alias#{value}"),
         Value::PositionSide(value) => format!("position_side.{}", value.as_str()),
         Value::ExitKind(value) => format!("exit_kind.{}", value.as_str()),
         Value::NA => "na".to_string(),
@@ -2099,6 +2220,8 @@ mod tests {
                 spot_virtual_portfolio: false,
                 blocked_portfolio_entries: vec![],
                 spot_quote_transfers: vec![],
+                transfer_summary: palmscript::TransferDiagnosticsSummary::default(),
+                arbitrage: palmscript::ArbitrageDiagnosticsSummary::default(),
                 starting_ledgers: vec![],
                 ending_ledgers: vec![],
                 ledger_events: vec![],
@@ -2182,6 +2305,8 @@ mod tests {
                     peak_open_position_count: 1,
                 },
                 capture_summary: palmscript::BacktestCaptureSummary::default(),
+                arbitrage: palmscript::ArbitrageDiagnosticsSummary::default(),
+                transfer_summary: palmscript::TransferDiagnosticsSummary::default(),
             },
             time_bucket_cohorts: vec![palmscript::TimeBucketUtcDiagnosticSummary {
                 start_hour_utc: 8,
@@ -2252,6 +2377,8 @@ mod tests {
                 date_perturbation: palmscript::DatePerturbationDiagnostics::default(),
                 overfitting_risk: palmscript::OverfittingRiskSummary::default(),
                 time_bucket_cohorts: candidate.time_bucket_cohorts.clone(),
+                arbitrage: palmscript::ArbitrageDiagnosticsSummary::default(),
+                transfer_summary: palmscript::TransferDiagnosticsSummary::default(),
                 drift: palmscript::DirectValidationDriftSummary::default(),
             }],
             hints: vec![],

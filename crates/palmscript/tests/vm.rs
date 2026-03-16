@@ -227,10 +227,15 @@ fn tiny_program_push_add_plot_executes() {
         inputs: vec![],
         outputs: vec![],
         signal_modules: vec![],
+        arb_signals: vec![],
+        arb_orders: vec![],
+        transfers: vec![],
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
         last_exit_fields: vec![],
+        ledger_fields: vec![],
+        execution_price_fields: vec![],
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -262,10 +267,15 @@ fn stack_underflow_is_reported() {
         inputs: vec![],
         outputs: vec![],
         signal_modules: vec![],
+        arb_signals: vec![],
+        arb_orders: vec![],
+        transfers: vec![],
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
         last_exit_fields: vec![],
+        ledger_fields: vec![],
+        execution_price_fields: vec![],
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -297,10 +307,15 @@ fn invalid_jump_is_reported() {
         inputs: vec![],
         outputs: vec![],
         signal_modules: vec![],
+        arb_signals: vec![],
+        arb_orders: vec![],
+        transfers: vec![],
         order_fields: vec![],
         position_fields: vec![],
         position_event_fields: vec![],
         last_exit_fields: vec![],
+        ledger_fields: vec![],
+        execution_price_fields: vec![],
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -1122,4 +1137,88 @@ plot(0)",
     for point in &outputs.exports[3].points {
         assert_eq!(point.value, palmscript::OutputValue::NA);
     }
+}
+
+#[test]
+fn ledger_namespace_is_na_outside_backtests() {
+    let compiled = palmscript::compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution exec = binance.spot(\"BTCUSDT\")
+export quote_free = ledger(exec).quote_free
+export base_total = ledger(exec).base_total
+export mark_value = ledger(exec).mark_value_quote
+plot(0)",
+    )
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0, 12.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    for export in &outputs.exports {
+        for point in &export.points {
+            assert_eq!(point.value, palmscript::OutputValue::NA);
+        }
+    }
+}
+
+#[test]
+fn venue_selection_builtins_use_execution_alias_prices_in_runtime_mode() {
+    let compiled = palmscript::compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+export cheapest_is_gt = cheapest(bn, gt) == gt
+export spread = spread_bps(cheapest(bn, gt), richest(bn, gt))
+plot(spot.close)",
+    )
+    .expect("script compiles");
+
+    let source_bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[100.0, 101.0]);
+    let bn_bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[101.0, 103.0]);
+    let gt_bars = bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[100.0, 102.0]);
+    let outputs = run_with_sources(
+        &compiled,
+        SourceRuntimeConfig {
+            base_interval: Interval::Min1,
+            feeds: vec![
+                SourceFeed {
+                    source_id: 0,
+                    interval: Interval::Min1,
+                    bars: source_bars,
+                },
+                SourceFeed {
+                    source_id: 1,
+                    interval: Interval::Min1,
+                    bars: bn_bars,
+                },
+                SourceFeed {
+                    source_id: 2,
+                    interval: Interval::Min1,
+                    bars: gt_bars,
+                },
+            ],
+        },
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    for point in &outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(true));
+    }
+
+    let first_spread = match outputs.exports[1].points[0].value {
+        palmscript::OutputValue::F64(value) => value,
+        ref other => panic!("expected numeric spread, found {other:?}"),
+    };
+    let second_spread = match outputs.exports[1].points[1].value {
+        palmscript::OutputValue::F64(value) => value,
+        ref other => panic!("expected numeric spread, found {other:?}"),
+    };
+    assert!((first_spread - 100.0).abs() < 1e-12);
+    assert!((second_spread - ((103.0 - 102.0) / 102.0) * 10_000.0).abs() < 1e-12);
 }

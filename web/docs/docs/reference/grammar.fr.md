@@ -42,6 +42,7 @@ stmt                   ::= let_stmt
                          | attached_exit_stmt
                          | order_template_stmt
                          | order_stmt
+                         | transfer_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -63,6 +64,7 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
+transfer_stmt          ::= "transfer" ("quote" | "base") "=" transfer_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= ident
                          | "market" "(" ")"
@@ -71,6 +73,8 @@ order_spec             ::= ident
                          | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
                          | "take_profit_market" "(" expr "," expr ")"
                          | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+transfer_spec          ::= "quote_transfer" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "base_transfer" "(" named_order_arg ("," named_order_arg)* ")"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -177,6 +181,7 @@ L'implementation exige aussi :
   backtest
 - `last_exit.*`, `last_long_exit.*` et `last_short_exit.*` sont des espaces de
   noms du dernier trade cloture pilotes par le backtest
+- `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` est un espace de noms de ledger d'execution pilote par le backtest
 - `entry1..3 long|short`, `target1..3 long|short` et
   `protect_after_target1..3 long|short` sont des declarations echelonnees
   valides dans la v1
@@ -202,6 +207,12 @@ L'implementation exige aussi :
   immuables top-level `const` et `input`
 - les regles de source, d'intervalle, de portee et de type sont imposees comme
   decrit dans les autres pages de `Reference`
+
+## Runtime De Panier D'Arbitrage
+
+- les backtests portfolio executent maintenant `market_pair(...)` quand au moins deux alias `execution` spot sont selectionnes
+- en v1, `size = ...` represente la quantite de l'actif de base
+- `limit_pair(...)` et `mixed_pair(...)` compilent encore mais echouent au runtime tant que la semantique des pair orders resting n'est pas implementee
 
 ## Note Sur `input ... optimize(...)`
 

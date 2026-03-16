@@ -396,6 +396,8 @@ mod tests {
             flat_bar_pct: 0.5,
             long_bar_pct: 0.5,
             short_bar_pct: 0.0,
+            arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+            transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
         }
     }
 
@@ -448,6 +450,8 @@ mod tests {
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),
                     drawdown: crate::backtest::DrawdownDiagnostics::default(),
+                    arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                    transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
                     drift_flags: Vec::new(),
                     hints: Vec::new(),
                 },
@@ -468,6 +472,8 @@ mod tests {
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),
                     drawdown: crate::backtest::DrawdownDiagnostics::default(),
+                    arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                    transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
                     drift_flags: Vec::new(),
                     hints: Vec::new(),
                 },
@@ -490,6 +496,8 @@ mod tests {
                 positive_segment_count: 1,
                 negative_segment_count: 1,
                 average_segment_return: -0.03,
+                arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
             },
         );
 
@@ -591,6 +599,8 @@ mod tests {
                         positive_segment_count: 2,
                         negative_segment_count: 1,
                         average_segment_return: 0.05,
+                        arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                        transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
                     },
                     zero_trade_segment_count: 1,
                     trade_count: 6,
@@ -614,6 +624,8 @@ mod tests {
                     opportunity_event_count: 0,
                     cohorts: crate::backtest::CohortDiagnostics::default(),
                     drawdown: crate::backtest::DrawdownDiagnostics::default(),
+                    arbitrage: crate::backtest::ArbitrageDiagnosticsSummary::default(),
+                    transfer_summary: crate::backtest::TransferDiagnosticsSummary::default(),
                     drift_flags: Vec::new(),
                     hints: Vec::new(),
                 },

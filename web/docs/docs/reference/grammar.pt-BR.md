@@ -42,6 +42,7 @@ stmt                   ::= let_stmt
                          | attached_exit_stmt
                          | order_template_stmt
                          | order_stmt
+                         | transfer_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -63,6 +64,7 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
+transfer_stmt          ::= "transfer" ("quote" | "base") "=" transfer_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= ident
                          | "market" "(" ")"
@@ -71,6 +73,8 @@ order_spec             ::= ident
                          | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
                          | "take_profit_market" "(" expr "," expr ")"
                          | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+transfer_spec          ::= "quote_transfer" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "base_transfer" "(" named_order_arg ("," named_order_arg)* ")"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -172,6 +176,7 @@ exige:
 - `position_event.*` e um namespace `series<bool>` dirigido por backtest
 - `last_exit.*`, `last_long_exit.*` e `last_short_exit.*` sao namespaces do
   ultimo trade fechado dirigidos por backtest
+- `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` e um namespace de ledger de execucao dirigido por backtest
 - `entry1..3 long|short`, `target1..3 long|short` e
   `protect_after_target1..3 long|short` sao declaracoes em estagio validas na
   v1
@@ -202,6 +207,12 @@ exige:
 A superficie do parser agora aceita um sufixo opcional `optimize(...)` em declaracoes `input`. Esse sufixo pode descrever um intervalo inteiro, um intervalo float ou uma lista `choice`, mas continua sujeito a validacao semantica adicional.
 
 ## Latest Portfolio Additions
+
+## Runtime De Cesta De Arbitragem
+
+- backtests de portfolio agora executam `market_pair(...)` quando pelo menos dois aliases `execution` spot sao selecionados
+- em v1, `size = ...` representa a quantidade do ativo base
+- `limit_pair(...)` e `mixed_pair(...)` continuam compilando, mas ainda falham em runtime ate que a semantica de pair orders resting exista
 
 - PalmScript now reserves `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group`.
 - These declarations are top-level only and compile-time only.

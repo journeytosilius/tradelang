@@ -21,12 +21,50 @@ PalmScript currently exposes these builtin categories:
 - indicators: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), and [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helpers: `above`, `below`, `between`, `outside`
 - crossing helpers: `cross`, `crossover`, `crossunder`
+- venue-selection helpers: `cheapest`, `richest`, `spread_bps`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helpers: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - outputs: `plot`
 
 Market fields are selected through source-qualified series such as `spot.open`, `spot.close`, or `bb.1h.volume`. Only identifiers are callable, so `spot.close()` is rejected.
+
+## Venue-Selection Helpers
+
+### `cheapest(exec_a, exec_b, ...)` and `richest(exec_a, exec_b, ...)`
+
+Rules:
+
+- they require at least two declared `execution` aliases
+- every argument must be an `execution_alias` or `na`
+- they compare the current execution close for each alias on the active bar
+- `cheapest(...)` returns the alias with the lowest current close
+- `richest(...)` returns the alias with the highest current close
+- if any referenced alias has no current execution close on the active bar, the result is `na`
+- the result type is `execution_alias`
+
+Selector results are meant for further execution-alias logic such as equality
+checks or spread helpers. They are not directly exportable.
+
+### `spread_bps(buy_exec, sell_exec)`
+
+Rules:
+
+- it requires exactly two declared `execution` aliases
+- both arguments must be `execution_alias` or `na`
+- it evaluates as `((sell_close - buy_close) / buy_close) * 10000`
+- if either referenced alias has no current execution close on the active bar, the result is `na`
+- the result type is `float` or `series<float>` according to the active update clock
+
+Example:
+
+```palmscript
+execution bn = binance.spot("BTCUSDT")
+execution gt = gate.spot("BTC_USDT")
+
+export buy_gate = cheapest(bn, gt) == gt
+export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+```
 
 ## Tuple-Valued Builtins
 

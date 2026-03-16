@@ -203,6 +203,15 @@ size target long = 0.5
 - 同時に active なのは current staged protect と next staged target だけ
 - `target1` が fill されると、`protect_after_target1` が宣言されていればそれに切り替わり、なければ直近の利用可能な protect stage を継承する
 - staged target size fraction は有限な `(0, 1]` の比率に評価されなければならない
+
+## Arbitrage Surface
+
+- portfolio backtest は、少なくとも 2 つの spot `execution` alias があるときに `arb_entry` / `arb_exit` と `arb_order ... = market_pair(...)` を実行できる
+- v1 では `size = ...` は base asset quantity を意味し、各 basket fill は long/short の 2 本の leg fill / trade として結果に出る
+- `limit_pair(...)` と `mixed_pair(...)` は引き続き compile できるが、resting pair-order semantics が入るまでは runtime で reject される
+- portfolio backtest は `transfer quote = quote_transfer(...)` も実行でき、source ledger を次の bar open で debit し、`delay_bars` 後に destination ledger を credit する
+- backtest diagnostics は型付き `arbitrage` と `transfer_summary` も公開し、walk-forward の stitched summary と optimize の direct validation でも同じ summary 形状を使う
+- `transfer base = base_transfer(...)` は v1 では予約されたままで、runtime ではまだ reject される
 - `size targetN ...` は、その比率が `1` 未満なら対応 target stage を partial take-profit にする
 - staged target は一つの position cycle で一回だけ実行され、順に有効化される
 - 同一 execution bar で両方が fill 可能になった場合、`protect` が決定的に優先される
@@ -211,10 +220,12 @@ size target long = 0.5
 - `position_event.*` は、`position_event.long_target_fill`, `position_event.long_protect_fill`, `position_event.long_liquidation_fill` のような exit-kind 固有の fill event も公開する
 - staged fill event も利用できる。`position_event.long_entry1_fill`, `position_event.long_entry2_fill`, `position_event.long_entry3_fill`, `position_event.long_target1_fill`, `position_event.long_target2_fill`, `position_event.long_target3_fill` と、それに対応する short side が含まれる
 - `last_exit.*`, `last_long_exit.*`, `last_short_exit.*` は、最新の closed-trade snapshot をグローバルまたはサイド別に公開する
+- `ledger(exec).base_free`, `quote_free`, `base_total`, `quote_total`, `mark_value_quote` は、宣言済み `execution` alias の現在のバックテスト ledger 状態を公開する
 - `last_*_exit.kind` は `exit_kind.target` や `exit_kind.liquidation` のような typed enum literal と比較される
 - `last_*_exit.stage` は、該当する場合に staged target / protect の stage 番号を公開する
 - バックテスト外では、`position_event.*` は定義されるが各ステップで `false` に評価される
 - バックテスト外では、`last_*_exit.*` は定義されるが `na` に評価される
+- バックテスト外では、`ledger(...)` は定義されるが `na` に評価される
 
 ## Reserved Trading Trigger Names
 

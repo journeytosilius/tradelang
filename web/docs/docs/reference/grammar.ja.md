@@ -40,6 +40,7 @@ stmt                   ::= let_stmt
                          | attached_exit_stmt
                          | order_template_stmt
                          | order_stmt
+                         | transfer_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -61,6 +62,7 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
+transfer_stmt          ::= "transfer" ("quote" | "base") "=" transfer_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= ident
                          | "market" "(" ")"
@@ -69,6 +71,8 @@ order_spec             ::= ident
                          | "stop_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
                          | "take_profit_market" "(" expr "," expr ")"
                          | "take_profit_limit" "(" expr "," expr "," expr "," expr "," expr "," expr ")"
+transfer_spec          ::= "quote_transfer" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "base_transfer" "(" named_order_arg ("," named_order_arg)* ")"
 if_stmt                ::= "if" expr block "else" else_tail
 else_tail              ::= if_stmt
                          | block
@@ -160,6 +164,7 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - `position.*` は `protect` と `target` 宣言内でのみ有効
 - `position_event.*` はバックテスト駆動の `series<bool>` 名前空間
 - `last_exit.*`、`last_long_exit.*`、`last_short_exit.*` はバックテスト駆動の最新クローズトレード名前空間
+- `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` はバックテスト駆動の execution-ledger 名前空間
 - `entry1..3 long|short`, `target1..3 long|short`, `protect_after_target1..3 long|short` は v1 の有効な staged 宣言
 - `entry long` と `target long|short` は stage 1 の互換エイリアスのまま
 - `cooldown long|short` と `max_bars_in_trade long|short` はコンパイル時に解決される非負整数スカラー式を必要とする
@@ -193,3 +198,9 @@ PalmScript は二項演算子を、低いものから高いものへ次の優先
 - `venue = <execution_alias>` binds an order role to a declared execution target.
 - Positional and named order arguments cannot be mixed in the same constructor call.
 - Trading scripts now require at least one declared `execution` target.
+
+## Arbitrage Basket Runtime
+
+- portfolio backtest は、少なくとも 2 つの spot `execution` alias が選ばれているときに `market_pair(...)` を実行できる
+- v1 では `size = ...` は base asset quantity を表す
+- `limit_pair(...)` と `mixed_pair(...)` は引き続き compile できるが、resting pair-order semantics が入るまでは runtime で reject される

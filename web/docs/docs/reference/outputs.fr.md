@@ -196,6 +196,15 @@ Regles :
 
 ## Sorties Attachees
 
+## Surface D'Arbitrage
+
+- les backtests portfolio executent maintenant `arb_entry` / `arb_exit` avec `arb_order ... = market_pair(...)` quand au moins deux alias `execution` spot sont selectionnes
+- en v1, `size = ...` represente la quantite de l'actif de base et chaque panier rempli apparait comme deux fills/trades de jambe longue/courte
+- `limit_pair(...)` et `mixed_pair(...)` compilent encore mais echouent au runtime tant que les pair orders resting ne sont pas prises en charge
+- les backtests portfolio executent aussi `transfer quote = quote_transfer(...)` ; la source est debitee a l'ouverture de la barre suivante et la destination est creditee apres `delay_bars`
+- les diagnostics de backtest exposent maintenant aussi des sections typees `arbitrage` et `transfer_summary` ; les resumes stitches de walk-forward et les validations directes d'optimize reutilisent les memes formes
+- `transfer base = base_transfer(...)` reste reserve en v1 mais echoue encore au runtime
+
 PalmScript expose aussi des sorties attachees de premiere classe afin de
 laisser libre le signal discretionnaire `exit` :
 
@@ -271,6 +280,9 @@ Regles :
   ainsi que leurs equivalents short
 - `last_exit.*`, `last_long_exit.*` et `last_short_exit.*` exposent le snapshot
   du trade cloture le plus recent, globalement ou par cote
+- `ledger(exec).base_free`, `quote_free`, `base_total`, `quote_total` et
+  `mark_value_quote` exposent l'etat actuel du ledger de backtest pour un alias
+  `execution` declare
 - `last_*_exit.kind` se compare a des litteraux enum types comme
   `exit_kind.target` et `exit_kind.liquidation`
 - `last_*_exit.stage` expose le numero d'etape du target / protect echelonne
@@ -278,6 +290,7 @@ Regles :
 - hors backtest, `position_event.*` est defini mais s'evalue a `false` a
   chaque etape
 - hors backtest, `last_*_exit.*` est defini mais s'evalue a `na`
+- hors backtest, `ledger(...)` est defini mais s'evalue a `na`
 
 ## Reserved Trading Trigger Names
 

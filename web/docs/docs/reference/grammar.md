@@ -34,6 +34,7 @@ stmt                   ::= let_stmt
                          | export_stmt
                          | regime_stmt
                          | trigger_stmt
+                         | arb_signal_stmt
                          | risk_control_stmt
                          | portfolio_control_stmt
                          | portfolio_group_stmt
@@ -42,6 +43,8 @@ stmt                   ::= let_stmt
                          | attached_exit_stmt
                          | order_template_stmt
                          | order_stmt
+                         | arb_order_stmt
+                         | transfer_stmt
                          | if_stmt
                          | expr_stmt
 
@@ -56,6 +59,8 @@ optimize_space         ::= "int" "," number "," number ("," number)?
 export_stmt            ::= "export" ident "=" expr
 regime_stmt            ::= "regime" ident "=" expr
 trigger_stmt           ::= "trigger" ident "=" expr
+arb_signal_stmt        ::= "arb_entry" "=" expr
+                         | "arb_exit" "=" expr
 risk_control_stmt      ::= "cooldown" signal_side "=" expr
                          | "max_bars_in_trade" signal_side "=" expr
 portfolio_control_stmt ::= "max_positions" "=" expr
@@ -73,6 +78,8 @@ attached_exit_stmt     ::= "protect" signal_side "=" order_spec
                          | "target" signal_side "=" order_spec
 order_template_stmt    ::= "order_template" ident "=" order_spec
 order_stmt             ::= "order" ("entry" | "exit") signal_side "=" order_spec
+arb_order_stmt         ::= "arb_order" ("entry" | "exit") "=" arb_order_spec
+transfer_stmt          ::= "transfer" ("quote" | "base") "=" transfer_spec
 signal_side            ::= "long" | "short"
 order_spec             ::= ident
                          | "market" "(" order_args? ")"
@@ -81,6 +88,11 @@ order_spec             ::= ident
                          | "stop_limit" "(" order_args ")"
                          | "take_profit_market" "(" order_args ")"
                          | "take_profit_limit" "(" order_args ")"
+arb_order_spec         ::= "market_pair" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "limit_pair" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "mixed_pair" "(" named_order_arg ("," named_order_arg)* ")"
+transfer_spec          ::= "quote_transfer" "(" named_order_arg ("," named_order_arg)* ")"
+                         | "base_transfer" "(" named_order_arg ("," named_order_arg)* ")"
 order_args             ::= expr ("," expr)*
                          | named_order_arg ("," named_order_arg)*
 named_order_arg        ::= ident "=" (expr | ident)
@@ -163,7 +175,7 @@ The grammar does not by itself make a program valid. The implementation addition
 
 - a script must declare exactly one base `interval`
 - a script must declare at least one `source`
-- `interval`, `source`, `execution`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order_template`, `order`, and `size` must appear only at the top level
+- `interval`, `source`, `execution`, `use`, `fn`, `const`, `input`, `export`, `regime`, `trigger`, `arb_entry`, `arb_exit`, `cooldown`, `max_bars_in_trade`, `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, `portfolio_group`, `entry`, `exit`, `protect`, `target`, `order_template`, `order`, `arb_order`, `transfer`, and `size` must appear only at the top level
 - bare market identifiers such as `close` are rejected and market series must be source-qualified
 - higher source interval references require `use <alias> <interval>`
 - every `if` must have an `else`
@@ -177,6 +189,23 @@ The grammar does not by itself make a program valid. The implementation addition
 - `position.*` is valid only inside `protect` and `target` declarations
 - `position_event.*` is a backtest-driven `series<bool>` namespace
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` are backtest-driven latest-closed-trade namespaces
+- `ledger(<execution_alias>).base_free|quote_free|base_total|quote_total|mark_value_quote` is a backtest-driven execution-ledger namespace
+- `arb_entry` and `arb_exit` require `bool`, `series<bool>`, or `na`
+- `arb_order entry|exit` currently accepts `market_pair`, `limit_pair`, and `mixed_pair` with named arguments only
+- pair-order `buy_venue` and `sell_venue` fields require `execution_alias` expressions
+- pair-order `size`, `buy_price`, `sell_price`, `max_leg_delay_bars`, and `max_leg_price_drift_bps` require numeric expressions when present
+- pair-order `post_only` and `abort_on_partial` require bool expressions when present
+- `market_pair` rejects `buy_price`, `sell_price`, `tif`, and `post_only`
+- `limit_pair` requires `buy_price`, `sell_price`, `tif`, and `post_only`
+- `mixed_pair` requires at least one of `buy_price` or `sell_price`
+- portfolio backtests now execute `market_pair` when at least two spot execution aliases are selected; `limit_pair` and `mixed_pair` still reject at runtime
+- `market_pair size = ...` is interpreted as base-asset quantity in v1
+- the first selected portfolio execution alias acts as the controller runtime for evaluating `arb_entry`, `arb_exit`, and pair-order fields
+- `transfer quote` and `transfer base` currently require named arguments only
+- transfer `from` and `to` fields require `execution_alias` expressions
+- transfer `amount`, `fee`, and `delay_bars` require numeric expressions when present
+- portfolio backtests currently execute `transfer quote = quote_transfer(...)` only; `transfer base = base_transfer(...)` remains reserved but rejects at runtime
+- the first selected portfolio execution alias also acts as the controller runtime for transfer field evaluation
 - `entry1..3 long|short`, `target1..3 long|short`, and `protect_after_target1..3 long|short` are valid staged declarations in v1
 - `entry long` and `target long|short` remain compatibility aliases for stage 1
 - `cooldown long|short` and `max_bars_in_trade long|short` require a compile-time non-negative whole-number scalar expression

@@ -587,8 +587,87 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Supertrend => self.call_supertrend(callsite, arity, args, pc),
             BuiltinId::Bop => self.call_bop(arity, args, pc),
             BuiltinId::Cci => self.call_cci(arity, args, pc),
+            BuiltinId::Cheapest => self.call_venue_selector(false, arity, args, pc),
+            BuiltinId::Richest => self.call_venue_selector(true, arity, args, pc),
+            BuiltinId::SpreadBps => self.call_spread_bps(arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
+    }
+
+    fn execution_price(&self, execution_id: u16, pc: usize) -> Result<Option<f64>, RuntimeError> {
+        let Some(slot) = self
+            .program
+            .execution_price_fields
+            .iter()
+            .find(|decl| decl.execution_id == execution_id)
+            .map(|decl| decl.slot as usize)
+        else {
+            return Ok(None);
+        };
+        let value = self.load_local(slot)?;
+        expect_numeric_like(&value, pc)
+    }
+
+    fn call_venue_selector(
+        &self,
+        prefer_highest: bool,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        let mut best_alias = None;
+        let mut best_price = 0.0;
+        for value in args.into_iter().take(arity) {
+            let Some(execution_id) = expect_execution_alias(value, pc)? else {
+                continue;
+            };
+            let Some(price) = self.execution_price(execution_id, pc)? else {
+                continue;
+            };
+            let replace = match best_alias {
+                None => true,
+                Some(_) if prefer_highest => price > best_price,
+                Some(_) => price < best_price,
+            };
+            if replace {
+                best_alias = Some(execution_id);
+                best_price = price;
+            }
+        }
+        Ok(best_alias.map(Value::ExecutionAlias).unwrap_or(Value::NA))
+    }
+
+    fn call_spread_bps(
+        &self,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity != 2 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: "spread_bps",
+                expected: 2,
+                found: arity,
+            });
+        }
+        let Some(buy_alias) = expect_execution_alias(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(sell_alias) = expect_execution_alias(args[1].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(buy_price) = self.execution_price(buy_alias, pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(sell_price) = self.execution_price(sell_alias, pc)? else {
+            return Ok(Value::NA);
+        };
+        if buy_price <= 0.0 {
+            return Ok(Value::NA);
+        }
+        Ok(Value::F64(
+            ((sell_price - buy_price) / buy_price) * 10_000.0,
+        ))
     }
 
     fn call_unary_math(
@@ -3407,6 +3486,18 @@ fn expect_f64(value: Value, pc: usize) -> Result<f64, RuntimeError> {
     }
 }
 
+fn expect_execution_alias(value: Value, pc: usize) -> Result<Option<u16>, RuntimeError> {
+    match value {
+        Value::ExecutionAlias(value) => Ok(Some(value)),
+        Value::NA => Ok(None),
+        other => Err(RuntimeError::TypeMismatch {
+            pc,
+            expected: "execution-alias",
+            found: other.type_name(),
+        }),
+    }
+}
+
 fn expect_window(value: Value, pc: usize) -> Result<usize, RuntimeError> {
     let value = expect_f64(value, pc)?;
     Ok(value as usize)
@@ -3530,6 +3621,7 @@ fn eq_values(left: &Value, right: &Value) -> bool {
         (Value::MaType(left), Value::MaType(right)) => left == right,
         (Value::TimeInForce(left), Value::TimeInForce(right)) => left == right,
         (Value::TriggerReference(left), Value::TriggerReference(right)) => left == right,
+        (Value::ExecutionAlias(left), Value::ExecutionAlias(right)) => left == right,
         (Value::PositionSide(left), Value::PositionSide(right)) => left == right,
         (Value::ExitKind(left), Value::ExitKind(right)) => left == right,
         (Value::Void, Value::Void) => true,

@@ -23,7 +23,7 @@ use crate::talib::{metadata_by_name as talib_metadata_by_name, TALIB_METADATA_SN
 use crate::token::{Token, TokenKind};
 use crate::types::Type;
 
-const KEYWORD_COMPLETIONS: [(&str, &str); 25] = [
+const KEYWORD_COMPLETIONS: [(&str, &str); 29] = [
     ("interval", "Declare the strategy base interval"),
     ("source", "Declare a named market source"),
     ("execution", "Declare a named execution venue"),
@@ -32,6 +32,10 @@ const KEYWORD_COMPLETIONS: [(&str, &str); 25] = [
     ("let", "Bind a local value"),
     ("module", "Label an entry role for per-module attribution"),
     ("order_template", "Declare a reusable named order template"),
+    ("arb_entry", "Declare an arbitrage basket entry trigger"),
+    ("arb_exit", "Declare an arbitrage basket exit trigger"),
+    ("arb_order", "Declare an arbitrage pair-order template"),
+    ("transfer", "Declare a first-class inter-ledger transfer"),
     ("optimize", "Attach optimizer metadata to an input"),
     ("export", "Publish a named output series"),
     ("regime", "Declare a named persistent regime series"),
@@ -637,9 +641,26 @@ fn resolve_stmt(
         StmtKind::Signal { expr, .. } => {
             resolve_expr(context, expr, scope);
         }
+        StmtKind::ArbSignal { expr, .. } => {
+            resolve_expr(context, expr, scope);
+        }
         StmtKind::OrderTemplate { spec, .. } => resolve_order_spec(context, spec, scope),
         StmtKind::Order { spec, .. } => {
             resolve_order_spec(context, spec, scope);
+        }
+        StmtKind::ArbOrder { spec, .. } => {
+            resolve_arb_order_spec(context, spec, scope);
+        }
+        StmtKind::Transfer { spec, .. } => {
+            resolve_expr(context, &spec.from, scope);
+            resolve_expr(context, &spec.to, scope);
+            resolve_expr(context, &spec.amount, scope);
+            if let Some(expr) = &spec.fee {
+                resolve_expr(context, expr, scope);
+            }
+            if let Some(expr) = &spec.delay_bars {
+                resolve_expr(context, expr, scope);
+            }
         }
         StmtKind::OrderSize { expr, .. } => {
             resolve_expr(context, expr, scope);
@@ -753,6 +774,21 @@ fn resolve_expr(context: &mut ResolutionContext<'_>, expr: &Expr, scope: &HashMa
                 hover: format!(
                     "`{}.{}`\n\nBacktest-driven latest closed-trade field.",
                     scope.namespace(),
+                    field.as_str()
+                ),
+            });
+        }
+        ExprKind::LedgerField {
+            execution_alias,
+            field,
+            ..
+        } => {
+            context.references.push(Reference {
+                span: expr.span,
+                definition_index: None,
+                hover: format!(
+                    "`ledger({}).{}`\n\nBacktest-driven execution-ledger field.",
+                    execution_alias,
                     field.as_str()
                 ),
             });
@@ -891,7 +927,20 @@ fn maybe_push_top_level_symbol(context: &mut ResolutionContext<'_>, stmt: &Stmt)
             children: Vec::new(),
         }),
         StmtKind::Signal { .. } => {}
+        StmtKind::ArbSignal { kind, .. } => context.document_symbols.push(DocumentSymbolInfo {
+            name: match kind {
+                crate::ast::ArbSignalKind::Entry => "arb_entry".to_string(),
+                crate::ast::ArbSignalKind::Exit => "arb_exit".to_string(),
+            },
+            kind: SymbolKind::Trigger,
+            span: stmt.span,
+            selection_span: stmt.span,
+            detail: Some("series<bool>".to_string()),
+            children: Vec::new(),
+        }),
         StmtKind::Order { .. } => {}
+        StmtKind::ArbOrder { .. } => {}
+        StmtKind::Transfer { .. } => {}
         StmtKind::OrderSize { .. } => {}
         StmtKind::RiskControl { .. } => {}
         StmtKind::PortfolioControl { .. } => {}
@@ -1445,6 +1494,7 @@ fn render_type(ty: Type) -> &'static str {
         Type::MaType => "ma_type",
         Type::TimeInForce => "tif",
         Type::TriggerReference => "trigger_ref",
+        Type::ExecutionAlias => "execution_alias",
         Type::PositionSide => "position_side",
         Type::ExitKind => "exit_kind",
         Type::SeriesF64 => "series<float>",
@@ -1696,6 +1746,13 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
         StmtKind::Trigger { name, expr, .. } => {
             lines.push(format!("{prefix}trigger {name} = {}", format_expr(expr, 0)));
         }
+        StmtKind::ArbSignal { kind, expr } => {
+            let keyword = match kind {
+                crate::ast::ArbSignalKind::Entry => "arb_entry",
+                crate::ast::ArbSignalKind::Exit => "arb_exit",
+            };
+            lines.push(format!("{prefix}{keyword} = {}", format_expr(expr, 0)));
+        }
         StmtKind::OrderTemplate { name, spec, .. } => {
             lines.push(format!(
                 "{prefix}order_template {name} = {}",
@@ -1769,6 +1826,26 @@ fn format_stmt(stmt: &Stmt, indent: usize, lines: &mut Vec<String>) {
                 crate::ast::SignalRole::TargetShort3 => "target3 short",
             };
             lines.push(format!("{prefix}{header} = {}", format_order_spec(spec)));
+        }
+        StmtKind::ArbOrder { kind, spec } => {
+            let header = match kind {
+                crate::ast::ArbSignalKind::Entry => "arb_order entry",
+                crate::ast::ArbSignalKind::Exit => "arb_order exit",
+            };
+            lines.push(format!(
+                "{prefix}{header} = {}",
+                format_arb_order_spec(spec)
+            ));
+        }
+        StmtKind::Transfer { asset_kind, spec } => {
+            let asset = match asset_kind {
+                crate::ast::TransferAssetKind::Quote => "quote",
+                crate::ast::TransferAssetKind::Base => "base",
+            };
+            lines.push(format!(
+                "{prefix}transfer {asset} = {}",
+                format_transfer_spec(*asset_kind, spec)
+            ));
         }
         StmtKind::OrderSize { target, expr } => {
             let header = match target {
@@ -2026,6 +2103,51 @@ fn resolve_order_spec(
     }
 }
 
+fn resolve_arb_order_spec(
+    context: &mut ResolutionContext<'_>,
+    spec: &crate::ast::ArbOrderSpec,
+    scope: &HashMap<String, usize>,
+) {
+    let crate::ast::ArbOrderSpecKind::Pair {
+        buy_venue,
+        sell_venue,
+        size,
+        buy_price,
+        sell_price,
+        tif,
+        post_only,
+        abort_on_partial,
+        max_leg_delay_bars,
+        max_leg_price_drift_bps,
+        ..
+    } = &spec.kind;
+
+    resolve_expr(context, buy_venue, scope);
+    resolve_expr(context, sell_venue, scope);
+    resolve_expr(context, size, scope);
+    if let Some(expr) = buy_price {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = sell_price {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = tif {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = post_only {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = abort_on_partial {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = max_leg_delay_bars {
+        resolve_expr(context, expr, scope);
+    }
+    if let Some(expr) = max_leg_price_drift_bps {
+        resolve_expr(context, expr, scope);
+    }
+}
+
 fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
     if let crate::ast::OrderSpecKind::TemplateRef(binding) = &spec.kind {
         return binding.name.clone();
@@ -2110,6 +2232,80 @@ fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
     }
 }
 
+fn format_arb_order_spec(spec: &crate::ast::ArbOrderSpec) -> String {
+    let crate::ast::ArbOrderSpecKind::Pair {
+        constructor,
+        buy_venue,
+        sell_venue,
+        size,
+        buy_price,
+        sell_price,
+        tif,
+        post_only,
+        abort_on_partial,
+        max_leg_delay_bars,
+        max_leg_price_drift_bps,
+    } = &spec.kind;
+
+    let mut args = vec![
+        format!("buy_venue = {}", format_expr(buy_venue, 0)),
+        format!("sell_venue = {}", format_expr(sell_venue, 0)),
+        format!("size = {}", format_expr(size, 0)),
+    ];
+    if let Some(expr) = buy_price {
+        args.push(format!("buy_price = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = sell_price {
+        args.push(format!("sell_price = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = tif {
+        args.push(format!("tif = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = post_only {
+        args.push(format!("post_only = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = abort_on_partial {
+        args.push(format!("abort_on_partial = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = max_leg_delay_bars {
+        args.push(format!("max_leg_delay_bars = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = max_leg_price_drift_bps {
+        args.push(format!(
+            "max_leg_price_drift_bps = {}",
+            format_expr(expr, 0)
+        ));
+    }
+    let callee = match constructor {
+        crate::ast::ArbPairConstructor::MarketPair => "market_pair",
+        crate::ast::ArbPairConstructor::LimitPair => "limit_pair",
+        crate::ast::ArbPairConstructor::MixedPair => "mixed_pair",
+    };
+    format!("{callee}({})", args.join(", "))
+}
+
+fn format_transfer_spec(
+    asset_kind: crate::ast::TransferAssetKind,
+    spec: &crate::ast::TransferSpec,
+) -> String {
+    let mut args = vec![
+        format!("from = {}", format_expr(&spec.from, 0)),
+        format!("to = {}", format_expr(&spec.to, 0)),
+        format!("amount = {}", format_expr(&spec.amount, 0)),
+    ];
+    if let Some(expr) = &spec.fee {
+        args.push(format!("fee = {}", format_expr(expr, 0)));
+    }
+    if let Some(expr) = &spec.delay_bars {
+        args.push(format!("delay_bars = {}", format_expr(expr, 0)));
+    }
+    let callee = match asset_kind {
+        crate::ast::TransferAssetKind::Quote => "quote_transfer",
+        crate::ast::TransferAssetKind::Base => "base_transfer",
+    };
+    format!("{callee}({})", args.join(", "))
+}
+
 fn format_else_tail(block: &Block, indent: usize, lines: &mut Vec<String>) {
     let prefix = "    ".repeat(indent);
     if let Some(nested_if) = else_if_stmt(block) {
@@ -2173,6 +2369,11 @@ fn format_expr(expr: &Expr, parent_bp: u8) -> String {
         ExprKind::LastExitField { scope, field, .. } => {
             format!("{}.{}", scope.namespace(), field.as_str())
         }
+        ExprKind::LedgerField {
+            execution_alias,
+            field,
+            ..
+        } => format!("ledger({}).{}", execution_alias, field.as_str()),
         ExprKind::SourceSeries {
             source,
             interval,

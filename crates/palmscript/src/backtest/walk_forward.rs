@@ -2,20 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::backtest::bridge::PreparedExport;
 use crate::backtest::diagnostics::{
+    aggregate_arbitrage_diagnostics, aggregate_transfer_diagnostics, build_arbitrage_diagnostics,
     build_backtest_hints, build_baseline_comparison, build_cohort_diagnostics,
-    build_diagnostics_summary, build_drawdown_diagnostics, snapshot_from_step,
-    DiagnosticsAccumulator,
+    build_diagnostics_summary, build_drawdown_diagnostics, build_transfer_diagnostics,
+    snapshot_from_step, DiagnosticsAccumulator,
 };
 use crate::backtest::overfitting::{
     annualized_sharpe_ratio, annualized_sharpe_ratio_from_returns,
     build_walk_forward_overfitting_risk,
 };
 use crate::backtest::{
-    average, execution_bars, run_backtest_with_sources_internal, BacktestCaptureSummary,
-    BacktestConfig, BacktestDiagnosticSummary, BacktestError, BaselineComparisonSummary,
-    CohortDiagnostics, DiagnosticsDetailMode, DrawdownDiagnostics, ExportDiagnosticSummary,
-    ImprovementHint, OverfittingRiskSummary, ValidationConstraintConfig, ValidationConstraintKind,
-    ValidationConstraintSummary, ValidationConstraintViolation,
+    average, execution_bars, run_backtest_with_sources_internal, ArbitrageBasketRecord,
+    ArbitrageDiagnosticsSummary, BacktestCaptureSummary, BacktestConfig, BacktestDiagnosticSummary,
+    BacktestDiagnostics, BacktestError, BaselineComparisonSummary, CohortDiagnostics,
+    DiagnosticsDetailMode, DrawdownDiagnostics, ExportDiagnosticSummary, ImprovementHint,
+    OverfittingRiskSummary, SpotQuoteTransfer, TransferDiagnosticsSummary,
+    ValidationConstraintConfig, ValidationConstraintKind, ValidationConstraintSummary,
+    ValidationConstraintViolation,
 };
 use crate::compiler::CompiledProgram;
 use crate::output::{OutputSample, StepOutput};
@@ -48,6 +51,10 @@ pub struct WalkForwardWindowSummary {
     pub flat_bar_pct: f64,
     pub long_bar_pct: f64,
     pub short_bar_pct: f64,
+    #[serde(default)]
+    pub arbitrage: ArbitrageDiagnosticsSummary,
+    #[serde(default)]
+    pub transfer_summary: TransferDiagnosticsSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +81,10 @@ pub struct WalkForwardSegmentDiagnostics {
     pub cohorts: CohortDiagnostics,
     #[serde(default)]
     pub drawdown: DrawdownDiagnostics,
+    #[serde(default)]
+    pub arbitrage: ArbitrageDiagnosticsSummary,
+    #[serde(default)]
+    pub transfer_summary: TransferDiagnosticsSummary,
     #[serde(default)]
     pub drift_flags: Vec<SegmentDriftFlag>,
     #[serde(default)]
@@ -113,6 +124,10 @@ pub struct WalkForwardStitchedSummary {
     pub positive_segment_count: usize,
     pub negative_segment_count: usize,
     pub average_segment_return: f64,
+    #[serde(default)]
+    pub arbitrage: ArbitrageDiagnosticsSummary,
+    #[serde(default)]
+    pub transfer_summary: TransferDiagnosticsSummary,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -185,6 +200,7 @@ pub fn run_walk_forward_with_sources(
         let in_sample = summarize_window(
             &result.equity_curve,
             &result.trades,
+            &result.diagnostics,
             0,
             config.train_bars,
             config.backtest.initial_capital,
@@ -192,6 +208,7 @@ pub fn run_walk_forward_with_sources(
         let out_of_sample = summarize_window(
             &result.equity_curve,
             &result.trades,
+            &result.diagnostics,
             config.train_bars,
             config.train_bars + config.test_bars,
             in_sample.ending_equity,
@@ -350,6 +367,7 @@ fn exclusive_end_time(execution_bars: &[crate::runtime::Bar], end_index: usize) 
 pub(crate) fn summarize_window(
     equity_curve: &[crate::backtest::EquityPoint],
     trades: &[crate::backtest::Trade],
+    diagnostics: &BacktestDiagnostics,
     start_index: usize,
     end_index: usize,
     starting_equity: f64,
@@ -398,6 +416,24 @@ pub(crate) fn summarize_window(
     };
     let execution_asset_return = execution_asset_return(equity_curve, start_index, end_index);
     let point_count = points.len() as f64;
+    let arbitrage_baskets = diagnostics
+        .arbitrage
+        .baskets
+        .iter()
+        .filter(|basket| {
+            basket_window_index(basket) >= start_index && basket_window_index(basket) < end_index
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    let transfers = diagnostics
+        .spot_quote_transfers
+        .iter()
+        .filter(|transfer| {
+            transfer_window_index(transfer) >= start_index
+                && transfer_window_index(transfer) < end_index
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     WalkForwardWindowSummary {
         starting_equity,
         ending_equity,
@@ -412,7 +448,17 @@ pub(crate) fn summarize_window(
         flat_bar_pct: ratio(flat_count as f64, point_count),
         long_bar_pct: ratio(long_count as f64, point_count),
         short_bar_pct: ratio(short_count as f64, point_count),
+        arbitrage: build_arbitrage_diagnostics(&arbitrage_baskets),
+        transfer_summary: build_transfer_diagnostics(&transfers),
     }
+}
+
+fn basket_window_index(basket: &ArbitrageBasketRecord) -> usize {
+    basket.exit_bar_index.unwrap_or(basket.entry_bar_index)
+}
+
+fn transfer_window_index(transfer: &SpotQuoteTransfer) -> usize {
+    transfer.completed_bar_index.unwrap_or(transfer.bar_index)
 }
 
 fn execution_asset_return(
@@ -529,6 +575,16 @@ fn summarize_stitched_curve(
             segments
                 .iter()
                 .map(|segment| segment.out_of_sample.total_return),
+        ),
+        arbitrage: aggregate_arbitrage_diagnostics(
+            segments
+                .iter()
+                .map(|segment| &segment.out_of_sample.arbitrage),
+        ),
+        transfer_summary: aggregate_transfer_diagnostics(
+            segments
+                .iter()
+                .map(|segment| &segment.out_of_sample.transfer_summary),
         ),
     }
 }
@@ -659,9 +715,35 @@ pub(crate) fn summarize_segment_diagnostics(
         .count();
     let cohorts = build_cohort_diagnostics(&exited_trade_diagnostics, &export_summaries);
     let drawdown = build_drawdown_diagnostics(&result.equity_curve[start_index..end_index]);
+    let arbitrage = build_arbitrage_diagnostics(
+        &result
+            .diagnostics
+            .arbitrage
+            .baskets
+            .iter()
+            .filter(|basket| {
+                let index = basket_window_index(basket);
+                index >= start_index && index < end_index
+            })
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
+    let transfer_summary = build_transfer_diagnostics(
+        &result
+            .diagnostics
+            .spot_quote_transfers
+            .iter()
+            .filter(|transfer| {
+                let index = transfer_window_index(transfer);
+                index >= start_index && index < end_index
+            })
+            .cloned()
+            .collect::<Vec<_>>(),
+    );
     let segment_summary = summarize_window(
         &result.equity_curve,
         &result.trades,
+        &result.diagnostics,
         start_index,
         end_index,
         result
@@ -698,6 +780,8 @@ pub(crate) fn summarize_segment_diagnostics(
         opportunity_event_count,
         cohorts,
         drawdown,
+        arbitrage,
+        transfer_summary,
         drift_flags: Vec::new(),
         hints,
     }

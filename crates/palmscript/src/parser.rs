@@ -4,10 +4,12 @@
 //! parse diagnostics instead of emitting bytecode directly.
 
 use crate::ast::{
-    Ast, BinaryOp, BindingName, Block, ExecutionDecl, Expr, ExprKind, FunctionDecl, FunctionParam,
-    InputOptimization, InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind,
-    PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalModuleDecl, SignalRole,
-    SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, UnaryOp,
+    ArbOrderSpec, ArbOrderSpecKind, ArbPairConstructor, ArbSignalKind, Ast, BinaryOp, BindingName,
+    Block, ExecutionDecl, Expr, ExprKind, FunctionDecl, FunctionParam, InputOptimization,
+    InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind, PortfolioControlKind,
+    PortfolioGroupDecl, RiskControlKind, SignalModuleDecl, SignalRole, SourceDecl,
+    SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, TransferAssetKind, TransferSpec,
+    UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -164,6 +166,26 @@ impl<'a> Parser<'a> {
                 return None;
             }
             return self.parse_output_stmt(OutputStmtKind::Trigger);
+        }
+        if self.matches_keyword(&TokenKind::ArbEntry) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "`arb_entry` declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_arb_signal_stmt(ArbSignalKind::Entry);
+        }
+        if self.matches_keyword(&TokenKind::ArbExit) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "`arb_exit` declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_arb_signal_stmt(ArbSignalKind::Exit);
         }
         if self.matches_keyword(&TokenKind::Cooldown) {
             if self.block_depth > 0 {
@@ -347,6 +369,26 @@ impl<'a> Parser<'a> {
                 return None;
             }
             return self.parse_order_template_stmt();
+        }
+        if self.matches_keyword(&TokenKind::ArbOrder) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "arb order declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_arb_order_stmt();
+        }
+        if self.matches_keyword(&TokenKind::Transfer) {
+            if self.block_depth > 0 {
+                self.push_diagnostic(
+                    "transfer declarations are only allowed at the top level",
+                    self.previous().span,
+                );
+                return None;
+            }
+            return self.parse_transfer_stmt();
         }
         if self.matches_keyword(&TokenKind::If) {
             return self.parse_if_stmt();
@@ -756,6 +798,23 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_arb_signal_stmt(&mut self, kind: ArbSignalKind) -> Option<Stmt> {
+        let start = self.previous().span;
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            match kind {
+                ArbSignalKind::Entry => "expected `=` after `arb_entry`",
+                ArbSignalKind::Exit => "expected `=` after `arb_exit`",
+            },
+        )?;
+        let expr = self.parse_expr(0)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(expr.span),
+            kind: StmtKind::ArbSignal { kind, expr },
+        })
+    }
+
     fn parse_risk_control_stmt(&mut self, kind: RiskControlKind) -> Option<Stmt> {
         let start = self.previous().span;
         let side = self.parse_position_side(match kind {
@@ -1076,6 +1135,62 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_arb_order_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let kind = if self.matches_keyword(&TokenKind::Entry) {
+            ArbSignalKind::Entry
+        } else if self.matches_keyword(&TokenKind::Exit) {
+            ArbSignalKind::Exit
+        } else {
+            self.push_diagnostic(
+                "expected `entry` or `exit` after `arb_order`",
+                self.tokens[self.cursor].span,
+            );
+            return None;
+        };
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after arb order kind",
+        )?;
+        let spec = self.parse_arb_order_spec()?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::ArbOrder {
+                kind,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
+    fn parse_transfer_stmt(&mut self) -> Option<Stmt> {
+        let start = self.previous().span;
+        let asset_kind = match self.advance()?.kind.clone() {
+            TokenKind::Ident(name) if name == "quote" => TransferAssetKind::Quote,
+            TokenKind::Ident(name) if name == "base" => TransferAssetKind::Base,
+            _ => {
+                self.push_diagnostic(
+                    "expected `quote` or `base` after `transfer`",
+                    self.previous().span,
+                );
+                return None;
+            }
+        };
+        self.expect_kind(
+            |token| matches!(token, TokenKind::Assign),
+            "expected `=` after transfer asset kind",
+        )?;
+        let spec = self.parse_transfer_spec(asset_kind)?;
+        Some(Stmt {
+            id: self.alloc_id(),
+            span: start.merge(spec.span),
+            kind: StmtKind::Transfer {
+                asset_kind,
+                spec: Box::new(spec),
+            },
+        })
+    }
+
     fn parse_attached_order_stmt(&mut self, protect: bool) -> Option<Stmt> {
         let start = self.previous().span;
         let role = if protect {
@@ -1224,12 +1339,74 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_arb_order_spec(&mut self) -> Option<ArbOrderSpec> {
+        let token = self.advance()?.clone();
+        let (callee, callee_span) = match token.kind {
+            TokenKind::Ident(name) => (name, token.span),
+            _ => {
+                self.push_diagnostic("expected arbitrage pair constructor name", token.span);
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after arbitrage pair constructor",
+        )?;
+
+        let mut args = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RightParen) {
+            loop {
+                args.push(self.parse_order_arg()?);
+                if !matches!(self.peek_kind(), TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after arbitrage pair constructor arguments",
+        )?;
+        let span = callee_span.merge(right.span);
+        let kind = self.build_arb_order_spec(&callee, &args, span)?;
+        Some(ArbOrderSpec { span, kind })
+    }
+
+    fn parse_transfer_spec(&mut self, asset_kind: TransferAssetKind) -> Option<TransferSpec> {
+        let token = self.advance()?.clone();
+        let (callee, callee_span) = match token.kind {
+            TokenKind::Ident(name) => (name, token.span),
+            _ => {
+                self.push_diagnostic("expected transfer constructor name", token.span);
+                return None;
+            }
+        };
+        self.expect_kind(
+            |kind| matches!(kind, TokenKind::LeftParen),
+            "expected `(` after transfer constructor",
+        )?;
+
+        let mut args = Vec::new();
+        if !matches!(self.peek_kind(), TokenKind::RightParen) {
+            loop {
+                args.push(self.parse_order_arg()?);
+                if !matches!(self.peek_kind(), TokenKind::Comma) {
+                    break;
+                }
+                self.advance();
+            }
+        }
+        let right = self.expect_kind(
+            |kind| matches!(kind, TokenKind::RightParen),
+            "expected `)` after transfer constructor arguments",
+        )?;
+        let span = callee_span.merge(right.span);
+        self.build_transfer_spec(&callee, asset_kind, &args, span)
+    }
+
     fn parse_order_arg(&mut self) -> Option<ParsedOrderArg> {
         if let (
-            Some(Token {
-                kind: TokenKind::Ident(name),
-                span,
-            }),
+            Some(token),
             Some(Token {
                 kind: TokenKind::Assign,
                 ..
@@ -1238,8 +1415,10 @@ impl<'a> Parser<'a> {
             self.tokens.get(self.cursor),
             self.tokens.get(self.cursor + 1),
         ) {
-            let name = name.clone();
-            let name_span = *span;
+            let Some(name) = token_kind_arg_name(&token.kind) else {
+                return self.parse_expr(0).map(ParsedOrderArg::Positional);
+            };
+            let name_span = token.span;
             self.advance();
             self.advance();
             let value = self.parse_expr(0)?;
@@ -1525,6 +1704,241 @@ impl<'a> Parser<'a> {
         Some((execution, kind))
     }
 
+    fn build_arb_order_spec(
+        &mut self,
+        callee: &str,
+        args: &[ParsedOrderArg],
+        span: Span,
+    ) -> Option<ArbOrderSpecKind> {
+        if args
+            .iter()
+            .any(|arg| matches!(arg, ParsedOrderArg::Positional(_)))
+        {
+            self.push_diagnostic("arbitrage pair constructors must use named arguments", span);
+            return None;
+        }
+
+        let constructor = match callee {
+            "market_pair" => ArbPairConstructor::MarketPair,
+            "limit_pair" => ArbPairConstructor::LimitPair,
+            "mixed_pair" => ArbPairConstructor::MixedPair,
+            _ => {
+                self.push_diagnostic("invalid arbitrage pair constructor", span);
+                return None;
+            }
+        };
+
+        let mut fields = std::collections::BTreeMap::<String, (Span, Expr)>::new();
+        for arg in args {
+            let ParsedOrderArg::Named {
+                name,
+                name_span,
+                value,
+            } = arg
+            else {
+                continue;
+            };
+            if fields
+                .insert(name.clone(), (*name_span, value.clone()))
+                .is_some()
+            {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Parse,
+                    format!("duplicate `{name}` arbitrage order argument"),
+                    *name_span,
+                ));
+                return None;
+            }
+        }
+
+        let take = |name: &str, fields: &mut std::collections::BTreeMap<String, (Span, Expr)>| {
+            fields.remove(name).map(|(_, expr)| expr)
+        };
+
+        let buy_venue = take("buy_venue", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("pair constructors require `buy_venue = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let sell_venue = take("sell_venue", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("pair constructors require `sell_venue = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let size = take("size", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("pair constructors require `size = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let buy_price = take("buy_price", &mut fields);
+        let sell_price = take("sell_price", &mut fields);
+        let tif = take("tif", &mut fields);
+        let post_only = take("post_only", &mut fields);
+        let abort_on_partial = take("abort_on_partial", &mut fields);
+        let max_leg_delay_bars = take("max_leg_delay_bars", &mut fields);
+        let max_leg_price_drift_bps = take("max_leg_price_drift_bps", &mut fields);
+
+        match constructor {
+            ArbPairConstructor::MarketPair => {
+                if buy_price.is_some() {
+                    self.push_diagnostic("`market_pair` does not accept `buy_price`", span);
+                    return None;
+                }
+                if sell_price.is_some() {
+                    self.push_diagnostic("`market_pair` does not accept `sell_price`", span);
+                    return None;
+                }
+                if tif.is_some() {
+                    self.push_diagnostic("`market_pair` does not accept `tif`", span);
+                    return None;
+                }
+                if post_only.is_some() {
+                    self.push_diagnostic("`market_pair` does not accept `post_only`", span);
+                    return None;
+                }
+            }
+            ArbPairConstructor::LimitPair => {
+                if buy_price.is_none() {
+                    self.push_diagnostic("`limit_pair` requires `buy_price = ...`", span);
+                    return None;
+                }
+                if sell_price.is_none() {
+                    self.push_diagnostic("`limit_pair` requires `sell_price = ...`", span);
+                    return None;
+                }
+                if tif.is_none() {
+                    self.push_diagnostic("`limit_pair` requires `tif = ...`", span);
+                    return None;
+                }
+                if post_only.is_none() {
+                    self.push_diagnostic("`limit_pair` requires `post_only = ...`", span);
+                    return None;
+                }
+            }
+            ArbPairConstructor::MixedPair => {
+                if buy_price.is_none() && sell_price.is_none() {
+                    self.push_diagnostic(
+                        "`mixed_pair` requires at least one of `buy_price = ...` or `sell_price = ...`",
+                        span,
+                    );
+                    return None;
+                }
+            }
+        }
+
+        if let Some((name, (field_span, _))) = fields.into_iter().next() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Parse,
+                format!("unexpected `{name}` arbitrage order argument for `{callee}`"),
+                field_span,
+            ));
+            return None;
+        }
+
+        Some(ArbOrderSpecKind::Pair {
+            constructor,
+            buy_venue,
+            sell_venue,
+            size,
+            buy_price,
+            sell_price,
+            tif,
+            post_only,
+            abort_on_partial,
+            max_leg_delay_bars,
+            max_leg_price_drift_bps,
+        })
+    }
+
+    fn build_transfer_spec(
+        &mut self,
+        callee: &str,
+        asset_kind: TransferAssetKind,
+        args: &[ParsedOrderArg],
+        span: Span,
+    ) -> Option<TransferSpec> {
+        if args
+            .iter()
+            .any(|arg| matches!(arg, ParsedOrderArg::Positional(_)))
+        {
+            self.push_diagnostic("transfer constructors must use named arguments", span);
+            return None;
+        }
+
+        let expected_callee = match asset_kind {
+            TransferAssetKind::Quote => "quote_transfer",
+            TransferAssetKind::Base => "base_transfer",
+        };
+        if callee != expected_callee {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Parse,
+                format!(
+                    "`transfer {}` requires `{expected_callee}(...)`",
+                    transfer_asset_name(asset_kind)
+                ),
+                span,
+            ));
+            return None;
+        }
+
+        let mut fields = std::collections::BTreeMap::<String, (Span, Expr)>::new();
+        for arg in args {
+            let ParsedOrderArg::Named {
+                name,
+                name_span,
+                value,
+            } = arg
+            else {
+                continue;
+            };
+            if fields
+                .insert(name.clone(), (*name_span, value.clone()))
+                .is_some()
+            {
+                self.diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Parse,
+                    format!("duplicate `{name}` transfer argument"),
+                    *name_span,
+                ));
+                return None;
+            }
+        }
+
+        let take = |name: &str, fields: &mut std::collections::BTreeMap<String, (Span, Expr)>| {
+            fields.remove(name).map(|(_, expr)| expr)
+        };
+
+        let from = take("from", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("transfer constructors require `from = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let to = take("to", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("transfer constructors require `to = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let amount = take("amount", &mut fields).unwrap_or_else(|| {
+            self.push_diagnostic("transfer constructors require `amount = ...`", span);
+            self.synthetic_na_expr(span)
+        });
+        let fee = take("fee", &mut fields);
+        let delay_bars = take("delay_bars", &mut fields);
+
+        if let Some((name, (field_span, _))) = fields.into_iter().next() {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Parse,
+                format!("unexpected `{name}` transfer argument for `{callee}`"),
+                field_span,
+            ));
+            return None;
+        }
+
+        Some(TransferSpec {
+            span,
+            from,
+            to,
+            amount,
+            fee,
+            delay_bars,
+        })
+    }
+
     fn synthetic_na_expr(&mut self, span: Span) -> Expr {
         Expr {
             id: self.alloc_id(),
@@ -1599,8 +2013,11 @@ impl<'a> Parser<'a> {
             lhs = match self.peek_kind() {
                 TokenKind::LeftParen => self.parse_call(lhs)?,
                 TokenKind::LeftBracket => self.parse_index(lhs)?,
-                TokenKind::Dot if matches!(lhs.kind, ExprKind::Ident(_)) => {
-                    self.parse_dotted_ident(lhs)?
+                TokenKind::Dot
+                    if matches!(lhs.kind, ExprKind::Ident(_))
+                        || matches!(lhs.kind, ExprKind::Call { .. }) =>
+                {
+                    self.parse_dotted_expr(lhs)?
                 }
                 TokenKind::Question => {
                     let (left_bp, right_bp) = (4, 4);
@@ -1771,154 +2188,217 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_dotted_ident(&mut self, source: Expr) -> Option<Expr> {
-        let (source_name, source_span) = match source.kind {
-            ExprKind::Ident(name) => (name, source.span),
-            _ => unreachable!(),
-        };
+    fn parse_dotted_expr(&mut self, source: Expr) -> Option<Expr> {
         self.expect_kind(
             |kind| matches!(kind, TokenKind::Dot),
-            "expected `.` after source alias",
+            "expected `.` after dotted expression",
         )?;
-        match self.advance()?.clone() {
-            Token {
-                kind: TokenKind::Ident(name),
-                span,
+        match source.kind {
+            ExprKind::Ident(source_name) => {
+                let source_span = source.span;
+                match self.advance()?.clone() {
+                    Token {
+                        kind: TokenKind::Ident(name),
+                        span,
+                    } => {
+                        if source_name == "position" {
+                            let Some(field) = crate::position::PositionField::parse(&name) else {
+                                self.push_diagnostic("unknown `position` field", span);
+                                return None;
+                            };
+                            return Some(Expr {
+                                id: self.alloc_id(),
+                                span: source_span.merge(span),
+                                kind: ExprKind::PositionField {
+                                    field,
+                                    field_span: span,
+                                },
+                            });
+                        }
+                        if source_name == "position_event" {
+                            let Some(field) = crate::position::PositionEventField::parse(&name)
+                            else {
+                                self.push_diagnostic("unknown `position_event` field", span);
+                                return None;
+                            };
+                            return Some(Expr {
+                                id: self.alloc_id(),
+                                span: source_span.merge(span),
+                                kind: ExprKind::PositionEventField {
+                                    field,
+                                    field_span: span,
+                                },
+                            });
+                        }
+                        if let Some(scope) =
+                            crate::position::LastExitScope::from_namespace(&source_name)
+                        {
+                            let Some(field) = crate::position::LastExitField::parse(&name) else {
+                                let _ = scope;
+                                self.push_diagnostic("unknown last-exit field", span);
+                                return None;
+                            };
+                            return Some(Expr {
+                                id: self.alloc_id(),
+                                span: source_span.merge(span),
+                                kind: ExprKind::LastExitField {
+                                    scope,
+                                    field,
+                                    field_span: span,
+                                },
+                            });
+                        }
+                        if let Some(field) = MarketField::parse(&name) {
+                            Some(Expr {
+                                id: self.alloc_id(),
+                                span: source_span.merge(span),
+                                kind: ExprKind::SourceSeries {
+                                    source: source_name,
+                                    source_span,
+                                    interval: None,
+                                    field,
+                                },
+                            })
+                        } else {
+                            Some(Expr {
+                                id: self.alloc_id(),
+                                span: source_span.merge(span),
+                                kind: ExprKind::EnumVariant {
+                                    namespace: source_name,
+                                    namespace_span: source_span,
+                                    variant: name,
+                                    variant_span: span,
+                                },
+                            })
+                        }
+                    }
+                    Token {
+                        kind: TokenKind::Long,
+                        span,
+                    }
+                    | Token {
+                        kind: TokenKind::Short,
+                        span,
+                    }
+                    | Token {
+                        kind: TokenKind::Protect,
+                        span,
+                    }
+                    | Token {
+                        kind: TokenKind::Target,
+                        span,
+                    } => {
+                        let name = match self.previous().kind {
+                            TokenKind::Long => "long".to_string(),
+                            TokenKind::Short => "short".to_string(),
+                            TokenKind::Protect => "protect".to_string(),
+                            TokenKind::Target => "target".to_string(),
+                            _ => unreachable!(),
+                        };
+                        Some(Expr {
+                            id: self.alloc_id(),
+                            span: source_span.merge(span),
+                            kind: ExprKind::EnumVariant {
+                                namespace: source_name,
+                                namespace_span: source_span,
+                                variant: name,
+                                variant_span: span,
+                            },
+                        })
+                    }
+                    Token {
+                        kind: TokenKind::Interval(interval),
+                        span: _interval_span,
+                    } => {
+                        self.expect_kind(
+                            |kind| matches!(kind, TokenKind::Dot),
+                            "expected `.` after interval literal",
+                        )?;
+                        let token = self.expect_kind(
+                            |kind| matches!(kind, TokenKind::Ident(_)),
+                            "expected market field after `.`",
+                        )?;
+                        let TokenKind::Ident(name) = token.kind else {
+                            unreachable!();
+                        };
+                        let Some(field) = MarketField::parse(&name) else {
+                            self.push_diagnostic("expected market field after `.`", token.span);
+                            return None;
+                        };
+                        Some(Expr {
+                            id: self.alloc_id(),
+                            span: source_span.merge(token.span),
+                            kind: ExprKind::SourceSeries {
+                                source: source_name,
+                                source_span,
+                                interval: Some(interval),
+                                field,
+                            },
+                        })
+                    }
+                    token => {
+                        self.push_diagnostic(
+                            "expected market field or interval after `.`",
+                            token.span,
+                        );
+                        None
+                    }
+                }
+            }
+            ExprKind::Call {
+                callee,
+                callee_span,
+                args,
             } => {
-                if source_name == "position" {
-                    let Some(field) = crate::position::PositionField::parse(&name) else {
-                        self.push_diagnostic("unknown `position` field", span);
-                        return None;
-                    };
-                    return Some(Expr {
-                        id: self.alloc_id(),
-                        span: source_span.merge(span),
-                        kind: ExprKind::PositionField {
-                            field,
-                            field_span: span,
-                        },
-                    });
+                if callee != "ledger" {
+                    self.push_diagnostic(
+                        "only `ledger(<execution_alias>).<field>` supports dotted access after a call",
+                        callee_span,
+                    );
+                    return None;
                 }
-                if source_name == "position_event" {
-                    let Some(field) = crate::position::PositionEventField::parse(&name) else {
-                        self.push_diagnostic("unknown `position_event` field", span);
-                        return None;
-                    };
-                    return Some(Expr {
-                        id: self.alloc_id(),
-                        span: source_span.merge(span),
-                        kind: ExprKind::PositionEventField {
-                            field,
-                            field_span: span,
-                        },
-                    });
+                if args.len() != 1 {
+                    self.push_diagnostic(
+                        "`ledger(...)` requires exactly one execution alias argument",
+                        source.span,
+                    );
+                    return None;
                 }
-                if let Some(scope) = crate::position::LastExitScope::from_namespace(&source_name) {
-                    let Some(field) = crate::position::LastExitField::parse(&name) else {
-                        let _ = scope;
-                        self.push_diagnostic("unknown last-exit field", span);
-                        return None;
-                    };
-                    return Some(Expr {
-                        id: self.alloc_id(),
-                        span: source_span.merge(span),
-                        kind: ExprKind::LastExitField {
-                            scope,
-                            field,
-                            field_span: span,
-                        },
-                    });
-                }
-                if let Some(field) = MarketField::parse(&name) {
-                    Some(Expr {
-                        id: self.alloc_id(),
-                        span: source_span.merge(span),
-                        kind: ExprKind::SourceSeries {
-                            source: source_name,
-                            source_span,
-                            interval: None,
-                            field,
-                        },
-                    })
-                } else {
-                    Some(Expr {
-                        id: self.alloc_id(),
-                        span: source_span.merge(span),
-                        kind: ExprKind::EnumVariant {
-                            namespace: source_name,
-                            namespace_span: source_span,
-                            variant: name,
-                            variant_span: span,
-                        },
-                    })
-                }
-            }
-            Token {
-                kind: TokenKind::Long,
-                span,
-            }
-            | Token {
-                kind: TokenKind::Short,
-                span,
-            }
-            | Token {
-                kind: TokenKind::Protect,
-                span,
-            }
-            | Token {
-                kind: TokenKind::Target,
-                span,
-            } => {
-                let name = match self.previous().kind {
-                    TokenKind::Long => "long".to_string(),
-                    TokenKind::Short => "short".to_string(),
-                    TokenKind::Protect => "protect".to_string(),
-                    TokenKind::Target => "target".to_string(),
-                    _ => unreachable!(),
+                let alias_expr = &args[0];
+                let ExprKind::Ident(execution_alias) = &alias_expr.kind else {
+                    self.push_diagnostic(
+                        "`ledger(...)` requires a declared execution alias identifier",
+                        alias_expr.span,
+                    );
+                    return None;
                 };
-                Some(Expr {
-                    id: self.alloc_id(),
-                    span: source_span.merge(span),
-                    kind: ExprKind::EnumVariant {
-                        namespace: source_name,
-                        namespace_span: source_span,
-                        variant: name,
-                        variant_span: span,
-                    },
-                })
-            }
-            Token {
-                kind: TokenKind::Interval(interval),
-                span: _interval_span,
-            } => {
-                self.expect_kind(
-                    |kind| matches!(kind, TokenKind::Dot),
-                    "expected `.` after interval literal",
-                )?;
                 let token = self.expect_kind(
                     |kind| matches!(kind, TokenKind::Ident(_)),
-                    "expected market field after `.`",
+                    "expected ledger field after `.`",
                 )?;
                 let TokenKind::Ident(name) = token.kind else {
                     unreachable!();
                 };
-                let Some(field) = MarketField::parse(&name) else {
-                    self.push_diagnostic("expected market field after `.`", token.span);
+                let Some(field) = crate::ledger::LedgerField::parse(&name) else {
+                    self.push_diagnostic("unknown `ledger` field", token.span);
                     return None;
                 };
                 Some(Expr {
                     id: self.alloc_id(),
-                    span: source_span.merge(token.span),
-                    kind: ExprKind::SourceSeries {
-                        source: source_name,
-                        source_span,
-                        interval: Some(interval),
+                    span: source.span.merge(token.span),
+                    kind: ExprKind::LedgerField {
+                        execution_alias: execution_alias.clone(),
+                        alias_span: alias_expr.span,
                         field,
+                        field_span: token.span,
                     },
                 })
             }
-            token => {
-                self.push_diagnostic("expected market field or interval after `.`", token.span);
+            _ => {
+                self.push_diagnostic(
+                    "expected source alias or `ledger(<execution_alias>)` before `.`",
+                    source.span,
+                );
                 None
             }
         }
@@ -2240,6 +2720,21 @@ enum ParsedOrderArg {
         name_span: Span,
         value: Expr,
     },
+}
+
+fn token_kind_arg_name(kind: &TokenKind) -> Option<String> {
+    match kind {
+        TokenKind::Ident(name) => Some(name.clone()),
+        TokenKind::Size => Some("size".to_string()),
+        _ => None,
+    }
+}
+
+fn transfer_asset_name(asset_kind: TransferAssetKind) -> &'static str {
+    match asset_kind {
+        TransferAssetKind::Quote => "quote",
+        TransferAssetKind::Base => "base",
+    }
 }
 
 struct ParsedMarketBinding {

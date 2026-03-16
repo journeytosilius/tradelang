@@ -233,6 +233,225 @@ plot(spot.close)",
 }
 
 #[test]
+fn backtest_exposes_declared_execution_ledgers_to_scripts() {
+    let compiled = compile(
+        "interval 1m
+source bin = binance.spot(\"BTCUSDT\")
+source gate = gate.spot(\"BTC_USDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+entry long = false
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = bn)
+order entry short = market(venue = bn)
+order exit long = market(venue = bn)
+order exit short = market(venue = bn)
+export bn_quote = ledger(bn).quote_free
+export gt_quote = ledger(gt).quote_free
+export bn_mark_value = ledger(bn).mark_value_quote
+plot(bin.close)",
+    )
+    .expect("script should compile");
+
+    let bin_bars = vec![bar(0, 100.0, 101.0), bar(60_000, 101.0, 102.0)];
+    let gate_bars = vec![bar(0, 100.0, 100.5), bar(60_000, 100.5, 101.0)];
+    let runtime =
+        runtime_with_execution_feeds(bin_bars.clone(), gate_bars.clone(), bin_bars, gate_bars);
+    let mut portfolio = config("bn");
+    portfolio.portfolio_execution_aliases = vec!["bn".to_string(), "gt".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), portfolio)
+        .expect("backtest should run");
+
+    for point in &result.outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::F64(500.0));
+    }
+    for point in &result.outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::F64(500.0));
+    }
+    for point in &result.outputs.exports[2].points {
+        assert_eq!(point.value, palmscript::OutputValue::F64(500.0));
+    }
+}
+
+#[test]
+fn backtest_venue_selection_builtins_compare_execution_aliases() {
+    let compiled = compile(
+        "interval 1m
+source bin = binance.spot(\"BTCUSDT\")
+source gate = gate.spot(\"BTC_USDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+entry long = false
+entry short = false
+exit long = false
+exit short = false
+order entry long = market(venue = bn)
+order entry short = market(venue = bn)
+order exit long = market(venue = bn)
+order exit short = market(venue = bn)
+export cheapest_is_bn = cheapest(bn, gt) == bn
+export richest_is_gt = richest(bn, gt) == gt
+export spread = spread_bps(bn, gt)
+plot(bin.close)",
+    )
+    .expect("script should compile");
+
+    let bin_bars = vec![bar(0, 100.0, 100.0), bar(60_000, 101.0, 101.0)];
+    let gate_bars = vec![bar(0, 101.0, 101.0), bar(60_000, 103.0, 103.0)];
+    let runtime =
+        runtime_with_execution_feeds(bin_bars.clone(), gate_bars.clone(), bin_bars, gate_bars);
+    let mut portfolio = config("bn");
+    portfolio.portfolio_execution_aliases = vec!["bn".to_string(), "gt".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), portfolio)
+        .expect("backtest should run");
+
+    for point in &result.outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(true));
+    }
+    for point in &result.outputs.exports[1].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(true));
+    }
+
+    let first_spread = match result.outputs.exports[2].points[0].value {
+        palmscript::OutputValue::F64(value) => value,
+        ref other => panic!("expected numeric spread, found {other:?}"),
+    };
+    let second_spread = match result.outputs.exports[2].points[1].value {
+        palmscript::OutputValue::F64(value) => value,
+        ref other => panic!("expected numeric spread, found {other:?}"),
+    };
+    assert!((first_spread - 100.0).abs() < 1e-12);
+    assert!((second_spread - (((103.0 - 101.0) / 101.0) * 10_000.0)).abs() < 1e-12);
+}
+
+#[test]
+fn single_source_backtest_rejects_arb_surface_without_portfolio_mode() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+let cheap = cheapest(bn, gt)
+let rich = richest(bn, gt)
+arb_entry = spread_bps(cheap, rich) > 5
+arb_exit = spread_bps(cheap, rich) < 1
+arb_order entry = market_pair(
+    buy_venue = cheap,
+    sell_venue = rich,
+    size = 0.25
+)
+arb_order exit = market_pair(
+    buy_venue = rich,
+    sell_venue = cheap,
+    size = 0.25
+)
+plot(spot.close)",
+    )
+    .expect("arb syntax should compile");
+
+    let bin_bars = vec![bar(0, 100.0, 100.0), bar(60_000, 100.0, 101.0)];
+    let gate_bars = vec![bar(0, 100.0, 100.0), bar(60_000, 100.0, 101.0)];
+    let runtime =
+        runtime_with_execution_feeds(bin_bars.clone(), gate_bars.clone(), bin_bars, gate_bars);
+
+    let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("bn"))
+        .expect_err("arb syntax should require portfolio mode");
+    assert_eq!(err, BacktestError::ArbitrageRequiresPortfolioMode);
+}
+
+#[test]
+fn portfolio_backtest_executes_market_pair_arb_basket() {
+    let compiled = compile(
+        "interval 1m
+source bin = binance.spot(\"BTCUSDT\")
+source gate = gate.spot(\"BTC_USDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+let cheap = cheapest(bn, gt)
+let rich = richest(bn, gt)
+arb_entry = spread_bps(cheap, rich) > 100
+arb_exit = spread_bps(cheap, rich) < 20
+arb_order entry = market_pair(
+    buy_venue = cheap,
+    sell_venue = rich,
+    size = 1
+)
+arb_order exit = market_pair(
+    buy_venue = rich,
+    sell_venue = cheap,
+    size = 1
+)
+export bn_quote = ledger(bn).quote_free
+export bn_base = ledger(bn).base_free
+export gt_quote = ledger(gt).quote_free
+export gt_base = ledger(gt).base_free
+plot(bin.close)",
+    )
+    .expect("arb syntax should compile");
+
+    let bin_bars = vec![
+        bar(0, 100.0, 100.0),
+        bar(60_000, 100.0, 100.0),
+        bar(120_000, 100.0, 101.0),
+        bar(180_000, 101.0, 101.0),
+    ];
+    let gate_bars = vec![
+        bar(0, 100.0, 100.0),
+        bar(60_000, 100.0, 102.0),
+        bar(120_000, 102.0, 101.05),
+        bar(180_000, 101.05, 101.0),
+    ];
+    let runtime =
+        runtime_with_execution_feeds(bin_bars.clone(), gate_bars.clone(), bin_bars, gate_bars);
+    let mut portfolio = config("bn");
+    portfolio.initial_capital = 2_000.0;
+    portfolio.portfolio_execution_aliases = vec!["bn".to_string(), "gt".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), portfolio)
+        .expect("portfolio arb backtest should run");
+
+    assert_eq!(result.fills.len(), 4);
+    assert_eq!(result.trades.len(), 2);
+    assert!(result.summary.ending_equity > result.summary.starting_equity);
+    assert!(result.open_positions.is_empty());
+    assert_eq!(result.diagnostics.arbitrage.basket_count, 1);
+    assert_eq!(result.diagnostics.arbitrage.completed_basket_count, 1);
+    assert_eq!(result.diagnostics.arbitrage.open_basket_count, 0);
+    assert_eq!(result.diagnostics.arbitrage.by_pair.len(), 1);
+    assert!(result.diagnostics.arbitrage.total_realized_pnl > 0.0);
+    assert_eq!(result.diagnostics.arbitrage.baskets.len(), 1);
+
+    let bn_ending = result
+        .diagnostics
+        .ending_ledgers
+        .iter()
+        .find(|ledger| ledger.execution_alias == "bn")
+        .expect("bn ledger should exist");
+    let gt_ending = result
+        .diagnostics
+        .ending_ledgers
+        .iter()
+        .find(|ledger| ledger.execution_alias == "gt")
+        .expect("gt ledger should exist");
+    let bn_btc = bn_ending
+        .balances
+        .iter()
+        .find(|balance| balance.asset == "BTC")
+        .expect("bn btc balance should exist");
+    let gt_btc = gt_ending
+        .balances
+        .iter()
+        .find(|balance| balance.asset == "BTC")
+        .expect("gt btc balance should exist");
+    approx_eq(bn_btc.amount, 0.0);
+    approx_eq(gt_btc.amount, 0.0);
+}
+
+#[test]
 fn backtest_reports_entry_module_attribution() {
     let compiled = compile(
         "interval 1m
@@ -1079,6 +1298,145 @@ plot(left.close)",
         .balances
         .iter()
         .any(|balance| balance.asset == "BTC"));
+}
+
+#[test]
+fn quote_transfer_runtime_debits_source_and_credits_destination_after_delay() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+transfer quote = quote_transfer(
+    from = gt,
+    to = bn,
+    amount = ledger(gt).quote_free > 450 ? 100 : 0,
+    fee = 1,
+    delay_bars = 2
+)
+plot(left.close)",
+    )
+    .expect("quote transfer script should compile");
+
+    let runtime = runtime_with_execution_feeds(
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 10.0, 10.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                10.0,
+                10.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                10.0,
+                10.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 20.0, 20.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                20.0,
+                20.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                20.0,
+                20.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 10.0, 10.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                10.0,
+                10.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                10.0,
+                10.0,
+            ),
+        ],
+        vec![
+            bar(support::JAN_1_2024_UTC_MS, 20.0, 20.0),
+            bar(support::JAN_1_2024_UTC_MS + support::MINUTE_MS, 20.0, 20.0),
+            bar(
+                support::JAN_1_2024_UTC_MS + 2 * support::MINUTE_MS,
+                20.0,
+                20.0,
+            ),
+            bar(
+                support::JAN_1_2024_UTC_MS + 3 * support::MINUTE_MS,
+                20.0,
+                20.0,
+            ),
+        ],
+    );
+    let mut backtest = config("bn");
+    backtest.portfolio_execution_aliases = vec!["bn".to_string(), "gt".to_string()];
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), backtest)
+        .expect("quote transfer runtime should succeed");
+
+    assert_eq!(result.diagnostics.spot_quote_transfers.len(), 1);
+    let transfer = &result.diagnostics.spot_quote_transfers[0];
+    assert_eq!(transfer.from_alias, "gt");
+    assert_eq!(transfer.to_alias, "bn");
+    assert!((transfer.amount - 100.0).abs() < 1e-9);
+    assert!((transfer.fee - 1.0).abs() < 1e-9);
+    assert_eq!(transfer.bar_index, 1);
+    assert_eq!(transfer.delay_bars, 2);
+    assert_eq!(transfer.completed_bar_index, Some(3));
+    assert_eq!(result.diagnostics.transfer_summary.quote_transfer_count, 1);
+    assert_eq!(
+        result
+            .diagnostics
+            .transfer_summary
+            .completed_quote_transfer_count,
+        1
+    );
+    assert_eq!(
+        result
+            .diagnostics
+            .transfer_summary
+            .pending_quote_transfer_count,
+        0
+    );
+    assert!((result.diagnostics.transfer_summary.total_quote_amount - 100.0).abs() < 1e-9);
+    assert!((result.diagnostics.transfer_summary.total_quote_fee - 1.0).abs() < 1e-9);
+    assert_eq!(result.diagnostics.transfer_summary.by_route.len(), 1);
+
+    let bn_ledger = result
+        .diagnostics
+        .ending_ledgers
+        .iter()
+        .find(|ledger| ledger.execution_alias == "bn")
+        .expect("bn ending ledger should exist");
+    let gt_ledger = result
+        .diagnostics
+        .ending_ledgers
+        .iter()
+        .find(|ledger| ledger.execution_alias == "gt")
+        .expect("gt ending ledger should exist");
+    let bn_quote = bn_ledger
+        .balances
+        .iter()
+        .find(|balance| balance.asset == "USDT")
+        .expect("bn quote balance should exist")
+        .amount;
+    let gt_quote = gt_ledger
+        .balances
+        .iter()
+        .find(|balance| balance.asset == "USDT")
+        .expect("gt quote balance should exist")
+        .amount;
+    assert!((bn_quote - 600.0).abs() < 1e-9);
+    assert!((gt_quote - 399.0).abs() < 1e-9);
+    assert!((result.summary.ending_equity - 999.0).abs() < 1e-9);
 }
 
 #[test]

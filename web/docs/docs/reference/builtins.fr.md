@@ -28,6 +28,7 @@ PalmScript expose actuellement ces categories de builtin :
   et [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - helpers relationnels : `above`, `below`, `between`, `outside`
 - helpers de croisement : `cross`, `crossover`, `crossunder`
+- helpers de selection de venue : `cheapest`, `richest`, `spread_bps`
 - helpers de null : `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - helpers de serie et de fenetre : `change`, `highest`, `lowest`,
@@ -40,6 +41,44 @@ PalmScript expose actuellement ces categories de builtin :
 Les champs de marche sont selectionnes via des series qualifiees par source
 comme `spot.open`, `spot.close` ou `bb.1h.volume`. Seuls les identifiants sont
 appelables ; `spot.close()` est donc rejete.
+
+## Helpers De Selection De Venue
+
+### `cheapest(exec_a, exec_b, ...)` et `richest(exec_a, exec_b, ...)`
+
+Regles :
+
+- ils exigent au moins deux alias `execution` declares
+- chaque argument doit etre un `execution_alias` ou `na`
+- ils comparent le close d'execution courant de chaque alias sur la barre active
+- `cheapest(...)` renvoie l'alias avec le close courant le plus bas
+- `richest(...)` renvoie l'alias avec le close courant le plus haut
+- si un alias reference n'a pas de close d'execution courant sur la barre active, le resultat est `na`
+- le type de resultat est `execution_alias`
+
+Les resultats de selection sont faits pour une logique ulterieure sur les
+aliases d'execution, comme les tests d'egalite ou les helpers de spread. Ils
+ne sont pas exportables directement.
+
+### `spread_bps(buy_exec, sell_exec)`
+
+Regles :
+
+- il exige exactement deux alias `execution` declares
+- les deux arguments doivent etre `execution_alias` ou `na`
+- il est evalue comme `((sell_close - buy_close) / buy_close) * 10000`
+- si l'un des alias references n'a pas de close d'execution courant sur la barre active, le resultat est `na`
+- le type de resultat est `float` ou `series<float>` selon l'horloge de mise a jour active
+
+Exemple :
+
+```palmscript
+execution bn = binance.spot("BTCUSDT")
+execution gt = gate.spot("BTC_USDT")
+
+export buy_gate = cheapest(bn, gt) == gt
+export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+```
 
 ## Builtins A Valeur Tuple
 

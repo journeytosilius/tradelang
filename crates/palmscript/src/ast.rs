@@ -4,6 +4,7 @@
 //! between parsing and compilation.
 
 use crate::span::Span;
+use crate::LedgerField;
 use crate::{Interval, MarketField, SourceTemplate};
 use crate::{LastExitField, LastExitScope, PositionEventField, PositionField, PositionSide};
 use serde::{Deserialize, Serialize};
@@ -188,6 +189,58 @@ pub enum OrderSpecKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbSignalKind {
+    Entry,
+    Exit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArbPairConstructor {
+    MarketPair,
+    LimitPair,
+    MixedPair,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TransferAssetKind {
+    Quote,
+    Base,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ArbOrderSpec {
+    pub span: Span,
+    pub kind: ArbOrderSpecKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ArbOrderSpecKind {
+    Pair {
+        constructor: ArbPairConstructor,
+        buy_venue: Expr,
+        sell_venue: Expr,
+        size: Expr,
+        buy_price: Option<Expr>,
+        sell_price: Option<Expr>,
+        tif: Option<Expr>,
+        post_only: Option<Expr>,
+        abort_on_partial: Option<Expr>,
+        max_leg_delay_bars: Option<Expr>,
+        max_leg_price_drift_bps: Option<Expr>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TransferSpec {
+    pub span: Span,
+    pub from: Expr,
+    pub to: Expr,
+    pub amount: Expr,
+    pub fee: Option<Expr>,
+    pub delay_bars: Option<Expr>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RiskControlKind {
     Cooldown,
     MaxBarsInTrade,
@@ -265,6 +318,10 @@ pub enum StmtKind {
         role: SignalRole,
         expr: Expr,
     },
+    ArbSignal {
+        kind: ArbSignalKind,
+        expr: Expr,
+    },
     OrderTemplate {
         name: String,
         name_span: Span,
@@ -273,6 +330,14 @@ pub enum StmtKind {
     Order {
         role: SignalRole,
         spec: Box<OrderSpec>,
+    },
+    ArbOrder {
+        kind: ArbSignalKind,
+        spec: Box<ArbOrderSpec>,
+    },
+    Transfer {
+        asset_kind: TransferAssetKind,
+        spec: Box<TransferSpec>,
     },
     OrderSize {
         target: OrderSizeTarget,
@@ -332,6 +397,12 @@ pub enum ExprKind {
     LastExitField {
         scope: LastExitScope,
         field: LastExitField,
+        field_span: Span,
+    },
+    LedgerField {
+        execution_alias: String,
+        alias_span: Span,
+        field: LedgerField,
         field_span: Span,
     },
     SourceSeries {

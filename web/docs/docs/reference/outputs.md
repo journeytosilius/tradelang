@@ -10,6 +10,8 @@ PalmScript exposes three output-producing constructs:
 - `export name = expr`
 - `regime name = expr`
 - `trigger name = expr`
+- `arb_entry = expr`, `arb_exit = expr`
+- `arb_order entry = pair_order_spec`, `arb_order exit = pair_order_spec`
 - `module name = entry long|short|entry2|entry3 long|short`
 - `entry long = expr`, `entry1 long = expr`, `entry2 long = expr`, `entry3 long = expr`
 - `entry short = expr`, `entry1 short = expr`, `entry2 short = expr`, `entry3 short = expr`
@@ -96,6 +98,63 @@ Runtime event rule:
 
 - a trigger event is emitted for a step only when the current trigger sample is `true`
 - `false` and `na` do not emit trigger events
+
+## Arbitrage Surface
+
+PalmScript now reserves first-class arbitrage declarations:
+
+```palmscript
+execution bn = binance.spot("BTCUSDT")
+execution gt = gate.spot("BTC_USDT")
+
+let cheap = cheapest(bn, gt)
+let rich = richest(bn, gt)
+
+arb_entry = spread_bps(cheap, rich) > 5
+arb_exit = spread_bps(cheap, rich) < 1
+
+arb_order entry = market_pair(
+    buy_venue = cheap,
+    sell_venue = rich,
+    size = 0.25
+)
+
+transfer quote = quote_transfer(
+    from = rich,
+    to = cheap,
+    amount = ledger(rich).quote_free * 0.5,
+    fee = 1,
+    delay_bars = 144
+)
+```
+
+Rules:
+
+- `arb_entry` and `arb_exit` are top-level only
+- their expressions must evaluate to `bool`, `series<bool>`, or `na`
+- `arb_order entry` and `arb_order exit` are top-level only
+- pair constructors currently use named arguments only
+- `buy_venue` and `sell_venue` require `execution_alias` expressions
+- `size`, `buy_price`, `sell_price`, `max_leg_delay_bars`, and `max_leg_price_drift_bps` require numeric expressions when present
+- `post_only` and `abort_on_partial` require bool expressions when present
+- `market_pair` rejects `buy_price`, `sell_price`, `tif`, and `post_only`
+- `limit_pair` requires `buy_price`, `sell_price`, `tif`, and `post_only`
+- `mixed_pair` requires at least one of `buy_price` or `sell_price`
+- `transfer quote` and `transfer base` are top-level only
+- transfer constructors currently use named arguments only
+- transfer `from` and `to` require `execution_alias` expressions
+- transfer `amount`, `fee`, and `delay_bars` require numeric expressions when present
+
+Current limitation:
+
+- portfolio backtests execute `market_pair(...)` when at least two spot execution aliases are selected
+- the first selected portfolio execution alias acts as the controller runtime for `arb_entry`, `arb_exit`, and pair-order field evaluation
+- `size = ...` is the base-asset quantity in v1
+- each filled basket currently appears as paired long/short leg fills and trades in the result payload
+- `limit_pair(...)` and `mixed_pair(...)` still compile but reject at runtime until paired resting-order semantics are implemented
+- portfolio backtests also execute `transfer quote = quote_transfer(...)`; the source ledger is debited on the next bar open and the destination ledger is credited after `delay_bars`
+- `transfer base = base_transfer(...)` still compiles as reserved syntax but rejects at runtime in v1
+- backtest diagnostics now also expose typed `arbitrage` and `transfer_summary` sections; walk-forward stitched windows and optimize direct validations reuse the same summary shapes
 
 ## First-Class Strategy Signals
 
@@ -219,10 +278,12 @@ Rules:
 - `position_event.*` also exposes exit-kind-specific fill events such as `position_event.long_target_fill`, `position_event.long_protect_fill`, and `position_event.long_liquidation_fill`
 - staged fill events are also available, including `position_event.long_entry1_fill`, `position_event.long_entry2_fill`, `position_event.long_entry3_fill`, `position_event.long_target1_fill`, `position_event.long_target2_fill`, and `position_event.long_target3_fill` with matching short-side fields
 - `last_exit.*`, `last_long_exit.*`, and `last_short_exit.*` expose the most recent closed-trade snapshot globally or per side
+- `ledger(exec).base_free`, `quote_free`, `base_total`, `quote_total`, and `mark_value_quote` expose the current backtest ledger state for a declared execution alias
 - `last_*_exit.kind` is compared against typed enum literals such as `exit_kind.target` and `exit_kind.liquidation`
 - `last_*_exit.stage` exposes the staged target/protect stage number when applicable
 - outside backtests, `position_event.*` is defined but evaluates to `false` on every step
 - outside backtests, `last_*_exit.*` is defined but evaluates to `na`
+- outside backtests, `ledger(...)` is defined but evaluates to `na`
 
 ## Reserved Trading Trigger Names
 

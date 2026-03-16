@@ -21,12 +21,50 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - インジケーター: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helper: `above`, `below`, `between`, `outside`
 - crossing helper: `cross`, `crossover`, `crossunder`
+- venue-selection helper: `cheapest`, `richest`, `spread_bps`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helper: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
 - 出力: `plot`
 
 市場フィールドは `spot.open`, `spot.close`, `bb.1h.volume` のようなソース修飾 series を通じて選択されます。呼び出せるのは識別子だけなので、`spot.close()` は拒否されます。
+
+## Venue-Selection Helpers
+
+### `cheapest(exec_a, exec_b, ...)` と `richest(exec_a, exec_b, ...)`
+
+ルール:
+
+- 少なくとも二つの宣言済み `execution` alias が必要です
+- 各引数は `execution_alias` または `na` でなければなりません
+- アクティブバー上で各 alias の現在の execution close を比較します
+- `cheapest(...)` は現在 close が最も低い alias を返します
+- `richest(...)` は現在 close が最も高い alias を返します
+- 参照された alias のいずれかにアクティブバー上の現在 execution close がなければ結果は `na` です
+- 結果型は `execution_alias` です
+
+これらの selector 結果は、alias との等価比較や spread helper のような
+後続の execution-alias ロジック向けです。直接 export することはできません。
+
+### `spread_bps(buy_exec, sell_exec)`
+
+ルール:
+
+- ちょうど二つの宣言済み `execution` alias が必要です
+- 両引数は `execution_alias` または `na` でなければなりません
+- `((sell_close - buy_close) / buy_close) * 10000` として評価されます
+- 参照された alias のどちらかにアクティブバー上の現在 execution close がなければ結果は `na` です
+- 結果型は、アクティブな更新クロックに従って `float` または `series<float>` です
+
+例:
+
+```palmscript
+execution bn = binance.spot("BTCUSDT")
+execution gt = gate.spot("BTC_USDT")
+
+export buy_gate = cheapest(bn, gt) == gt
+export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+```
 
 ## タプル値 Builtins
 

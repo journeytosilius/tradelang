@@ -16,6 +16,7 @@ pub enum Type {
     MaType,
     TimeInForce,
     TriggerReference,
+    ExecutionAlias,
     PositionSide,
     ExitKind,
     SeriesF64,
@@ -31,6 +32,7 @@ impl Type {
             Self::MaType => "ma-type",
             Self::TimeInForce => "time-in-force",
             Self::TriggerReference => "trigger-reference",
+            Self::ExecutionAlias => "execution-alias",
             Self::PositionSide => "position-side",
             Self::ExitKind => "exit-kind",
             Self::SeriesF64 => "series<f64>",
@@ -52,6 +54,7 @@ impl Type {
             | Self::MaType
             | Self::TimeInForce
             | Self::TriggerReference
+            | Self::ExecutionAlias
             | Self::PositionSide
             | Self::ExitKind
             | Self::Void => Some(self),
@@ -72,6 +75,7 @@ pub enum Value {
     MaType(MaType),
     TimeInForce(TimeInForce),
     TriggerReference(TriggerReference),
+    ExecutionAlias(u16),
     PositionSide(PositionSide),
     ExitKind(ExitKind),
     NA,
@@ -89,6 +93,7 @@ impl Value {
             Self::MaType(_) => "ma-type",
             Self::TimeInForce(_) => "time-in-force",
             Self::TriggerReference(_) => "trigger-reference",
+            Self::ExecutionAlias(_) => "execution-alias",
             Self::PositionSide(_) => "position-side",
             Self::ExitKind(_) => "exit-kind",
             Self::NA => "na",
@@ -147,6 +152,7 @@ mod tests {
             Type::TriggerReference.scalar(),
             Some(Type::TriggerReference)
         );
+        assert_eq!(Type::ExecutionAlias.scalar(), Some(Type::ExecutionAlias));
         assert_eq!(Type::ExitKind.scalar(), Some(Type::ExitKind));
         assert_eq!(Type::Void.scalar(), Some(Type::Void));
     }
@@ -164,6 +170,7 @@ mod tests {
             Value::TriggerReference(TriggerReference::Last).type_name(),
             "trigger-reference"
         );
+        assert_eq!(Value::ExecutionAlias(7).type_name(), "execution-alias");
         assert_eq!(Value::ExitKind(ExitKind::Target).type_name(), "exit-kind");
         assert_eq!(Value::NA.type_name(), "na");
         assert_eq!(Value::Void.type_name(), "void");
