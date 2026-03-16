@@ -378,15 +378,17 @@ pub(crate) fn fetch_source_feed(
     if matches!(source.template, SourceTemplate::BinanceUsdm) {
         for field in fields {
             let bars = match field {
-                MarketField::FundingRate => Some(binance::usdm::fetch_funding_rate_bars(
-                    client,
-                    source,
-                    interval,
-                    from_ms,
-                    to_ms,
-                    &endpoints.binance_usdm_base_url,
-                )?),
-                MarketField::MarkPrice => Some(map_scalar_close_field(
+                MarketField::FundingRate => {
+                    optional_source_auxiliary_bars(binance::usdm::fetch_funding_rate_bars(
+                        client,
+                        source,
+                        interval,
+                        from_ms,
+                        to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    ))?
+                }
+                MarketField::MarkPrice => optional_source_auxiliary_bars(
                     binance::usdm::fetch_mark_price_bars(
                         client,
                         source,
@@ -394,33 +396,39 @@ pub(crate) fn fetch_source_feed(
                         from_ms,
                         to_ms,
                         &endpoints.binance_usdm_base_url,
-                    )?,
-                    MarketField::MarkPrice,
-                )),
-                MarketField::IndexPrice => Some(binance::usdm::fetch_index_price_bars(
-                    client,
-                    source,
-                    interval,
-                    from_ms,
-                    to_ms,
-                    &endpoints.binance_usdm_base_url,
-                )?),
-                MarketField::PremiumIndex => Some(binance::usdm::fetch_premium_index_bars(
-                    client,
-                    source,
-                    interval,
-                    from_ms,
-                    to_ms,
-                    &endpoints.binance_usdm_base_url,
-                )?),
-                MarketField::Basis => Some(binance::usdm::fetch_basis_bars(
-                    client,
-                    source,
-                    interval,
-                    from_ms,
-                    to_ms,
-                    &endpoints.binance_usdm_base_url,
-                )?),
+                    )
+                    .map(|bars| map_scalar_close_field(bars, MarketField::MarkPrice)),
+                )?,
+                MarketField::IndexPrice => {
+                    optional_source_auxiliary_bars(binance::usdm::fetch_index_price_bars(
+                        client,
+                        source,
+                        interval,
+                        from_ms,
+                        to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    ))?
+                }
+                MarketField::PremiumIndex => {
+                    optional_source_auxiliary_bars(binance::usdm::fetch_premium_index_bars(
+                        client,
+                        source,
+                        interval,
+                        from_ms,
+                        to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    ))?
+                }
+                MarketField::Basis => {
+                    optional_source_auxiliary_bars(binance::usdm::fetch_basis_bars(
+                        client,
+                        source,
+                        interval,
+                        from_ms,
+                        to_ms,
+                        &endpoints.binance_usdm_base_url,
+                    ))?
+                }
                 MarketField::Open
                 | MarketField::High
                 | MarketField::Low
@@ -435,6 +443,16 @@ pub(crate) fn fetch_source_feed(
     }
 
     Ok(merged.into_values().collect())
+}
+
+fn optional_source_auxiliary_bars(
+    result: Result<Vec<Bar>, ExchangeFetchError>,
+) -> Result<Option<Vec<Bar>>, ExchangeFetchError> {
+    match result {
+        Ok(bars) => Ok(Some(bars)),
+        Err(ExchangeFetchError::NoData { .. }) => Ok(None),
+        Err(err) => Err(err),
+    }
 }
 
 pub(crate) fn fetch_source_bars(
@@ -834,6 +852,57 @@ mod tests {
         assert_eq!(first.premium_index, Some(0.001));
         assert_eq!(first.basis, Some(0.25));
         assert_eq!(first.funding_rate, Some(0.0008));
+    }
+
+    #[test]
+    fn fetch_source_runtime_config_tolerates_missing_binance_usdm_funding_rows() {
+        let mut server = Server::new();
+        let _klines = server
+            .mock("GET", "/fapi/v1/klines")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+                Matcher::UrlEncoded("interval".into(), "1h".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!([
+                    [1704067200000_i64, "100.0", "101.0", "99.0", "100.5", "10.0"],
+                    [
+                        1704070800000_i64,
+                        "101.0",
+                        "102.0",
+                        "100.0",
+                        "101.5",
+                        "11.0"
+                    ]
+                ])
+                .to_string(),
+            )
+            .create();
+        let _funding = server
+            .mock("GET", "/fapi/v1/fundingRate")
+            .match_query(Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()))
+            .with_status(200)
+            .with_body("[]")
+            .create();
+
+        let compiled = compile(
+            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nplot(nz(perp.funding_rate, 0))",
+        )
+        .expect("compile");
+        let endpoints = ExchangeEndpoints {
+            binance_usdm_base_url: server.url(),
+            ..ExchangeEndpoints::default()
+        };
+
+        let config =
+            fetch_source_runtime_config(&compiled, 1704067200000, 1704074400000, &endpoints)
+                .expect("config should keep OHLCV bars when funding rows are absent");
+        assert_eq!(config.feeds.len(), 1);
+        assert_eq!(config.feeds[0].bars.len(), 2);
+        assert_eq!(config.feeds[0].bars[0].close, 100.5);
+        assert_eq!(config.feeds[0].bars[0].funding_rate, None);
+        assert_eq!(config.feeds[0].bars[1].funding_rate, None);
     }
 
     #[test]

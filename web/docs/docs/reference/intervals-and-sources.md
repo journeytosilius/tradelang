@@ -101,6 +101,7 @@ Rules:
 - auxiliary fields are only valid on `binance.usdm` source aliases
 - auxiliary fields keep the same flat source-qualified syntax as OHLCV fields: `<alias>.<field>` and `<alias>.<interval>.<field>`
 - historical modes fetch auxiliary datasets automatically when the script references them
+- if an auxiliary Binance USD-M endpoint returns no rows for the requested window, the field remains `na` for that window instead of aborting the script or paper session
 - `mark_price`, `index_price`, and `premium_index` resolve to close-equivalent scalar series for the selected interval
 - `funding_rate` and `basis` are normalized as carry-forward scalar series on the selected interval and stay `na` until the first fetched event or snapshot
 - `run paper` bootstraps these auxiliary datasets into the shared paper feed cache and keeps them available for armed paper sessions

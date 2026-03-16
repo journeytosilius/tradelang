@@ -100,6 +100,7 @@ Reglas:
   `funding_rate`, `mark_price`, `index_price`, `premium_index` y `basis`
 - esos campos auxiliares solo son validos en aliases `binance.usdm`
 - los modos historicos los obtienen automaticamente cuando el script los referencia
+- si un endpoint auxiliar de Binance USD-M no devuelve filas para la ventana solicitada, ese campo permanece en `na` durante esa ventana en lugar de abortar el script o la sesion paper
 - `run paper` inicializa esos datos auxiliares en el cache compartido de feeds
   paper y los mantiene disponibles para las sesiones paper armadas
 

@@ -272,6 +272,7 @@ Notes:
 - submitted paper sessions snap `start_time_ms` down to the base-interval open so exchange execution and mark-price feeds align on closed bars
 - trading scripts submitted to `run paper` require at least one declared `execution` target and matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - scripts that reference `binance.usdm` auxiliary historical source fields such as `funding_rate`, `mark_price`, `index_price`, `premium_index`, or `basis` now bootstrap those datasets into the shared paper feed cache before the session becomes `live`
+- si uno de esos endpoints auxiliares de Binance USD-M no devuelve filas para la ventana solicitada, la sesion paper ahora sigue armando y expone ese campo como `na` en lugar de fallar toda la sesion
 - the session snapshots the script source and queues it under the local execution state root
 - v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
 - queued sessions now transition through `queued -> arming_history -> arming_live -> live`

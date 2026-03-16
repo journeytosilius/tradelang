@@ -102,6 +102,7 @@ Regeln:
   `funding_rate`, `mark_price`, `index_price`, `premium_index` und `basis`
 - diese Hilfsfelder sind nur fuer `binance.usdm`-Aliases gueltig
 - historische Modi laden diese Datensaetze automatisch, sobald ein Skript sie referenziert
+- wenn ein zusaetzlicher Binance-USD-M-Endpunkt fuer das angeforderte Fenster keine Zeilen liefert, bleibt das Feld in diesem Fenster `na`, statt Skript oder Paper-Session abzubrechen
 - `run paper` bootstrappt diese Hilfsdatensaetze in den gemeinsamen Paper-Feed-Cache
   und haelt sie fuer bewaffnete Paper-Sessions verfuegbar
 
