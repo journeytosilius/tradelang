@@ -213,6 +213,8 @@ pub fn submit_paper_session(
                 symbol: source.symbol.clone(),
             })
             .collect(),
+        feed_summary: super::PaperFeedSummary::default(),
+        required_feeds: Vec::new(),
         warmup_from_ms: None,
         latest_runtime_to_ms: None,
     };

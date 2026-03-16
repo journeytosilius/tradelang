@@ -1,12 +1,13 @@
 //! VM-driven execution support for PalmScript.
 //!
 //! The execution layer reuses the existing compiler, runtime, and backtest
-//! engine to drive paper sessions over live exchange-backed data. v1 is a
-//! polling closed-bar paper daemon built on the same deterministic VM and
-//! order simulation path used by market/backtest mode.
+//! engine to drive paper sessions over exchange-backed data. The daemon owns
+//! one shared feed hub per process so multiple paper sessions can reuse the
+//! same armed historical windows and live quote snapshots.
 
 mod daemon;
 mod engine;
+mod feed_hub;
 mod market_data;
 mod paper;
 mod state;
@@ -45,8 +46,8 @@ pub enum ExecutionMode {
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionSessionStatus {
     Queued,
-    Starting,
-    WarmingUp,
+    ArmingHistory,
+    ArmingLive,
     Live,
     Stopped,
     Failed,
@@ -62,6 +63,24 @@ pub enum ExecutionSessionHealth {
     Reconnecting,
     Stopped,
     Failed,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FeedArmingState {
+    BootstrappingHistory,
+    ConnectingLive,
+    Live,
+    Degraded,
+    Failed,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaperFeedSummary {
+    pub total_feeds: usize,
+    pub history_ready_feeds: usize,
+    pub live_ready_feeds: usize,
+    pub failed_feeds: usize,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -123,10 +142,21 @@ pub struct PaperFeedSnapshot {
     pub execution_alias: String,
     pub template: SourceTemplate,
     pub symbol: String,
+    pub interval: Option<crate::Interval>,
+    #[serde(default)]
+    pub arming_state: Option<FeedArmingState>,
+    #[serde(default)]
+    pub history_ready: bool,
+    #[serde(default)]
+    pub live_ready: bool,
+    #[serde(default)]
+    pub latest_closed_bar_time_ms: Option<i64>,
     pub top_of_book: Option<TopOfBookSnapshot>,
     pub last_price: Option<PriceSnapshot>,
     pub mark_price: Option<PriceSnapshot>,
     pub valuation_source: Option<ValuationPriceSource>,
+    #[serde(default)]
+    pub failure_message: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -148,6 +178,10 @@ pub struct PaperSessionManifest {
     pub config: PaperSessionConfig,
     #[serde(default)]
     pub execution_sources: Vec<PaperExecutionSource>,
+    #[serde(default)]
+    pub feed_summary: PaperFeedSummary,
+    #[serde(default)]
+    pub required_feeds: Vec<PaperFeedSnapshot>,
     pub warmup_from_ms: Option<i64>,
     pub latest_runtime_to_ms: Option<i64>,
 }
@@ -167,6 +201,8 @@ pub struct PaperSessionSnapshot {
     pub open_positions: Vec<PositionSnapshot>,
     #[serde(default)]
     pub feed_snapshots: Vec<PaperFeedSnapshot>,
+    #[serde(default)]
+    pub feed_summary: PaperFeedSummary,
     pub open_order_count: usize,
     pub filled_order_count: usize,
     pub cancelled_order_count: usize,

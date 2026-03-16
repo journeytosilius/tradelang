@@ -79,6 +79,7 @@ pub(crate) fn snapshot_from_result(
         diagnostics_summary: Some(result.diagnostics.summary.clone()),
         open_positions,
         feed_snapshots: feed_snapshots.to_vec(),
+        feed_summary: manifest.feed_summary.clone(),
         open_order_count,
         filled_order_count,
         cancelled_order_count,

@@ -814,11 +814,46 @@ pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
     }
     let _ = writeln!(out, "slippage_bps={:.2}", manifest.config.slippage_bps);
     let _ = writeln!(out, "stop_requested={}", manifest.stop_requested);
+    let _ = writeln!(out, "feed_count={}", manifest.feed_summary.total_feeds);
+    let _ = writeln!(
+        out,
+        "history_ready_feeds={}",
+        manifest.feed_summary.history_ready_feeds
+    );
+    let _ = writeln!(
+        out,
+        "live_ready_feeds={}",
+        manifest.feed_summary.live_ready_feeds
+    );
+    let _ = writeln!(out, "failed_feeds={}", manifest.feed_summary.failed_feeds);
     if let Some(warmup_from_ms) = manifest.warmup_from_ms {
         let _ = writeln!(out, "warmup_from_ms={warmup_from_ms}");
     }
     if let Some(latest_runtime_to_ms) = manifest.latest_runtime_to_ms {
         let _ = writeln!(out, "latest_runtime_to_ms={latest_runtime_to_ms}");
+    }
+    if !manifest.required_feeds.is_empty() {
+        out.push_str("required_feeds\n");
+        for feed in &manifest.required_feeds {
+            let _ = writeln!(
+                out,
+                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={}",
+                feed.execution_alias,
+                feed.template.as_str(),
+                feed.symbol,
+                feed.interval
+                    .map(|interval| interval.as_str().to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.arming_state
+                    .map(|state| format!("{state:?}"))
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.history_ready,
+                feed.live_ready,
+                feed.latest_closed_bar_time_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+            );
+        }
     }
     if let Some(message) = &manifest.failure_message {
         let _ = writeln!(out, "failure_message={message}");
@@ -838,6 +873,18 @@ pub fn render_paper_snapshot_text(snapshot: &PaperSessionSnapshot) -> String {
     if let Some(latest_closed_bar_time_ms) = snapshot.latest_closed_bar_time_ms {
         let _ = writeln!(out, "latest_closed_bar_time_ms={latest_closed_bar_time_ms}");
     }
+    let _ = writeln!(out, "feed_count={}", snapshot.feed_summary.total_feeds);
+    let _ = writeln!(
+        out,
+        "history_ready_feeds={}",
+        snapshot.feed_summary.history_ready_feeds
+    );
+    let _ = writeln!(
+        out,
+        "live_ready_feeds={}",
+        snapshot.feed_summary.live_ready_feeds
+    );
+    let _ = writeln!(out, "failed_feeds={}", snapshot.feed_summary.failed_feeds);
     if let Some(summary) = &snapshot.summary {
         let _ = writeln!(out, "ending_equity={:.2}", summary.ending_equity);
         let _ = writeln!(out, "total_return_pct={:.2}", summary.total_return * 100.0);
@@ -874,10 +921,21 @@ pub fn render_paper_snapshot_text(snapshot: &PaperSessionSnapshot) -> String {
                 .unwrap_or_else(|| "none".to_string());
             let _ = writeln!(
                 out,
-                "alias={} template={} symbol={} top_of_book={} last={} mark={} valuation_source={}",
+                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={} top_of_book={} last={} mark={} valuation_source={}",
                 feed.execution_alias,
                 feed.template.as_str(),
                 feed.symbol,
+                feed.interval
+                    .map(|interval| interval.as_str().to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.arming_state
+                    .map(|state| format!("{state:?}"))
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.history_ready,
+                feed.live_ready,
+                feed.latest_closed_bar_time_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
                 top,
                 last,
                 mark,
@@ -997,6 +1055,14 @@ pub fn render_execution_daemon_status_text(status: &ExecutionDaemonStatus) -> St
     let _ = writeln!(out, "running={}", status.running);
     let _ = writeln!(out, "stop_requested={}", status.stop_requested);
     let _ = writeln!(out, "subscription_count={}", status.subscription_count);
+    let _ = writeln!(out, "armed_feed_count={}", status.armed_feed_count);
+    let _ = writeln!(
+        out,
+        "connecting_feed_count={}",
+        status.connecting_feed_count
+    );
+    let _ = writeln!(out, "degraded_feed_count={}", status.degraded_feed_count);
+    let _ = writeln!(out, "failed_feed_count={}", status.failed_feed_count);
     let _ = writeln!(out, "state_root={}", status.state_root);
     let _ = writeln!(out, "active_sessions={}", status.active_sessions.join(","));
     out

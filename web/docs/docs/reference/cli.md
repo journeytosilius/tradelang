@@ -269,7 +269,8 @@ Notes:
 - scripts that reference `binance.usdm` auxiliary historical source fields such as `funding_rate`, `mark_price`, `index_price`, `premium_index`, or `basis` are rejected by `run paper` until live polling for those fields exists
 - the session snapshots the script source and queues it under the local execution state root
 - v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
-- `paper-status` and `paper-export` now include shared live quote snapshots for each execution alias: top-of-book bid/ask, derived mid price, and venue last/mark prices when available
+- queued sessions now transition through `queued -> arming_history -> arming_live -> live`
+- `paper-status` and `paper-export` now include feed readiness counters plus a `required_feeds` inventory with each feed's arming state, readiness flags, latest closed bar time, and quote snapshots for each execution alias
 
 ## `palmscript run paper-list`
 
@@ -285,7 +286,7 @@ Lists the locally persisted paper session manifests.
 palmscript run paper-status <session-id> [--format json|text]
 ```
 
-Reads the latest persisted paper-session snapshot.
+Reads the latest persisted paper-session snapshot, including feed readiness counters and current execution-alias quote health when available.
 
 ## `palmscript run paper-stop`
 
@@ -344,8 +345,8 @@ palmscript execution serve [--poll-interval-ms <N>] [--once]
 Notes:
 
 - one local execution service can host many paper sessions
-- active paper sessions share one in-process quote cache per venue/symbol instead of duplicating upstream quote fetches
-- the daemon status output now includes the current `subscription_count`
+- active paper sessions share one in-process armed feed cache per venue/symbol/canonical interval instead of duplicating upstream history bootstrap and quote refreshes
+- the daemon status output now includes `subscription_count`, `armed_feed_count`, `connecting_feed_count`, `degraded_feed_count`, and `failed_feed_count`
 
 Arguments and flags:
 

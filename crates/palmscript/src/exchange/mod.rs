@@ -23,6 +23,12 @@ const BINANCE_SPOT_URL: &str = "https://api.binance.com";
 const BINANCE_USDM_URL: &str = "https://fapi.binance.com";
 const BYBIT_URL: &str = "https://api.bybit.com";
 const GATE_URL: &str = "https://api.gateio.ws/api/v4";
+const BINANCE_SPOT_WS_URL: &str = "wss://stream.binance.com:9443/ws";
+const BINANCE_USDM_WS_URL: &str = "wss://fstream.binance.com/ws";
+const BYBIT_SPOT_WS_URL: &str = "wss://stream.bybit.com/v5/public/spot";
+const BYBIT_USDM_WS_URL: &str = "wss://stream.bybit.com/v5/public/linear";
+const GATE_SPOT_WS_URL: &str = "wss://api.gateio.ws/ws/v4/";
+const GATE_USDM_WS_URL: &str = "wss://fx-ws.gateio.ws/v4/ws/usdt";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MarkPriceBasis {
@@ -54,6 +60,12 @@ pub struct ExchangeEndpoints {
     pub binance_usdm_base_url: String,
     pub bybit_base_url: String,
     pub gate_base_url: String,
+    pub binance_spot_ws_url: String,
+    pub binance_usdm_ws_url: String,
+    pub bybit_spot_ws_url: String,
+    pub bybit_usdm_ws_url: String,
+    pub gate_spot_ws_url: String,
+    pub gate_usdm_ws_url: String,
 }
 
 impl Default for ExchangeEndpoints {
@@ -63,6 +75,12 @@ impl Default for ExchangeEndpoints {
             binance_usdm_base_url: BINANCE_USDM_URL.to_string(),
             bybit_base_url: BYBIT_URL.to_string(),
             gate_base_url: GATE_URL.to_string(),
+            binance_spot_ws_url: BINANCE_SPOT_WS_URL.to_string(),
+            binance_usdm_ws_url: BINANCE_USDM_WS_URL.to_string(),
+            bybit_spot_ws_url: BYBIT_SPOT_WS_URL.to_string(),
+            bybit_usdm_ws_url: BYBIT_USDM_WS_URL.to_string(),
+            gate_spot_ws_url: GATE_SPOT_WS_URL.to_string(),
+            gate_usdm_ws_url: GATE_USDM_WS_URL.to_string(),
         }
     }
 }
@@ -78,6 +96,18 @@ impl ExchangeEndpoints {
                 .unwrap_or_else(|_| BYBIT_URL.to_string()),
             gate_base_url: env::var("PALMSCRIPT_GATE_BASE_URL")
                 .unwrap_or_else(|_| GATE_URL.to_string()),
+            binance_spot_ws_url: env::var("PALMSCRIPT_BINANCE_SPOT_WS_URL")
+                .unwrap_or_else(|_| BINANCE_SPOT_WS_URL.to_string()),
+            binance_usdm_ws_url: env::var("PALMSCRIPT_BINANCE_USDM_WS_URL")
+                .unwrap_or_else(|_| BINANCE_USDM_WS_URL.to_string()),
+            bybit_spot_ws_url: env::var("PALMSCRIPT_BYBIT_SPOT_WS_URL")
+                .unwrap_or_else(|_| BYBIT_SPOT_WS_URL.to_string()),
+            bybit_usdm_ws_url: env::var("PALMSCRIPT_BYBIT_USDM_WS_URL")
+                .unwrap_or_else(|_| BYBIT_USDM_WS_URL.to_string()),
+            gate_spot_ws_url: env::var("PALMSCRIPT_GATE_SPOT_WS_URL")
+                .unwrap_or_else(|_| GATE_SPOT_WS_URL.to_string()),
+            gate_usdm_ws_url: env::var("PALMSCRIPT_GATE_USDM_WS_URL")
+                .unwrap_or_else(|_| GATE_USDM_WS_URL.to_string()),
         }
     }
 }
@@ -407,7 +437,7 @@ fn fetch_source_feed(
     Ok(merged.into_values().collect())
 }
 
-fn fetch_source_bars(
+pub(crate) fn fetch_source_bars(
     client: &Client,
     source: &DeclaredMarketSource,
     interval: Interval,
@@ -672,6 +702,7 @@ mod tests {
             binance_usdm_base_url: server.url(),
             bybit_base_url: server.url(),
             gate_base_url: server.url(),
+            ..ExchangeEndpoints::default()
         };
 
         let config =
@@ -789,6 +820,7 @@ mod tests {
             binance_usdm_base_url: server.url(),
             bybit_base_url: server.url(),
             gate_base_url: server.url(),
+            ..ExchangeEndpoints::default()
         };
 
         let config =
@@ -832,6 +864,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: server.url(),
                 gate_base_url: String::new(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("config");
@@ -886,6 +919,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: server.url(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("config");
@@ -924,6 +958,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: format!("{}/api/v4", server.url()),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect_err("gate 400 should surface");
@@ -958,6 +993,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: format!("{}/api/v4", server.url()),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect_err("gate malformed body should surface");
@@ -1029,6 +1065,7 @@ mod tests {
                 binance_usdm_base_url: server.url(),
                 bybit_base_url: String::new(),
                 gate_base_url: String::new(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("context")
@@ -1096,6 +1133,7 @@ mod tests {
                 binance_usdm_base_url: server.url(),
                 bybit_base_url: String::new(),
                 gate_base_url: String::new(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("context")
@@ -1168,6 +1206,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: server.url(),
                 gate_base_url: String::new(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("context")
@@ -1232,6 +1271,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: server.url(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("context")
@@ -1302,6 +1342,7 @@ mod tests {
                 binance_usdm_base_url: String::new(),
                 bybit_base_url: String::new(),
                 gate_base_url: server.url(),
+                ..ExchangeEndpoints::default()
             },
         )
         .expect("context")

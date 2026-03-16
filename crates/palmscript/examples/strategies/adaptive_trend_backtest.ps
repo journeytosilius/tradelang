@@ -107,3 +107,40 @@ size target1 long = target1_size
 plot(fast - slow)
 plot(macd_line - macd_signal)
 plot(rsi_4h)
+
+// For this binary, it does not automatically trim to the common overlap.
+//
+// What happens is:
+//
+// - If the short-history exchange has some data inside the 4-year request, the
+//   run can still start at your requested `--from`.
+// - On bars before that exchange begins, that source is `na`.
+// - The base timeline is the union of source bar times, so the other exchanges
+//   still advance the clock.
+// - If your strategy references all three venues directly, those calculations
+//   usually become `na` until the missing venue exists.
+//
+// For your cross-exchange arb specifically, that means:
+//
+// - `cheapest(bn, bb, gt)`, `richest(...)`, and `spread_bps(...)` are
+//   effectively unusable until all referenced venues have current bars.
+// - So the early part of the 4-year run will usually produce no arb entries.
+// - In practice, your effective sample becomes the common overlap, unless you
+//   explicitly code fallback logic.
+//
+// One hard failure case also exists:
+//
+// - If a required feed returns no data at all in the requested window,
+//   PalmScript fails during market fetch/runtime prep rather than silently
+//   continuing.
+//
+// So the operational answer is:
+//
+// - partial history: run succeeds, missing venue is `na`, early segment is
+//   mostly dead/inactive.
+// - no history at all in window: run fails.
+//
+// For optimization or walk-forward, that kind of uneven history is especially
+// bad because it creates zero-trade segments and distorts holdout stats. For a
+// 3-venue arb strategy, the defensible approach is to use the common overlap
+// window across Binance, Bybit, and Gate.

@@ -274,13 +274,13 @@ Execution v1 is intentionally conservative:
 - paper only
 - local daemon only
 - closed-bar VM evaluation
-- shared top-of-book / last / mark quote snapshots across active paper sessions
+- shared armed warmup history plus top-of-book / last / mark quote snapshots across active paper sessions
 - persistent local session state
 - no real API keys or live order placement
 
 The paper daemon warms the VM with enough pre-session history to satisfy the compiled history requirements, but suppresses fills, orders, and diagnostics before the paper session activation time. That keeps indicator state realistic without leaking fake pre-session trades into the persistent paper ledger.
 
-Paper snapshots now also expose live quote state per execution alias:
+Paper snapshots now also expose feed readiness state plus live quote state per execution alias:
 
 - best bid / best ask
 - derived mid price

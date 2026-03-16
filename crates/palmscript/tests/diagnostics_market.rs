@@ -105,6 +105,7 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
+                    ..ExchangeEndpoints::default()
                 },
             )
             .map(|_| ()),
@@ -120,6 +121,7 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
+                    ..ExchangeEndpoints::default()
                 },
             )
             .map(|_| ()),
@@ -135,6 +137,7 @@ fn market_fetch_error_catalog_matches_contract() {
                     binance_usdm_base_url: server.url(),
                     bybit_base_url: server.url(),
                     gate_base_url: server.url(),
+                    ..ExchangeEndpoints::default()
                 },
             )
             .map(|_| ()),

@@ -1,247 +1,29 @@
-use std::collections::{BTreeMap, BTreeSet};
-
-use reqwest::blocking::Client;
+use std::collections::BTreeMap;
 
 use crate::backtest::{PerpBacktestConfig, PerpBacktestContext, PerpMarginMode};
 use crate::compiler::CompiledProgram;
-use crate::exchange::{
-    fetch_perp_backtest_context, fetch_source_runtime_config, ExchangeEndpoints,
-};
-use crate::interval::{DeclaredMarketSource, Interval, MarketField, SourceTemplate};
-use crate::runtime::SourceRuntimeConfig;
+use crate::exchange::{fetch_perp_backtest_context, ExchangeEndpoints};
+use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
 
-use super::venue::fetch_quote_feed;
-use super::{
-    ExecutionError, FeedSnapshotState, PaperExecutionSource, PaperFeedSnapshot,
-    PaperSessionManifest, PriceSnapshot, TopOfBookSnapshot, ValuationPriceSource,
-};
+use super::ExecutionError;
 
 const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
-const FEED_STALE_MS: i64 = 15_000;
 
-pub(crate) struct MarketDataBootstrap {
-    pub runtime: SourceRuntimeConfig,
-    pub warmup_from_ms: i64,
-    pub runtime_to_ms: i64,
-    pub perp: Option<PerpBacktestConfig>,
-    pub perp_context: Option<PerpBacktestContext>,
-    pub portfolio_perp_contexts: BTreeMap<String, PerpBacktestContext>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-struct FeedSubscriptionKey {
-    template: String,
-    symbol: String,
-    endpoint_base: String,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct CachedFeedSnapshot {
-    source: PaperExecutionSource,
-    top_of_book: Option<TopOfBookSnapshot>,
-    last_price: Option<PriceSnapshot>,
-    mark_price: Option<PriceSnapshot>,
-}
-
-pub(crate) struct SharedMarketDataBus {
-    client: Client,
-    feeds: BTreeMap<FeedSubscriptionKey, CachedFeedSnapshot>,
-}
-
-impl SharedMarketDataBus {
-    pub(crate) fn new() -> Result<Self, ExecutionError> {
-        let client = Client::builder()
-            .user_agent("palmscript-execution/0.1")
-            .build()
-            .map_err(|err| ExecutionError::Fetch(err.to_string()))?;
-        Ok(Self {
-            client,
-            feeds: BTreeMap::new(),
-        })
-    }
-
-    pub(crate) fn sync(&mut self, manifests: &[PaperSessionManifest], now_ms: i64) {
-        let desired = manifests
-            .iter()
-            .filter(|manifest| {
-                matches!(
-                    manifest.status,
-                    super::ExecutionSessionStatus::Queued
-                        | super::ExecutionSessionStatus::Starting
-                        | super::ExecutionSessionStatus::WarmingUp
-                        | super::ExecutionSessionStatus::Live
-                )
-            })
-            .flat_map(|manifest| {
-                manifest
-                    .config
-                    .execution_source_aliases
-                    .iter()
-                    .filter_map(move |alias| {
-                        manifest
-                            .execution_sources
-                            .iter()
-                            .find(|source| source.alias == *alias)
-                            .cloned()
-                            .map(|source| {
-                                (
-                                    subscription_key(
-                                        source.template,
-                                        &source.symbol,
-                                        &manifest.endpoints,
-                                    ),
-                                    (source, manifest.endpoints.clone()),
-                                )
-                            })
-                    })
-            })
-            .collect::<BTreeMap<_, _>>();
-
-        let desired_keys = desired.keys().cloned().collect::<BTreeSet<_>>();
-        self.feeds.retain(|key, _| desired_keys.contains(key));
-
-        for (key, (source, endpoints)) in desired {
-            if let Ok(feed) = fetch_quote_feed(&self.client, &endpoints, &source, now_ms) {
-                self.feeds.insert(
-                    key,
-                    CachedFeedSnapshot {
-                        source,
-                        top_of_book: feed.top_of_book,
-                        last_price: feed.last_price,
-                        mark_price: feed.mark_price,
-                    },
-                );
-            }
-        }
-    }
-
-    pub(crate) fn snapshots_for_manifest(
-        &self,
-        manifest: &PaperSessionManifest,
-        now_ms: i64,
-    ) -> Vec<PaperFeedSnapshot> {
-        manifest
-            .config
-            .execution_source_aliases
-            .iter()
-            .filter_map(|alias| {
-                let source = manifest
-                    .execution_sources
-                    .iter()
-                    .find(|source| source.alias == *alias)?;
-                let key = subscription_key(source.template, &source.symbol, &manifest.endpoints);
-                let cached = self.feeds.get(&key);
-                Some(PaperFeedSnapshot {
-                    execution_alias: alias.clone(),
-                    template: source.template,
-                    symbol: source.symbol.clone(),
-                    top_of_book: cached.and_then(|cached| {
-                        cached
-                            .top_of_book
-                            .as_ref()
-                            .map(|snapshot| snapshot_with_state(snapshot, now_ms))
-                    }),
-                    last_price: cached.and_then(|cached| {
-                        cached
-                            .last_price
-                            .as_ref()
-                            .map(|snapshot| price_with_state(snapshot, now_ms))
-                    }),
-                    mark_price: cached.and_then(|cached| {
-                        cached
-                            .mark_price
-                            .as_ref()
-                            .map(|snapshot| price_with_state(snapshot, now_ms))
-                    }),
-                    valuation_source: match source.template {
-                        SourceTemplate::BinanceUsdm
-                        | SourceTemplate::BybitUsdtPerps
-                        | SourceTemplate::GateUsdtPerps => Some(ValuationPriceSource::Mark),
-                        _ => Some(ValuationPriceSource::Mid),
-                    },
-                })
-            })
-            .collect()
-    }
-
-    pub(crate) fn subscription_count(&self) -> usize {
-        self.feeds.len()
-    }
-}
-
-type ResolvedPerpContexts = (
+pub(crate) type ResolvedPerpContexts = (
     Option<PerpBacktestConfig>,
     Option<PerpBacktestContext>,
     BTreeMap<String, PerpBacktestContext>,
 );
 
-pub(crate) fn bootstrap_runtime(
-    compiled: &CompiledProgram,
-    execution_aliases: &[String],
-    leverage: Option<f64>,
-    margin_mode: Option<PerpMarginMode>,
-    start_time_ms: i64,
-    now_ms: i64,
-    endpoints: &ExchangeEndpoints,
-) -> Result<MarketDataBootstrap, ExecutionError> {
-    if let Some(field) = referenced_historical_only_field(compiled) {
-        return Err(ExecutionError::InvalidConfig {
-            message: format!(
-                "paper execution does not support historical-only source field `{}` yet",
-                field.as_str()
-            ),
-        });
-    }
-    let base_interval = compiled
-        .program
-        .base_interval
-        .ok_or(ExecutionError::MissingBaseInterval)?;
-    let runtime_to_ms = base_interval.bucket_open_time(now_ms).unwrap_or(now_ms);
-    let warmup_from_ms = compute_warmup_from_ms(compiled, start_time_ms);
-    let runtime = fetch_source_runtime_config(compiled, warmup_from_ms, runtime_to_ms, endpoints)
-        .map_err(|err| ExecutionError::Fetch(err.to_string()))?;
-    let (perp, perp_context, portfolio_perp_contexts) = resolve_perp_contexts(
-        compiled,
-        execution_aliases,
-        PerpBootstrapOptions {
-            leverage,
-            margin_mode: margin_mode.unwrap_or(PerpMarginMode::Isolated),
-            base_interval,
-            from_ms: warmup_from_ms,
-            to_ms: runtime_to_ms,
-        },
-        endpoints,
-    )?;
-    Ok(MarketDataBootstrap {
-        runtime,
-        warmup_from_ms,
-        runtime_to_ms,
-        perp,
-        perp_context,
-        portfolio_perp_contexts,
-    })
+pub(crate) struct PerpBootstrapOptions {
+    pub(crate) leverage: Option<f64>,
+    pub(crate) margin_mode: PerpMarginMode,
+    pub(crate) base_interval: Interval,
+    pub(crate) from_ms: i64,
+    pub(crate) to_ms: i64,
 }
 
-fn referenced_historical_only_field(compiled: &CompiledProgram) -> Option<MarketField> {
-    compiled.program.locals.iter().find_map(|local| {
-        local.market_binding.and_then(|binding| {
-            binding
-                .field
-                .is_binance_usdm_auxiliary()
-                .then_some(binding.field)
-        })
-    })
-}
-
-struct PerpBootstrapOptions {
-    leverage: Option<f64>,
-    margin_mode: PerpMarginMode,
-    base_interval: Interval,
-    from_ms: i64,
-    to_ms: i64,
-}
-
-fn resolve_perp_contexts(
+pub(crate) fn resolve_perp_contexts(
     compiled: &CompiledProgram,
     execution_aliases: &[String],
     options: PerpBootstrapOptions,
@@ -304,7 +86,7 @@ fn resolve_perp_contexts(
     Ok((shared_perp, single_context, portfolio_contexts))
 }
 
-fn compute_warmup_from_ms(compiled: &CompiledProgram, start_time_ms: i64) -> i64 {
+pub(crate) fn compute_warmup_from_ms(compiled: &CompiledProgram, start_time_ms: i64) -> i64 {
     let max_interval_duration_ms = compiled
         .program
         .source_intervals
@@ -318,44 +100,8 @@ fn compute_warmup_from_ms(compiled: &CompiledProgram, start_time_ms: i64) -> i64
     start_time_ms.saturating_sub(max_interval_duration_ms.saturating_mul(warmup_bars))
 }
 
-fn interval_duration_hint_ms(interval: Interval) -> i64 {
+pub(crate) fn interval_duration_hint_ms(interval: Interval) -> i64 {
     interval.fixed_duration_ms().unwrap_or(31 * DAY_MS)
-}
-
-fn subscription_key(
-    template: SourceTemplate,
-    symbol: &str,
-    endpoints: &ExchangeEndpoints,
-) -> FeedSubscriptionKey {
-    let endpoint_base = match template {
-        SourceTemplate::BinanceSpot => endpoints.binance_spot_base_url.clone(),
-        SourceTemplate::BinanceUsdm => endpoints.binance_usdm_base_url.clone(),
-        SourceTemplate::BybitSpot | SourceTemplate::BybitUsdtPerps => {
-            endpoints.bybit_base_url.clone()
-        }
-        SourceTemplate::GateSpot | SourceTemplate::GateUsdtPerps => endpoints.gate_base_url.clone(),
-    };
-    FeedSubscriptionKey {
-        template: template.as_str().to_string(),
-        symbol: symbol.to_string(),
-        endpoint_base,
-    }
-}
-
-fn snapshot_with_state(snapshot: &TopOfBookSnapshot, now_ms: i64) -> TopOfBookSnapshot {
-    let mut snapshot = snapshot.clone();
-    if now_ms.saturating_sub(snapshot.time_ms) > FEED_STALE_MS {
-        snapshot.state = FeedSnapshotState::Stale;
-    }
-    snapshot
-}
-
-fn price_with_state(snapshot: &PriceSnapshot, now_ms: i64) -> PriceSnapshot {
-    let mut snapshot = snapshot.clone();
-    if now_ms.saturating_sub(snapshot.time_ms) > FEED_STALE_MS {
-        snapshot.state = FeedSnapshotState::Stale;
-    }
-    snapshot
 }
 
 pub(crate) fn resolve_execution_sources<'a>(
@@ -381,34 +127,4 @@ pub(crate) fn resolve_execution_sources<'a>(
                 })
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::bootstrap_runtime;
-    use crate::backtest::PerpMarginMode;
-    use crate::compile;
-    use crate::exchange::ExchangeEndpoints;
-
-    #[test]
-    fn bootstrap_runtime_rejects_historical_only_auxiliary_fields_for_paper() {
-        let compiled = compile(
-            "interval 1h\nsource perp = binance.usdm(\"BTCUSDT\")\nexecution perp = binance.usdm(\"BTCUSDT\")\nplot(perp.funding_rate)",
-        )
-        .expect("compile");
-        let err = bootstrap_runtime(
-            &compiled,
-            &["perp".to_string()],
-            None,
-            Some(PerpMarginMode::Isolated),
-            1_704_067_200_000,
-            1_704_070_800_000,
-            &ExchangeEndpoints::default(),
-        )
-        .err()
-        .expect("paper bootstrap should reject historical-only fields");
-        assert!(err.to_string().contains(
-            "paper execution does not support historical-only source field `funding_rate` yet"
-        ));
-    }
 }

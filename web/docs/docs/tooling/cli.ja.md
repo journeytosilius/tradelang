@@ -162,7 +162,7 @@ The v1 execution layer is intentionally conservative:
 - one persistent local ledger per paper session
 - the same strategy semantics, portfolio caps, cooldowns, and max-bars exits as backtest mode
 
-When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` warms the VM with pre-session history, updates the strategy only when a new execution candle closes, and keeps one shared live quote bus for the active paper sessions.
+When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` warms the VM with compiler-derived pre-session history, keeps one shared armed feed cache for the active paper sessions, and updates the strategy only when a new execution candle closes. Sessions remain in explicit `arming_history` and `arming_live` states until the required feed inventory is ready.
 
 The shared quote layer currently provides, per execution alias:
 
@@ -171,7 +171,7 @@ The shared quote layer currently provides, per execution alias:
 - last price when the venue exposes it
 - mark price for perp venues when the venue exposes it
 
-Paper session snapshots and exports now include those quote snapshots so agents can inspect current spread, valuation source, and feed health directly from `paper-status` or `paper-export`. Open paper positions are valued from live top-of-book mid prices when available; perp snapshots prefer live mark price when present.
+Paper session snapshots and exports now include those quote snapshots plus feed readiness counters and the `required_feeds` inventory so agents can inspect current spread, valuation source, arming state, and feed health directly from `paper-status` or `paper-export`. Open paper positions are valued from live top-of-book mid prices when available; perp snapshots prefer live mark price when present.
 
 The current paper engine is still intentionally conservative:
 
