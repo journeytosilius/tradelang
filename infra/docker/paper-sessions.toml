@@ -10,30 +10,21 @@ once = false
 
 [[session]]
 enabled = true
-script = "adaptive_trend_backtest.ps"
+script = "strategy.ps"
 
-# Omit `execution_sources` when the script declares exactly one `execution`
-# alias. Add one or more aliases here when the script exposes multiple
-# execution targets and you want to select a subset or activate portfolio mode.
-execution_sources = ["spot"]
+# Current validated paper target from /mnt/4tbscratch/projects/palmscript-build-futures:
+# - execution alias: exec
+# - symbol / segment: Binance USD-M BTCUSDT
+# - exact validation artifact: opt_probe_iter52_cooldown1_exact.json
 
 initial_capital = 10000.0
 maker_fee_bps = 2.0
 taker_fee_bps = 5.0
-slippage_bps = 2.0
+slippage_bps = 1.0
 diagnostics = "summary"
+leverage = 10
+margin_mode = "isolated"
 
 # Optional:
-# leverage = 2
-# margin_mode = "isolated"
+# execution_sources = ["exec"]
 # fee_schedules = ["spot:1.0:3.0"]
-
-[[session]]
-enabled = false
-script = "portfolio_caps_backtest.ps"
-execution_sources = ["left", "right"]
-initial_capital = 20000.0
-maker_fee_bps = 2.0
-taker_fee_bps = 5.0
-slippage_bps = 2.0
-diagnostics = "summary"
