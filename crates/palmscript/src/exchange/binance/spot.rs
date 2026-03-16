@@ -219,7 +219,7 @@ pub(crate) fn fetch_binance_bars(
     }
 
     if bars.is_empty() {
-        return Err(no_data(source, interval));
+        return Err(no_data(source, interval, from_ms, to_ms));
     }
     Ok(bars)
 }

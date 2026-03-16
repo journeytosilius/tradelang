@@ -139,7 +139,7 @@ pub(crate) fn fetch_bars(
         )
     })?;
     let Some(mut window_start_ms) = first_open_time_in_window(interval, from_ms, to_ms) else {
-        return Err(no_data(source, interval));
+        return Err(no_data(source, interval, from_ms, to_ms));
     };
     let mut bars = Vec::new();
 
@@ -190,7 +190,7 @@ pub(crate) fn fetch_bars(
     }
 
     if bars.is_empty() {
-        return Err(no_data(source, interval));
+        return Err(no_data(source, interval, from_ms, to_ms));
     }
     Ok(bars)
 }

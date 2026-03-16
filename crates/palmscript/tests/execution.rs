@@ -475,3 +475,59 @@ fn paper_daemon_keeps_binance_usdm_session_live_when_funding_feed_is_empty() {
     std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
     std::env::remove_var("PALMSCRIPT_BINANCE_USDM_BASE_URL");
 }
+
+#[test]
+fn paper_daemon_reports_feed_context_when_history_bootstrap_is_empty() {
+    let _guard = ENV_LOCK.lock().expect("lock env");
+    let state_dir = tempfile::tempdir().expect("tempdir");
+    let mut server = Server::new();
+    server
+        .mock("GET", "/api/v3/klines")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            Matcher::UrlEncoded("interval".into(), "1m".into()),
+        ]))
+        .with_status(200)
+        .with_body("[]")
+        .create();
+
+    std::env::set_var("PALMSCRIPT_EXECUTION_STATE_DIR", state_dir.path());
+    std::env::set_var("PALMSCRIPT_BINANCE_SPOT_BASE_URL", server.url());
+
+    submit_paper_session(SubmitPaperSession {
+        source: source().to_string(),
+        script_path: Some(PathBuf::from("spot_strategy.ps")),
+        config: PaperSessionConfig {
+            execution_source_aliases: vec!["spot".to_string()],
+            initial_capital: 1_000.0,
+            maker_fee_bps: 0.0,
+            taker_fee_bps: 0.0,
+            execution_fee_schedules: std::collections::BTreeMap::new(),
+            slippage_bps: 0.0,
+            diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+            leverage: None,
+            margin_mode: None,
+            vm_limits: VmLimits::default(),
+        },
+        start_time_ms: 1704067320000_i64,
+        endpoints: ExchangeEndpoints::from_env(),
+    })
+    .expect("spot paper session submission should succeed");
+
+    let err = serve_execution_daemon(ExecutionDaemonConfig {
+        poll_interval_ms: 1,
+        once: true,
+    })
+    .expect_err("daemon should report empty history bootstrap as a fetch failure");
+    let rendered = err.to_string();
+    assert!(rendered.contains("feed hub sync failed"), "{rendered}");
+    assert!(
+        rendered.contains("feed bootstrap failed for source `spot` (binance.spot) `BTCUSDT` 1m"),
+        "{rendered}"
+    );
+    assert!(rendered.contains("required_fields=["), "{rendered}");
+    assert!(rendered.contains("requested_window=["), "{rendered}");
+
+    std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
+    std::env::remove_var("PALMSCRIPT_BINANCE_SPOT_BASE_URL");
+}

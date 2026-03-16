@@ -43,6 +43,8 @@ Exemplos:
 - um feed obrigatorio nao retorna dados na janela solicitada
 - um simbolo nao pode ser resolvido pelo venue selecionado
 
+Falhas de busca agora incluem tanto contexto da requisicao quanto o PalmScript conhece naquela camada, por exemplo a janela solicitada e a etapa de bootstrap do feed paper que disparou a requisicao.
+
 ## 3. Erros De Runtime
 
 Erros de runtime acontecem depois que a preparacao de feeds comeca ou durante a
@@ -58,6 +60,8 @@ Exemplos:
 - slot local ou de serie invalido
 - overflow de capacidade de historico
 - incompatibilidade de tipo de saida durante a coleta de saidas
+
+Manifests e snapshots de sessoes paper tambem expoem mensagens de falha por feed, para que `paper-status` e `paper-export` mostrem qual feed falhou, em que etapa e com qual erro upstream.
 
 ## Responsabilidade Por Camada
 

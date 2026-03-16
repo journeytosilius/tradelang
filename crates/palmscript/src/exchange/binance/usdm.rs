@@ -537,7 +537,7 @@ fn fetch_funding_rate_samples(
         start_time = next_start;
     }
     if samples.is_empty() {
-        return Err(no_data(source, interval));
+        return Err(no_data(source, interval, from_ms, to_ms));
     }
     Ok(samples)
 }
@@ -617,7 +617,7 @@ fn fetch_basis_samples(
         start_time = next_start;
     }
     if samples.is_empty() {
-        return Err(no_data(source, interval));
+        return Err(no_data(source, interval, from_ms, to_ms));
     }
     Ok(samples)
 }

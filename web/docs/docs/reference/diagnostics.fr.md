@@ -44,6 +44,8 @@ Exemples :
 - un flux requis ne renvoie aucune donnee dans la fenetre demandee
 - un symbole ne peut pas etre resolu par le venue choisi
 
+Les erreurs de recuperation incluent maintenant autant de contexte de requete que PalmScript en connait a cette couche, par exemple la fenetre demandee et l'etape de bootstrap du feed paper qui a declenche la requete.
+
 ## 3. Erreurs D'Execution
 
 Les erreurs d'execution surviennent apres le debut de la preparation des flux
@@ -59,6 +61,8 @@ Exemples :
 - slot local ou de serie invalide
 - depassement de capacite d'historique
 - incompatibilite de type de sortie pendant la collecte des sorties
+
+Les manifests et snapshots de session paper exposent aussi des messages d'echec par feed, afin que `paper-status` et `paper-export` montrent quel feed a echoue, a quelle etape et avec quelle erreur amont.
 
 ## Responsabilite Des Couches
 

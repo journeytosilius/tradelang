@@ -283,12 +283,19 @@ pub(crate) fn malformed_response(
     }
 }
 
-pub(crate) fn no_data(source: &DeclaredMarketSource, interval: Interval) -> ExchangeFetchError {
+pub(crate) fn no_data(
+    source: &DeclaredMarketSource,
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+) -> ExchangeFetchError {
     ExchangeFetchError::NoData {
         alias: source.alias.clone(),
         template: source.template.as_str(),
         symbol: source.symbol.clone(),
         interval: interval.as_str(),
+        from_ms,
+        to_ms,
     }
 }
 

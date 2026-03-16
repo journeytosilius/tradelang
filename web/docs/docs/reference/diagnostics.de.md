@@ -43,6 +43,8 @@ Beispiele:
 - ein benoetigter Feed liefert im angeforderten Fenster keine Daten
 - ein Symbol kann in der ausgewaehlten Venue nicht aufgeloest werden
 
+Fetch-Fehler enthalten jetzt so viel Anfragekontext, wie PalmScript in der betroffenen Schicht kennt, zum Beispiel das angeforderte Zeitfenster und die Bootstrap-Phase des Paper-Feeds, die die Anfrage ausgeloest hat.
+
 ## 3. Laufzeitfehler
 
 Laufzeitfehler treten auf, nachdem die Feed-Vorbereitung begonnen hat oder
@@ -58,6 +60,8 @@ Beispiele:
 - ungueltiger lokaler oder Serien-Slot
 - History-Capacity-Ueberlauf
 - Output-Typkonflikt bei der Sammlung der Ausgaben
+
+Paper-Session-Manifeste und Snapshots enthalten ausserdem Fehlermeldungen pro Feed, sodass `paper-status` und `paper-export` zeigen koennen, welcher Feed in welcher Phase mit welcher Upstream-Fehlermeldung gescheitert ist.
 
 ## Schicht-Verantwortung
 

@@ -171,6 +171,7 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         let endpoints = managed.endpoints.clone();
         let from_ms = managed.warmup_from_ms;
         let required_fields = managed.required_fields.clone();
+        let field_list = format_required_fields(&required_fields);
         let bars = tokio::task::spawn_blocking(move || {
             let client = blocking_client()?;
             fetch_source_feed(
@@ -182,10 +183,29 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 &endpoints,
                 &required_fields,
             )
-            .map_err(|err| ExecutionError::Fetch(err.to_string()))
+            .map_err(|err| {
+                ExecutionError::Fetch(format!(
+                    "feed bootstrap failed for source `{}` ({}) `{}` {} window=[{}, {}) required_fields=[{}]: {err}",
+                    source.alias,
+                    source.template.as_str(),
+                    source.symbol,
+                    interval.as_str(),
+                    from_ms,
+                    to_ms,
+                    field_list,
+                ))
+            })
         })
         .await
-        .map_err(|err| ExecutionError::Runtime(format!("feed bootstrap task failed: {err}")))??;
+        .map_err(|err| {
+            ExecutionError::Runtime(format!(
+                "feed bootstrap task failed for source `{}` ({}) `{}` {}: {err}",
+                managed.source.alias,
+                managed.source.template.as_str(),
+                managed.source.symbol,
+                interval.as_str(),
+            ))
+        })??;
         managed.state.history = bars;
         managed.state.history_ready = true;
         managed.state.latest_closed_bar_time_ms =
@@ -195,6 +215,7 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         let source = managed.source.clone();
         let endpoints = managed.endpoints.clone();
         let required_fields = managed.required_fields.clone();
+        let field_list = format_required_fields(&required_fields);
         let bars = tokio::task::spawn_blocking(move || {
             let client = blocking_client()?;
             fetch_source_feed(
@@ -206,10 +227,29 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
                 &endpoints,
                 &required_fields,
             )
-            .map_err(|err| ExecutionError::Fetch(err.to_string()))
+            .map_err(|err| {
+                ExecutionError::Fetch(format!(
+                    "feed append failed for source `{}` ({}) `{}` {} window=[{}, {}) required_fields=[{}]: {err}",
+                    source.alias,
+                    source.template.as_str(),
+                    source.symbol,
+                    interval.as_str(),
+                    from_ms,
+                    to_ms,
+                    field_list,
+                ))
+            })
         })
         .await
-        .map_err(|err| ExecutionError::Runtime(format!("feed append task failed: {err}")))??;
+        .map_err(|err| {
+            ExecutionError::Runtime(format!(
+                "feed append task failed for source `{}` ({}) `{}` {}: {err}",
+                managed.source.alias,
+                managed.source.template.as_str(),
+                managed.source.symbol,
+                interval.as_str(),
+            ))
+        })??;
         append_unique_bars(&mut managed.state.history, bars);
         managed.state.latest_closed_bar_time_ms =
             managed.state.history.last().map(|bar| bar.time as i64);
@@ -226,7 +266,14 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
         fetch_quote_feed(&client, &endpoints, &source, now_ms)
     })
     .await
-    .map_err(|err| ExecutionError::Runtime(format!("feed quote task failed: {err}")))?;
+    .map_err(|err| {
+        ExecutionError::Runtime(format!(
+            "feed quote task failed for source `{}` ({}) `{}`: {err}",
+            managed.source.alias,
+            managed.source.template.as_str(),
+            managed.source.symbol,
+        ))
+    })?;
     match quote {
         Ok(quote) => {
             managed.state.top_of_book = quote.top_of_book;
@@ -235,7 +282,13 @@ async fn refresh_feed(managed: &mut ManagedFeed, now_ms: i64) -> Result<(), Exec
             managed.state.failure_message = None;
         }
         Err(err) => {
-            managed.state.failure_message = Some(err.to_string());
+            managed.state.failure_message = Some(format!(
+                "quote refresh failed for source `{}` ({}) `{}` at {}: {err}",
+                managed.source.alias,
+                managed.source.template.as_str(),
+                managed.source.symbol,
+                now_ms,
+            ));
         }
     }
 
@@ -262,6 +315,14 @@ fn blocking_client() -> Result<Client, ExecutionError> {
         .user_agent("palmscript-execution/0.2")
         .build()
         .map_err(|err| ExecutionError::Fetch(err.to_string()))
+}
+
+fn format_required_fields(fields: &BTreeSet<MarketField>) -> String {
+    fields
+        .iter()
+        .map(|field| field.as_str())
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 impl FeedHub {

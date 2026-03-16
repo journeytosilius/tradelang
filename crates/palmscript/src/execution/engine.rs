@@ -88,11 +88,18 @@ impl LoadedPaperSession {
         now_ms: i64,
     ) -> Result<Self, ExecutionError> {
         let manifest = manifest.clone();
-        tokio::task::spawn_blocking(move || Self::load_blocking(&manifest, now_ms))
-            .await
-            .map_err(|err| {
-                ExecutionError::Runtime(format!("paper session load task failed: {err}"))
-            })?
+        let session_id = manifest.session_id.clone();
+        tokio::task::spawn_blocking({
+            let manifest = manifest.clone();
+            move || Self::load_blocking(&manifest, now_ms)
+        })
+        .await
+        .map_err(|err| {
+            ExecutionError::Runtime(format!(
+                "paper session `{}` load task failed: {err}",
+                session_id
+            ))
+        })?
     }
 
     async fn refresh_perp_contexts_if_needed(
@@ -125,7 +132,10 @@ impl LoadedPaperSession {
             })
             .await
             .map_err(|err| {
-                ExecutionError::Runtime(format!("perp context refresh task failed: {err}"))
+                ExecutionError::Runtime(format!(
+                    "paper session `{}` perp context refresh task failed: {err}",
+                    manifest.session_id
+                ))
             })??;
         self.perp = perp;
         self.perp_context = perp_context;

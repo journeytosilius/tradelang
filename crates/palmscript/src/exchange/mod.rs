@@ -142,12 +142,16 @@ pub enum ExchangeFetchError {
         interval: &'static str,
         message: String,
     },
-    #[error("no data returned for `{alias}` ({template}) `{symbol}` {interval}")]
+    #[error(
+        "no data returned for `{alias}` ({template}) `{symbol}` {interval} requested_window=[{from_ms}, {to_ms})"
+    )]
     NoData {
         alias: String,
         template: &'static str,
         symbol: String,
         interval: &'static str,
+        from_ms: i64,
+        to_ms: i64,
     },
     #[error("perp risk fetch for `{alias}` ({template}) `{symbol}` failed: {message}")]
     RiskRequestFailed {

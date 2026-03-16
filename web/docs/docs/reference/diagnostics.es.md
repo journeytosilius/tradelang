@@ -43,6 +43,8 @@ Ejemplos:
 - un feed requerido no devuelve datos en la ventana solicitada
 - un simbolo no puede resolverse en la venue seleccionada
 
+Los fallos de fetch ahora incluyen tanto contexto de la solicitud como PalmScript conoce en esa capa, por ejemplo la ventana solicitada y la etapa de bootstrap del feed paper que disparo la peticion.
+
 ## 3. Errores De Runtime
 
 Los errores de runtime ocurren despues de que empieza la preparacion de feeds o
@@ -58,6 +60,8 @@ Ejemplos:
 - slot local o de serie invalido
 - overflow de capacidad de historial
 - output type mismatch durante la recoleccion de salidas
+
+Los manifests y snapshots de sesiones paper tambien exponen mensajes de fallo por feed para que `paper-status` y `paper-export` muestren que feed fallo, en que etapa y con que error upstream.
 
 ## Propiedad De Cada Capa
 

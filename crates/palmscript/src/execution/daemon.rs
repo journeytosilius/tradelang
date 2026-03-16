@@ -100,7 +100,14 @@ async fn serve_execution_daemon_async(
         runners.retain(|session_id, _| active_sessions.iter().any(|active| active == session_id));
         for manifest in &active_manifests {
             if !runners.contains_key(&manifest.session_id) {
-                let runner = LoadedPaperSession::load(manifest, now_ms()).await?;
+                let runner = LoadedPaperSession::load(manifest, now_ms())
+                    .await
+                    .map_err(|err| {
+                        ExecutionError::Runtime(format!(
+                            "paper session `{}` failed to load: {err}",
+                            manifest.session_id
+                        ))
+                    })?;
                 runners.insert(manifest.session_id.clone(), runner);
             }
         }
@@ -109,7 +116,12 @@ async fn serve_execution_daemon_async(
             .values()
             .map(|runner| runner.feed_plan().clone())
             .collect::<Vec<_>>();
-        feed_hub.sync(&plans, now_ms()).await?;
+        feed_hub.sync(&plans, now_ms()).await.map_err(|err| {
+            ExecutionError::Runtime(format!(
+                "feed hub sync failed for active sessions [{}]: {err}",
+                active_sessions.join(",")
+            ))
+        })?;
 
         let stop_requested = stop_path.exists();
         let status = ExecutionDaemonStatus {

@@ -151,7 +151,7 @@ fn market_fetch_error_catalog_matches_contract() {
         "source `a` with template `bybit.usdt_perps` does not support interval `1s`",
         "",
         "malformed response for `a` (binance.spot) `BTCUSDT` 1m: invalid `open` value",
-        "no data returned for `a` (binance.spot) `BTCUSDT` 1m",
+        "no data returned for `a` (binance.spot) `BTCUSDT` 1m requested_window=[1704067200000, 1704067260000)",
     ];
 
     for ((name, result), expected_message) in cases.into_iter().zip(expected_exact) {

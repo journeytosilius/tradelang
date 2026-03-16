@@ -276,7 +276,7 @@ Notes:
 - the session snapshots the script source and queues it under the local execution state root
 - v1 paper mode uses the existing VM and deterministic order simulator with closed-bar strategy evaluation, not real live order placement
 - queued sessions now transition through `queued -> arming_history -> arming_live -> live`
-- `paper-status` and `paper-export` now include feed readiness counters plus a `required_feeds` inventory with each feed's arming state, readiness flags, latest closed bar time, and quote snapshots for each execution alias
+- `paper-status` y `paper-export` ahora incluyen contadores de readiness y un inventario `required_feeds` con el estado de armado, readiness, el ultimo cierre, los mensajes de fallo por feed y los snapshots de quotes de cada alias de ejecucion
 
 ## `palmscript run paper-list`
 

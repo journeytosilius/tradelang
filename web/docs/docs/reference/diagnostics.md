@@ -42,6 +42,8 @@ Examples:
 - a required feed returns no data in the requested window
 - a symbol cannot be resolved by the selected venue
 
+Fetch failures now include as much request context as PalmScript has at the failing layer, such as the requested window and the paper-feed bootstrap stage that triggered the request.
+
 ## 3. Runtime Errors
 
 Runtime errors occur after feed preparation begins or during execution.
@@ -56,6 +58,8 @@ Examples:
 - invalid local or series slot
 - history-capacity overflow
 - output type mismatch during output collection
+
+Paper-session manifests and snapshots also surface per-feed failure messages so `paper-status` and `paper-export` can show which feed failed, at which stage, and with which upstream error string.
 
 ## Layer Ownership
 

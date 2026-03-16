@@ -837,7 +837,7 @@ pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
         for feed in &manifest.required_feeds {
             let _ = writeln!(
                 out,
-                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={}",
+                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={} failure_message={}",
                 feed.execution_alias,
                 feed.template.as_str(),
                 feed.symbol,
@@ -851,6 +851,9 @@ pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
                 feed.live_ready,
                 feed.latest_closed_bar_time_ms
                     .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.failure_message
+                    .clone()
                     .unwrap_or_else(|| "none".to_string()),
             );
         }
@@ -921,7 +924,7 @@ pub fn render_paper_snapshot_text(snapshot: &PaperSessionSnapshot) -> String {
                 .unwrap_or_else(|| "none".to_string());
             let _ = writeln!(
                 out,
-                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={} top_of_book={} last={} mark={} valuation_source={}",
+                "alias={} template={} symbol={} interval={} arming_state={} history_ready={} live_ready={} latest_closed_bar_time_ms={} top_of_book={} last={} mark={} valuation_source={} failure_message={}",
                 feed.execution_alias,
                 feed.template.as_str(),
                 feed.symbol,
@@ -941,6 +944,9 @@ pub fn render_paper_snapshot_text(snapshot: &PaperSessionSnapshot) -> String {
                 mark,
                 feed.valuation_source
                     .map(|source| format!("{source:?}"))
+                    .unwrap_or_else(|| "none".to_string()),
+                feed.failure_message
+                    .clone()
                     .unwrap_or_else(|| "none".to_string())
             );
         }
@@ -1953,17 +1959,21 @@ fn _output_kind(_kind: OutputKind) {}
 mod tests {
     use super::{
         render_backtest_text, render_bytecode_text, render_optimize_text, render_outputs_text,
+        render_paper_manifest_text, render_paper_snapshot_text,
     };
     use palmscript::backtest::OptimizationRobustnessSummary;
     use palmscript::bytecode::{Constant, LocalInfo, OutputDecl, OutputKind, Program};
+    use palmscript::execution::{FeedArmingState, PaperFeedSnapshot, PaperFeedSummary};
     use palmscript::span::{Position, Span};
     use palmscript::types::Type;
     use palmscript::{
         BacktestResult, BacktestSummary, CompiledProgram, DiagnosticsDetailMode, EquityPoint,
+        ExchangeEndpoints, ExecutionMode, ExecutionSessionHealth, ExecutionSessionStatus,
         ExportDiagnosticSummary, Fill, FillAction, OptimizeCandidateSummary, OptimizeConfig,
         OptimizeEvaluationSummary, OptimizeObjective, OptimizeResult, OptimizeRunner, OrderKind,
-        OrderRecord, OrderStatus, OutputSample, OutputSeries, OutputValue, Outputs, PlotPoint,
-        PlotSeries, PositionSide, SignalRole, Trade,
+        OrderRecord, OrderStatus, OutputSample, OutputSeries, OutputValue, Outputs,
+        PaperSessionConfig, PaperSessionManifest, PaperSessionSnapshot, PlotPoint, PlotSeries,
+        PositionSide, SignalRole, SourceTemplate, Trade,
     };
 
     #[test]
@@ -2455,5 +2465,95 @@ mod tests {
         assert!(rendered.contains("time_bucket_cohorts"));
         assert!(rendered.contains("direct_time_bucket_cohorts"));
         assert!(rendered.contains("start_hour_utc=8 end_hour_utc=12"));
+    }
+
+    #[test]
+    fn render_paper_text_includes_per_feed_failure_messages() {
+        let feed = PaperFeedSnapshot {
+            execution_alias: "exec".to_string(),
+            template: SourceTemplate::BinanceUsdm,
+            symbol: "BTCUSDT".to_string(),
+            interval: Some(palmscript::Interval::Min1),
+            arming_state: Some(FeedArmingState::Failed),
+            history_ready: false,
+            live_ready: false,
+            latest_closed_bar_time_ms: None,
+            top_of_book: None,
+            last_price: None,
+            mark_price: None,
+            valuation_source: None,
+            failure_message: Some("feed bootstrap failed with window context".to_string()),
+        };
+        let manifest = PaperSessionManifest {
+            session_id: "paper-1".to_string(),
+            mode: ExecutionMode::Paper,
+            created_at_ms: 1,
+            updated_at_ms: 2,
+            start_time_ms: 3,
+            status: ExecutionSessionStatus::ArmingHistory,
+            health: ExecutionSessionHealth::Starting,
+            stop_requested: false,
+            failure_message: None,
+            script_path: Some("strategy.ps".to_string()),
+            script_sha256: "abc".to_string(),
+            base_interval: palmscript::Interval::Min1,
+            history_capacity: 32,
+            endpoints: ExchangeEndpoints::default(),
+            config: PaperSessionConfig {
+                execution_source_aliases: vec!["exec".to_string()],
+                initial_capital: 1_000.0,
+                maker_fee_bps: 0.0,
+                taker_fee_bps: 0.0,
+                execution_fee_schedules: std::collections::BTreeMap::new(),
+                slippage_bps: 0.0,
+                diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
+                leverage: None,
+                margin_mode: None,
+                vm_limits: palmscript::VmLimits::default(),
+            },
+            execution_sources: vec![],
+            feed_summary: PaperFeedSummary {
+                total_feeds: 1,
+                history_ready_feeds: 0,
+                live_ready_feeds: 0,
+                failed_feeds: 1,
+            },
+            required_feeds: vec![feed.clone()],
+            warmup_from_ms: Some(0),
+            latest_runtime_to_ms: None,
+        };
+        let snapshot = PaperSessionSnapshot {
+            session_id: "paper-1".to_string(),
+            status: ExecutionSessionStatus::ArmingHistory,
+            health: ExecutionSessionHealth::Starting,
+            updated_at_ms: 2,
+            start_time_ms: 3,
+            warmup_from_ms: Some(0),
+            latest_runtime_to_ms: None,
+            latest_closed_bar_time_ms: None,
+            summary: None,
+            diagnostics_summary: None,
+            open_positions: vec![],
+            feed_snapshots: vec![feed],
+            feed_summary: PaperFeedSummary {
+                total_feeds: 1,
+                history_ready_feeds: 0,
+                live_ready_feeds: 0,
+                failed_feeds: 1,
+            },
+            open_order_count: 0,
+            filled_order_count: 0,
+            cancelled_order_count: 0,
+            rejected_order_count: 0,
+            expired_order_count: 0,
+            fill_count: 0,
+            trade_count: 0,
+            failure_message: None,
+        };
+
+        let manifest_text = render_paper_manifest_text(&manifest);
+        let snapshot_text = render_paper_snapshot_text(&snapshot);
+        assert!(manifest_text.contains("failure_message=feed bootstrap failed with window context"));
+        assert!(snapshot_text.contains("failure_message=feed bootstrap failed with window context"));
     }
 }
