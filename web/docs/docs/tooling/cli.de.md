@@ -162,7 +162,7 @@ The v1 execution layer is intentionally conservative:
 - one persistent local ledger per paper session
 - the same strategy semantics, portfolio caps, cooldowns, and max-bars exits as backtest mode
 
-When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` warms the VM with compiler-derived pre-session history, keeps one shared armed feed cache for the active paper sessions, and updates the strategy only when a new execution candle closes. Sessions remain in explicit `arming_history` and `arming_live` states until the required feed inventory is ready. If an exchange temporarily returns no fresh bar for the current live append window, the daemon keeps the last closed candle armed and resumes on the next closed candle instead of failing the session.
+When you submit a paper session, PalmScript snapshots the script and queues a persistent session locally. `execution serve` warms the VM with compiler-derived pre-session history, keeps one shared armed feed cache for the active paper sessions, and updates the strategy only when a new execution candle closes. Sessions remain in explicit `arming_history` and `arming_live` states until the required feed inventory is ready. If an exchange temporarily returns no fresh bar for the current live append window, the daemon keeps the last closed candle armed and resumes on the next closed candle instead of failing the session. Perp sessions also stay in `arming_live` and retry when mark-price candles have not caught up to the execution window yet.
 
 The shared quote layer currently provides, per execution alias:
 

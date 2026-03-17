@@ -1,4 +1,6 @@
-use crate::backtest::{BacktestConfig, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode};
+use crate::backtest::{
+    BacktestConfig, BacktestError, PerpBacktestConfig, PerpBacktestContext, PerpMarginMode,
+};
 use crate::compiler::compile;
 use crate::run_backtest_with_sources;
 use crate::runtime::VmLimits;
@@ -264,8 +266,7 @@ pub(crate) async fn process_paper_session(
             perp_context: session.perp_context.clone(),
             portfolio_perp_contexts: session.portfolio_perp_contexts.clone(),
         },
-    )
-    .map_err(|err| ExecutionError::Runtime(err.to_string()));
+    );
 
     match result {
         Ok(result) => {
@@ -323,7 +324,11 @@ pub(crate) async fn process_paper_session(
             );
             Ok(manifest)
         }
+        Err(BacktestError::MissingPerpMarkFeed { alias }) => {
+            defer_perp_mark_alignment(session, &mut manifest, runtime_to_ms, &alias)
+        }
         Err(err) => {
+            let err = ExecutionError::Runtime(err.to_string());
             manifest.status = ExecutionSessionStatus::Failed;
             manifest.health = ExecutionSessionHealth::Failed;
             manifest.updated_at_ms = now_ms;
@@ -359,6 +364,36 @@ pub(crate) async fn process_paper_session(
             Ok(manifest)
         }
     }
+}
+
+fn defer_perp_mark_alignment(
+    session: &mut LoadedPaperSession,
+    manifest: &mut PaperSessionManifest,
+    runtime_to_ms: i64,
+    alias: &str,
+) -> Result<PaperSessionManifest, ExecutionError> {
+    session.perp_context_to_ms = session
+        .perp_context_to_ms
+        .min(runtime_to_ms.saturating_sub(1));
+    let message =
+        format!("paper session waiting for aligned perp mark bars for execution `{alias}`");
+    update_manifest_status(
+        manifest,
+        ExecutionSessionStatus::ArmingLive,
+        ExecutionSessionHealth::WarmingUp,
+        None,
+        &message,
+    )?;
+    warn_fields(
+        "paper.session.waiting_perp_mark_bars",
+        "Paper session waiting for aligned perp mark bars",
+        vec![
+            LogField::string("session_id", manifest.session_id.clone()),
+            LogField::string("execution_alias", alias.to_string()),
+            LogField::i64("runtime_to_ms", runtime_to_ms),
+        ],
+    );
+    Ok(manifest.clone())
 }
 
 fn infer_health(feed_snapshots: &[super::PaperFeedSnapshot]) -> ExecutionSessionHealth {
@@ -445,7 +480,7 @@ fn update_manifest_status(
 
 #[cfg(test)]
 mod tests {
-    use super::LoadedPaperSession;
+    use super::{defer_perp_mark_alignment, LoadedPaperSession};
     use crate::backtest::{DiagnosticsDetailMode, PerpMarginMode};
     use crate::compile;
     use crate::exchange::ExchangeEndpoints;
@@ -458,6 +493,8 @@ mod tests {
     use crate::runtime::VmLimits;
     use mockito::{Matcher, Server};
     use serde_json::json;
+    use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     fn sample_manifest(endpoints: ExchangeEndpoints) -> PaperSessionManifest {
         PaperSessionManifest {
@@ -610,5 +647,51 @@ plot(perp.close)";
         assert_eq!(refreshed.mark_bars.len(), 3);
         assert_eq!(refreshed.mark_bars[2].time as i64, 1_704_074_400_000);
         assert_eq!(session.perp_context_to_ms, 1_704_078_000_000);
+    }
+
+    #[test]
+    fn defer_perp_mark_alignment_keeps_session_warming_and_retries_window() {
+        let state_dir = tempfile::tempdir().expect("tempdir");
+        std::env::set_var("PALMSCRIPT_EXECUTION_STATE_DIR", state_dir.path());
+
+        let compiled = compile(
+            "interval 1m
+source perp = binance.usdm(\"BTCUSDT\")
+execution exec = binance.usdm(\"BTCUSDT\")
+plot(perp.close)",
+        )
+        .expect("compile");
+        let manifest = sample_manifest(ExchangeEndpoints::default());
+        let feed_plan = build_session_feed_plan(
+            &compiled,
+            &manifest.config.execution_source_aliases,
+            manifest.start_time_ms,
+            &manifest.endpoints,
+        )
+        .expect("feed plan");
+        let mut session = LoadedPaperSession {
+            compiled,
+            feed_plan,
+            perp: None,
+            perp_context: None,
+            portfolio_perp_contexts: BTreeMap::new(),
+            perp_context_to_ms: 1_704_067_500_000,
+        };
+        let mut manifest = PaperSessionManifest {
+            session_id: "paper-wait".to_string(),
+            script_path: Some(PathBuf::from("strategy.ps").display().to_string()),
+            ..manifest
+        };
+
+        let deferred =
+            defer_perp_mark_alignment(&mut session, &mut manifest, 1_704_067_500_000, "exec")
+                .expect("defer should succeed");
+
+        assert_eq!(deferred.status, ExecutionSessionStatus::ArmingLive);
+        assert_eq!(deferred.health, ExecutionSessionHealth::WarmingUp);
+        assert_eq!(deferred.failure_message, None);
+        assert_eq!(session.perp_context_to_ms, 1_704_067_499_999);
+
+        std::env::remove_var("PALMSCRIPT_EXECUTION_STATE_DIR");
     }
 }
