@@ -32,6 +32,7 @@ Representative files:
 
 - `crates/palmscript/examples/strategies/strategy.ps`: advanced multi-source Binance perp/spot strategy example with higher-interval trend filters, optimizer metadata, staged entries, and mark-triggered protective exits
 - `crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps`: experimental copy of `strategy.ps` that fixes the unreachable long-entry time-window exception and exports the trend-state booleans for easier diagnostics
+- `crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps`: experimental copy of `strategy.ps` that adds a reduced-size fallback long after a long entry drought when the higher-timeframe bearish regime is only mildly negative
 - `crates/palmscript/examples/strategies/triiger_happy.ps`: high-churn Binance spot paper-trading example with market entries, short holding windows, and tight ATR-based stop/target orders to stress the paper execution path
 - `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned EMA, RSI, MACD, entry sizing, ATR target, and post-target stop-ratchet inputs around staged `entry1` / `entry2` and `target1` / `target2` order flow, including inline `input ... optimize(...)` metadata for durable CLI optimization
 - `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: multi-alias portfolio backtest example using `portfolio_group`, position-count caps, and gross/net exposure caps under repeated `--execution-source` CLI selection
@@ -89,6 +90,7 @@ Common commands:
 ```bash
 ./palmscript check crates/palmscript/examples/strategies/sma_cross.ps
 ./palmscript check crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps
+./palmscript check crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps
 ./palmscript run market crates/palmscript/examples/strategies/sma_cross.ps --from 1704067200000 --to 1704153600000
 ./palmscript run market crates/palmscript/examples/strategies/volume_breakout.ps --from 1704067200000 --to 1704153600000 --format text
 ./palmscript run market crates/palmscript/examples/strategies/weekly_bias.ps --from 1704067200000 --to 1705276800000
@@ -105,6 +107,7 @@ Common commands:
 ./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps --from 1647475200000 --to 1773757701000 --maker-fee-bps 2 --taker-fee-bps 5
+./palmscript run backtest crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps --from 1647475200000 --to 1773757701000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63
 ./palmscript run optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50 --preset-out best.json
