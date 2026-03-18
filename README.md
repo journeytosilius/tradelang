@@ -38,8 +38,8 @@ Documentation and tooling:
 
 - Docs: <https://palmscript.dev/docs/>
 - Hosted IDE: <https://palmscript.dev/>
-- Local docs source: [web/docs/docs/index.md](/mnt/4tbscratch/projects/tradelang/web/docs/docs/index.md)
-- CLI reference: [web/docs/docs/reference/cli.md](/mnt/4tbscratch/projects/tradelang/web/docs/docs/reference/cli.md)
+- Docs home: <https://palmscript.dev/docs/>
+- CLI reference: <https://palmscript.dev/docs/tooling/cli/>
 
 ## Language Examples
 
