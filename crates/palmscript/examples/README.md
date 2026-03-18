@@ -28,14 +28,21 @@ Experimental variants belong under
 `crates/palmscript/examples/strategies/experimental/`, and generated artifacts
 belong under `crates/palmscript/examples/strategies/artifacts/`.
 
-Representative files:
+Start here when you want to see the language in action:
 
-- `crates/palmscript/examples/strategies/strategy.ps`: advanced multi-source Binance perp/spot strategy example with higher-interval trend filters, optimizer metadata, staged entries, and mark-triggered protective exits
+- `crates/palmscript/examples/strategies/cross_source_spread.ps`: best first stop for source-aware research, spread math, and explicit alias-qualified market fields
+- `crates/palmscript/examples/strategies/indicator_showcase.ps`: compact tour of the richer indicator surface, including `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
+- `crates/palmscript/examples/strategies/weekly_bias.ps`: simple supplemental-interval example showing `use <alias> <interval>` without execution logic
+- `crates/palmscript/examples/strategies/venue_orders_backtest.ps`: cleanest backtest example for explicit `execution`, named-argument order constructors, and attached exit flow
+- `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: best portfolio-mode example for repeated `--execution-source`, `portfolio_group`, and exposure/position caps
+- `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: strongest optimization example with inline `input ... optimize(...)` metadata, staged entries, staged targets, and stop ratchets
+- `crates/palmscript/examples/strategies/strategy.ps`: advanced perp/spot multi-source strategy with higher-interval filters, staged entries, and mark-triggered protective exits
+- `crates/palmscript/examples/strategies/triiger_happy.ps`: intentionally aggressive paper-trading smoke test for fill churn, order lifecycle transitions, and paper-daemon validation
+
+Additional representative files:
+
 - `crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps`: experimental copy of `strategy.ps` that fixes the unreachable long-entry time-window exception and exports the trend-state booleans for easier diagnostics
 - `crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps`: experimental copy of `strategy.ps` that adds a reduced-size fallback long after a long entry drought when the higher-timeframe bearish regime is only mildly negative
-- `crates/palmscript/examples/strategies/triiger_happy.ps`: high-churn Binance spot paper-trading example with market entries, short holding windows, and tight ATR-based stop/target orders to stress the paper execution path
-- `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: adaptive multi-timeframe long-only backtest strategy with optimizer-tuned EMA, RSI, MACD, entry sizing, ATR target, and post-target stop-ratchet inputs around staged `entry1` / `entry2` and `target1` / `target2` order flow, including inline `input ... optimize(...)` metadata for durable CLI optimization
-- `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: multi-alias portfolio backtest example using `portfolio_group`, position-count caps, and gross/net exposure caps under repeated `--execution-source` CLI selection
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
@@ -43,15 +50,11 @@ Representative files:
 - `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`: Bybit USDT perpetual backtest example with a higher-interval trend filter
 - `crates/palmscript/examples/strategies/gate_spot.ps`: Gate spot market-mode example with a supplemental `4h` feed
 - `crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps`: Gate USDT perpetual backtest example with a higher-interval trend filter
-- `crates/palmscript/examples/strategies/sma_cross.ps`: single-source market-mode strategy
-- `crates/palmscript/examples/strategies/weekly_bias.ps`: single-source supplemental-interval strategy
+- `crates/palmscript/examples/strategies/sma_cross.ps`: minimal single-source market-mode strategy
 - `crates/palmscript/examples/strategies/macd_tuple.ps`: tuple destructuring and `ma_type`
-- `crates/palmscript/examples/strategies/indicator_showcase.ps`: single-source indicator showcase covering `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
-- `crates/palmscript/examples/strategies/cross_source_spread.ps`: cross-source market-mode strategy
 - `crates/palmscript/examples/strategies/cross_exchange_bybit_gate_spread.ps`: cross-exchange market-mode spread example mixing Bybit and Gate spot feeds
 - `crates/palmscript/examples/strategies/exchange_backed_sources.ps`: source-aware strategy with `use <alias> <interval>`
 - `crates/palmscript/examples/strategies/multi_strategy_backtest.ps`: composite trend, momentum, and breakout backtest strategy using `input`, `const`, and first-class `entry` / `exit` signals
-- `crates/palmscript/examples/strategies/venue_orders_backtest.ps`: backtest strategy using a separate `execution` declaration plus explicit `order` declarations with named-argument `limit(...)` and `stop_market(...)`
 
 For runnable public examples and workflow guidance, use the linked docs pages above.
 

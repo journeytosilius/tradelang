@@ -31,48 +31,81 @@ Documentation and tooling:
 
 ## Language Examples
 
-Indicator-only script:
+Cross-source research script:
 
 ```palmscript
-interval 1m
-source spot = binance.spot("BTCUSDT")
+interval 15m
+source bn = binance.spot("BTCUSDT")
+source bb = bybit.spot("BTCUSDT")
 
-fast = sma(spot.close, 20)
-slow = sma(spot.close, 50)
+use bb 1h
 
-plot(fast)
-plot(slow)
-plot(fast - slow)
+let spread_bps = ((bn.close - bb.close) / bb.close) * 10000
+let spread_mean = ema(spread_bps, 48)
+let spread_z = zscore(spread_bps - spread_mean, 96)
+let higher_trend = ema(bb.1h.close, 24)
+
+trigger spread_extreme = spread_z > 2.0 or spread_z < -2.0
+
+export spread_bps = spread_bps
+export spread_z = spread_z
+plot(spread_bps)
+plot(bb.1h.close - higher_trend)
 ```
 
-Trading script with explicit execution and orders:
+Execution-routed strategy with optimization metadata, higher-timeframe context,
+and attached exits:
 
 ```palmscript
-interval 4h
+interval 1h
 source spot = binance.spot("BTCUSDT")
-execution spot = binance.spot("BTCUSDT")
+execution exec = binance.spot("BTCUSDT")
 
-input fast_len = 21
-input slow_len = 55
+use spot 4h
 
-fast = ema(spot.close, fast_len)
-slow = ema(spot.close, slow_len)
+input fast_len = 21 optimize(int, 8, 34, 1)
+input slow_len = 55 optimize(int, 21, 89, 2)
+input stop_atr = 1.8 optimize(float, 1.0, 3.0, 0.2)
+input target_atr = 2.6 optimize(float, 1.4, 4.0, 0.2)
 
-entry long = crossover(fast, slow)
+let fast = ema(spot.close, fast_len)
+let slow = ema(spot.close, slow_len)
+let trend = ema(spot.4h.close, 34)
+let atr_base = atr(spot.high, spot.low, spot.close, 14)
+
+entry long = crossover(fast, slow) and spot.4h.close > trend
 exit long = crossunder(fast, slow)
 entry short = false
 exit short = false
 
-order entry long = market(venue = spot)
-order exit long = market(venue = spot)
-order entry short = market(venue = spot)
-order exit short = market(venue = spot)
+order entry long = market(venue = exec)
+order exit long = market(venue = exec)
+order entry short = market(venue = exec)
+order exit short = market(venue = exec)
 
+protect long = stop_market(
+    trigger_price = position.entry_price - stop_atr * atr_base,
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
+target long = take_profit_market(
+    trigger_price = position.entry_price + target_atr * atr_base,
+    trigger_ref = trigger_ref.last,
+    venue = exec
+)
+
+export trend_filter = spot.4h.close > trend
 plot(fast - slow)
 ```
 
-More examples live under
-[crates/palmscript/examples/strategies](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies).
+Start with these checked-in strategies:
+
+- [cross_source_spread.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/cross_source_spread.ps): cross-source market research with explicit source aliases and spread math
+- [indicator_showcase.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/indicator_showcase.ps): dense indicator tour covering `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
+- [venue_orders_backtest.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/venue_orders_backtest.ps): backtest with explicit `execution`, named-argument orders, and attached exit flow
+- [portfolio_caps_backtest.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/portfolio_caps_backtest.ps): multi-alias portfolio backtest with caps and shared-equity routing
+- [strategy.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/strategy.ps): advanced perp/spot multi-source strategy with optimizer metadata, staged entries, and mark-triggered exits
+- [triiger_happy.ps](/mnt/4tbscratch/projects/tradelang/crates/palmscript/examples/strategies/triiger_happy.ps): intentionally aggressive paper-trading smoke test for fill and lifecycle churn
 
 ## CLI
 
@@ -85,32 +118,31 @@ cargo build --bin palmscript
 Common commands:
 
 ```bash
-# Validate a script
-target/debug/palmscript check crates/palmscript/examples/strategies/sma_cross.ps
+# Validate a richer multi-source script
+target/debug/palmscript check crates/palmscript/examples/strategies/cross_source_spread.ps
 
-# Replay market data without order simulation
+# Replay exchange-backed market data without order simulation
 target/debug/palmscript run market \
-  crates/palmscript/examples/strategies/sma_cross.ps \
+  crates/palmscript/examples/strategies/cross_source_spread.ps \
   --from 1704067200000 --to 1704153600000
 
-# Run a backtest
+# Run a portfolio backtest across two execution aliases
 target/debug/palmscript run backtest \
-  crates/palmscript/examples/strategies/venue_orders_backtest.ps \
+  crates/palmscript/examples/strategies/portfolio_caps_backtest.ps \
   --from 1704067200000 --to 1704153600000 \
-  --execution-source exec \
+  --execution-source left --execution-source right \
   --maker-fee-bps 2 --taker-fee-bps 5
 
-# Optimize inputs
+# Optimize a staged strategy with inline input metadata
 target/debug/palmscript run optimize \
   crates/palmscript/examples/strategies/adaptive_trend_backtest.ps \
   --from 1646611200000 --to 1772841600000 \
   --train-bars 252 --test-bars 63 --step-bars 63 \
   --trials 50 --preset-out best.json
 
-# Queue and drive a local paper session
+# Queue a high-churn paper session, then drive the daemon
 target/debug/palmscript run paper \
-  crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps \
-  --execution-source bb \
+  crates/palmscript/examples/strategies/triiger_happy.ps \
   --maker-fee-bps 2 --taker-fee-bps 5
 target/debug/palmscript execution serve
 
