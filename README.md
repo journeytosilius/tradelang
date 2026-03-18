@@ -16,6 +16,18 @@ It is built for:
 - optimizing inputs over historical windows
 - driving local paper-trading sessions from the same compiled strategy
 
+The runtime is batteries included:
+
+- declare exchange-backed `source` feeds directly in the script and let the runtime fetch the data for you
+- run the same strategy in market replay, backtest, walk-forward, optimization, and local paper-trading modes
+- inspect typed diagnostics, trades, fills, orders, equity curves, and session state without building extra plumbing around the VM
+
+It is also designed to reduce false confidence:
+
+- walk-forward evaluation is built in, so strategies can be judged on rolling train/test windows instead of one lucky in-sample pass
+- optimization supports holdouts, direct validation replays, saved presets, and CLI-driven parameter mutation
+- diagnostics include overfitting and fragility signals such as holdout pass rates, date perturbation behavior, and parameter stability summaries
+
 The language keeps market-data inputs and execution venues explicit:
 
 - `source` declares market data feeds
