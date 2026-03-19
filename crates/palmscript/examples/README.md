@@ -41,8 +41,6 @@ Start here when you want to see the language in action:
 
 Additional representative files:
 
-- `crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps`: experimental copy of `strategy.ps` that fixes the unreachable long-entry time-window exception and exports the trend-state booleans for easier diagnostics
-- `crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps`: experimental copy of `strategy.ps` that adds a reduced-size fallback long after a long entry drought when the higher-timeframe bearish regime is only mildly negative
 - `crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps`: experimental 5m Binance USD-M XRPUSDT mean-reversion strategy with both long and short legs, 1h regime gating, and smaller short sizing
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
@@ -93,8 +91,6 @@ Common commands:
 
 ```bash
 ./palmscript check crates/palmscript/examples/strategies/sma_cross.ps
-./palmscript check crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps
-./palmscript check crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps
 ./palmscript run market crates/palmscript/examples/strategies/sma_cross.ps --from 1704067200000 --to 1704153600000
 ./palmscript run market crates/palmscript/examples/strategies/volume_breakout.ps --from 1704067200000 --to 1704153600000 --format text
 ./palmscript run market crates/palmscript/examples/strategies/weekly_bias.ps --from 1704067200000 --to 1705276800000
@@ -110,8 +106,6 @@ Common commands:
 ./palmscript run backtest crates/palmscript/examples/strategies/gate_usdt_perps_backtest.ps --from 1704067200000 --to 1704153600000 --maker-fee-bps 2 --taker-fee-bps 5 --leverage 2
 ./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000 --maker-fee-bps 2 --taker-fee-bps 5
-./palmscript run backtest crates/palmscript/examples/strategies/experimental/strategy_long_timegate_fix.ps --from 1647475200000 --to 1773757701000 --maker-fee-bps 2 --taker-fee-bps 5
-./palmscript run backtest crates/palmscript/examples/strategies/experimental/strategy_stale_fallback_long.ps --from 1647475200000 --to 1773757701000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps --from 1771286400000 --to 1773878400000 --maker-fee-bps 2 --taker-fee-bps 5 --slippage-bps 1 --leverage 2
 ./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63

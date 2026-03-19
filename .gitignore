@@ -24,3 +24,8 @@ moltbook_posts.txt
 moltbook-register.json
 .tmp
 CLI-OPTIMIZATION.md
+
+target-coverage
+.rustup-home
+.cargo-home
+.cargo-install-target

@@ -89,7 +89,7 @@ let hour_utc = floor((perp.time - day_index * ms_per_day) / ms_per_hour)
 
 let trend_up = perp.close > daily_trend and perp.1d.close > daily_trend and perp.1w.close > weekly_trend
 let trend_down = perp.close < daily_trend and perp.1d.close < daily_trend and perp.1w.close < weekly_trend
-let long_time_ok = weekday_utc != 3 and weekday_utc != 4 and hour_utc != 4 and hour_utc != 8
+let long_time_ok = (((weekday_utc != 3 and weekday_utc != 4) or (weekday_utc == 4 and hour_utc == 4)) and hour_utc != 4 and hour_utc != 8)
 let short_time_ok = (weekday_utc != 0 and hour_utc != 16) or (weekday_utc == 0 and (hour_utc == 8 or hour_utc == 20))
 let dip_setup = price_z < -price_z_entry and perp.close < lower_band and fast_rsi < rsi_entry and spread_bps < spread_cap_bps and spread_bps > -spread_cap_bps
 let long_add_setup = perp.close < mid_band and price_z < -0.2 and fast_rsi < (rsi_entry + 2)
