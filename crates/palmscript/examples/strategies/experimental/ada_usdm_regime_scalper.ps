@@ -6,10 +6,10 @@ use perp 15m
 use perp 1h
 
 // Experimental 3m ADAUSDT regime-switching scalper for Binance USD-M. It keeps
-// explicit trend / range / risk-off regimes, trades only during the cleaner 04:00-08:00 UTC
-// block from the recent screen, and is now tuned to lean on trend-following
-// pullbacks while keeping range mode smaller and more time-boxed so fast failed
-// fades do less damage to six-month expectancy and trend winners get paid more.
+// explicit trend / range / risk-off regimes, uses cap-aware sizing defaults for
+// realistic participation-limited backtests, and now extends the active window
+// to 04:00-16:00 UTC only after tightening trend-quality thresholds and paying
+// a larger staged trend runner so the capped six-month profile stays positive.
 input mean_len = 24 optimize(int, 21, 55, 1)
 input band_dev = 1.6 optimize(float, 1.0, 2.0, 0.1)
 input stretch_len = 54 optimize(int, 34, 89, 1)
@@ -20,11 +20,11 @@ input trend_fast_len = 9 optimize(int, 5, 13, 1)
 input trend_slow_len = 22 optimize(int, 13, 34, 1)
 input eff_len = 15 optimize(int, 10, 30, 1)
 input trend_gap_bps = 40 optimize(float, 10, 40, 2)
-input trend_slope_bps = 4 optimize(float, 4, 20, 1)
-input trend_adx_enter = 14 optimize(float, 14, 28, 1)
+input trend_slope_bps = 6 optimize(float, 4, 20, 1)
+input trend_adx_enter = 20 optimize(float, 14, 28, 1)
 input trend_adx_exit = 20 optimize(float, 10, 22, 1)
 input range_adx_cap = 12 optimize(float, 10, 24, 1)
-input eff_trend_floor = 0.28 optimize(float, 0.20, 0.60, 0.02)
+input eff_trend_floor = 0.36 optimize(float, 0.20, 0.60, 0.02)
 input eff_range_cap = 0.28 optimize(float, 0.08, 0.40, 0.02)
 input overlap_floor = 0.30 optimize(float, 0.15, 0.55, 0.05)
 input center_cap_bps = 38 optimize(float, 10, 40, 2)
@@ -35,7 +35,7 @@ input spread_z_cap = 2.4 optimize(float, 1.2, 3.0, 0.1)
 input volatility_z_cap = 1.5 optimize(float, 1.2, 3.2, 0.1)
 input huge_bar_atr = 2.2 optimize(float, 1.6, 4.0, 0.1)
 input range_entry_z = 1.50 optimize(float, 0.6, 1.5, 0.05)
-input trend_pullback_z = 0.15 optimize(float, 0.1, 0.8, 0.05)
+input trend_pullback_z = 0.25 optimize(float, 0.1, 0.8, 0.05)
 input range_long_rsi = 37 optimize(int, 28, 46, 1)
 input range_short_rsi = 67 optimize(int, 54, 72, 1)
 input trend_long_rsi = 58 optimize(int, 42, 58, 1)
@@ -44,23 +44,23 @@ input range_exit_z = 0.25 optimize(float, 0.0, 0.4, 0.05)
 input cooldown_bars = 0 optimize(int, 0, 4, 1)
 input protect_cooldown_bars = 4 optimize(int, 0, 6, 1)
 input range_time_stop = 8 optimize(int, 4, 16, 1)
-input trend_time_stop = 15 optimize(int, 8, 28, 1)
+input trend_time_stop = 18 optimize(int, 8, 28, 1)
 input range_stop_atr = 0.75 optimize(float, 0.45, 1.1, 0.05)
 input trend_stop_atr = 1.25 optimize(float, 0.7, 1.5, 0.05)
 input range_target1_atr = 0.30 optimize(float, 0.3, 0.9, 0.05)
 input range_target2_atr = 1.20 optimize(float, 0.6, 1.5, 0.05)
 input trend_target1_atr = 1.30 optimize(float, 0.5, 1.4, 0.05)
-input trend_target2_atr = 2.5 optimize(float, 1.0, 3.0, 0.1)
+input trend_target2_atr = 2.8 optimize(float, 1.0, 3.0, 0.1)
 input range_lock_atr = 0.00 optimize(float, 0.0, 0.3, 0.05)
 input range_lock2_atr = 0.25 optimize(float, 0.0, 0.4, 0.05)
 input trend_lock_atr = 0.70 optimize(float, 0.0, 0.8, 0.05)
-input trend_lock2_atr = 1 optimize(float, 0.1, 1.4, 0.05)
+input trend_lock2_atr = 1.2 optimize(float, 0.1, 1.4, 0.05)
 input range_target1_size = 0.60 optimize(float, 0.4, 0.9, 0.05)
 input range_target2_size = 0.40 optimize(float, 0.05, 0.4, 0.05)
-input trend_target1_size = 0.30 optimize(float, 0.2, 0.7, 0.05)
-input trend_target2_size = 0.20 optimize(float, 0.1, 0.5, 0.05)
-input range_size_fraction = 0.55 optimize(float, 0.4, 1.0, 0.05)
-input trend_size_fraction = 0.75 optimize(float, 0.2, 0.9, 0.05)
+input trend_target1_size = 0.25 optimize(float, 0.2, 0.7, 0.05)
+input trend_target2_size = 0.25 optimize(float, 0.1, 0.5, 0.05)
+input range_size_fraction = 0.05 optimize(float, 0.05, 1.0, 0.01)
+input trend_size_fraction = 0.12 optimize(float, 0.05, 0.9, 0.01)
 
 const ms_per_day = 86400000
 const ms_per_hour = 3600000
@@ -92,7 +92,7 @@ let efficiency_ratio = path_move > 0 ? abs_net_move / path_move : 0
 let day_index = floor(perp.time / ms_per_day)
 let new_day = na(day_index[1]) or day_index != day_index[1]
 let hour_utc = floor((perp.time - day_index * ms_per_day) / ms_per_hour)
-let session_ok = hour_utc >= 4 and hour_utc < 8
+let session_ok = hour_utc >= 4 and hour_utc < 16
 let day_vwap = anchored_vwap(new_day, perp.close, perp.volume)
 let vwap_gap_bps = ((perp.close - day_vwap) / day_vwap) * 10000
 let vwap_gap_abs_bps = vwap_gap_bps >= 0 ? vwap_gap_bps : -vwap_gap_bps
