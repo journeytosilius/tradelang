@@ -89,6 +89,7 @@ Requirements:
 Historical cache:
 
 - exchange-backed historical downloads are cached on disk and overlapping windows are reused across `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
+- the cache only marks contiguous bars it actually received as covered, so incomplete live-edge windows are retried automatically on later runs
 - set `PALMSCRIPT_HISTORICAL_CACHE_DIR` to override the cache root; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`
 
 ## `palmscript run backtest`

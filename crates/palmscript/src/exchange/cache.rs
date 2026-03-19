@@ -150,12 +150,24 @@ impl HistoricalCache {
             let mut merged = bars_to_map(std::mem::take(&mut payload.bars));
             for window in missing_windows {
                 match fetch_missing(window.from_ms, window.to_ms) {
-                    Ok(bars) => merge_bars(&mut merged, bars),
+                    Ok(bars) => {
+                        for covered in covered_windows_for_bars(
+                            key.interval,
+                            window.from_ms,
+                            window.to_ms,
+                            &bars,
+                        ) {
+                            payload.covered_windows = merge_window(
+                                payload.covered_windows,
+                                covered.from_ms,
+                                covered.to_ms,
+                            );
+                        }
+                        merge_bars(&mut merged, bars);
+                    }
                     Err(ExchangeFetchError::NoData { .. }) => {}
                     Err(err) => return Err(err),
                 }
-                payload.covered_windows =
-                    merge_window(payload.covered_windows, window.from_ms, window.to_ms);
             }
             payload.bars = merged.into_values().collect();
             self.write_json(&path, &payload);
@@ -278,6 +290,49 @@ fn slice_bars(bars: &[Bar], from_ms: i64, to_ms: i64) -> Vec<Bar> {
         .collect()
 }
 
+fn covered_windows_for_bars(
+    interval: Interval,
+    from_ms: i64,
+    to_ms: i64,
+    bars: &[Bar],
+) -> Vec<CachedWindow> {
+    let mut windows = Vec::new();
+    let mut iter = bars
+        .iter()
+        .map(|bar| bar.time as i64)
+        .filter(|open_time| *open_time >= from_ms && *open_time < to_ms);
+    let Some(mut run_start) = iter.next() else {
+        return windows;
+    };
+    let mut previous = run_start;
+
+    for open_time in iter {
+        if interval.next_open_time(previous) != Some(open_time) {
+            if let Some(run_end) = covered_window_end(interval, previous, to_ms) {
+                windows.push(CachedWindow {
+                    from_ms: run_start,
+                    to_ms: run_end,
+                });
+            }
+            run_start = open_time;
+        }
+        previous = open_time;
+    }
+
+    if let Some(run_end) = covered_window_end(interval, previous, to_ms) {
+        windows.push(CachedWindow {
+            from_ms: run_start,
+            to_ms: run_end,
+        });
+    }
+    windows
+}
+
+fn covered_window_end(interval: Interval, open_time: i64, to_ms: i64) -> Option<i64> {
+    let next_open = interval.next_open_time(open_time)?;
+    Some(next_open.min(to_ms))
+}
+
 fn normalize_windows(mut windows: Vec<CachedWindow>) -> Vec<CachedWindow> {
     windows.sort_by_key(|window| (window.from_ms, window.to_ms));
     let mut merged = Vec::new();
@@ -341,4 +396,159 @@ fn compute_missing_windows(
         });
     }
     missing
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::{
+        covered_windows_for_bars, CachedWindow, HistoricalBarCacheKey, HistoricalBarFamily,
+        HistoricalCache,
+    };
+    use crate::exchange::ExchangeFetchError;
+    use crate::interval::{DeclaredMarketSource, Interval, SourceTemplate};
+    use crate::runtime::Bar;
+
+    fn bar(open_time_ms: i64) -> Bar {
+        Bar {
+            open: 1.0,
+            high: 1.0,
+            low: 1.0,
+            close: 1.0,
+            volume: 1.0,
+            time: open_time_ms as f64,
+            funding_rate: None,
+            open_interest: None,
+            mark_price: None,
+            index_price: None,
+            premium_index: None,
+            basis: None,
+        }
+    }
+
+    fn no_data(
+        source: &DeclaredMarketSource,
+        interval: Interval,
+        from_ms: i64,
+        to_ms: i64,
+    ) -> ExchangeFetchError {
+        ExchangeFetchError::NoData {
+            alias: source.alias.clone(),
+            template: source.template.as_str(),
+            symbol: source.symbol.clone(),
+            interval: interval.as_str(),
+            from_ms,
+            to_ms,
+        }
+    }
+
+    #[test]
+    fn covered_windows_split_on_gaps() {
+        let windows = covered_windows_for_bars(
+            Interval::Min5,
+            0,
+            1_800_000,
+            &[bar(0), bar(300_000), bar(900_000), bar(1_200_000)],
+        );
+        assert_eq!(
+            windows,
+            vec![
+                CachedWindow {
+                    from_ms: 0,
+                    to_ms: 600_000,
+                },
+                CachedWindow {
+                    from_ms: 900_000,
+                    to_ms: 1_500_000,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn bars_retries_gaps_instead_of_marking_partial_window_covered() {
+        let cache_dir = tempdir().expect("tempdir");
+        let cache = HistoricalCache::new(cache_dir.path().to_path_buf());
+        let key = HistoricalBarCacheKey {
+            template: SourceTemplate::BinanceUsdm,
+            symbol: "XRPUSDT".to_string(),
+            interval: Interval::Min5,
+            family: HistoricalBarFamily::PerpMarkPrice,
+            base_url: "https://fapi.binance.com".to_string(),
+        };
+        let source = DeclaredMarketSource {
+            id: 0,
+            alias: "perp".to_string(),
+            template: SourceTemplate::BinanceUsdm,
+            symbol: "XRPUSDT".to_string(),
+        };
+        let mut calls = Vec::new();
+        let first = cache
+            .bars(
+                key.clone(),
+                0,
+                1_500_000,
+                |from_ms, to_ms| {
+                    calls.push((from_ms, to_ms));
+                    Ok(vec![bar(0), bar(300_000), bar(900_000), bar(1_200_000)])
+                },
+                |from_ms, to_ms| no_data(&source, Interval::Min5, from_ms, to_ms),
+            )
+            .expect("initial fetch");
+        assert_eq!(first.len(), 4);
+        assert_eq!(calls, vec![(0, 1_500_000)]);
+
+        let second = cache
+            .bars(
+                key,
+                0,
+                1_500_000,
+                |from_ms, to_ms| {
+                    calls.push((from_ms, to_ms));
+                    assert_eq!((from_ms, to_ms), (600_000, 900_000));
+                    Ok(vec![bar(600_000)])
+                },
+                |from_ms, to_ms| no_data(&source, Interval::Min5, from_ms, to_ms),
+            )
+            .expect("gap refill");
+        assert_eq!(second.len(), 5);
+        assert_eq!(calls, vec![(0, 1_500_000), (600_000, 900_000)]);
+    }
+
+    #[test]
+    fn bars_do_not_cache_no_data_windows() {
+        let cache_dir = tempdir().expect("tempdir");
+        let cache = HistoricalCache::new(cache_dir.path().to_path_buf());
+        let key = HistoricalBarCacheKey {
+            template: SourceTemplate::BinanceUsdm,
+            symbol: "XRPUSDT".to_string(),
+            interval: Interval::Min5,
+            family: HistoricalBarFamily::PerpMarkPrice,
+            base_url: "https://fapi.binance.com".to_string(),
+        };
+        let source = DeclaredMarketSource {
+            id: 0,
+            alias: "perp".to_string(),
+            template: SourceTemplate::BinanceUsdm,
+            symbol: "XRPUSDT".to_string(),
+        };
+        let mut calls = 0;
+        for _ in 0..2 {
+            let err = cache
+                .bars(
+                    key.clone(),
+                    0,
+                    300_000,
+                    |from_ms, to_ms| {
+                        calls += 1;
+                        Err(no_data(&source, Interval::Min5, from_ms, to_ms))
+                    },
+                    |from_ms, to_ms| no_data(&source, Interval::Min5, from_ms, to_ms),
+                )
+                .expect_err("no bars available");
+            assert!(matches!(err, ExchangeFetchError::NoData { .. }));
+        }
+        assert_eq!(calls, 2);
+    }
 }

@@ -20,7 +20,7 @@ The runtime is batteries included:
 
 - declare exchange-backed `source` feeds directly in the script and let the runtime fetch the data for you
 - run the same strategy in market replay, backtest, walk-forward, optimization, and local paper-trading modes
-- reuse exchange-backed historical downloads from a persistent local cache instead of refetching overlapping windows on every run
+- reuse exchange-backed historical downloads from a persistent local cache instead of refetching overlapping windows on every run, while automatically retrying live-edge gaps that were not fully returned yet
 - inspect typed diagnostics, trades, fills, orders, equity curves, and session state without building extra plumbing around the VM
 
 It is also designed to reduce false confidence:

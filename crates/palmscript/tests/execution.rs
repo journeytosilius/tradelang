@@ -451,7 +451,7 @@ fn paper_daemon_processes_a_perp_session_without_async_blocking_panics() {
 }
 
 #[test]
-fn paper_daemon_waits_for_aligned_perp_mark_bars_instead_of_failing_session() {
+fn paper_daemon_retries_gappy_perp_mark_cache_until_session_goes_live() {
     let _guard = ENV_LOCK.lock().expect("lock env");
     let state_dir = tempfile::tempdir().expect("tempdir");
     let mut server = Server::new();
@@ -507,18 +507,18 @@ fn paper_daemon_waits_for_aligned_perp_mark_bars_instead_of_failing_session() {
         poll_interval_ms: 1,
         once: true,
     })
-    .expect("daemon should wait for aligned perp mark bars");
+    .expect("daemon should retry the gappy perp mark cache");
     assert!(!status.running);
 
     let export = load_paper_session_export(&manifest.session_id).expect("perp paper export");
     let logs = load_paper_session_logs(&manifest.session_id).expect("paper logs should load");
-    assert_eq!(export.manifest.status, ExecutionSessionStatus::ArmingLive);
-    assert_eq!(export.manifest.health, ExecutionSessionHealth::WarmingUp);
+    assert_eq!(export.manifest.status, ExecutionSessionStatus::Live);
+    assert_eq!(export.manifest.health, ExecutionSessionHealth::Live);
     assert_eq!(export.manifest.failure_message, None);
-    assert!(export.latest_result.is_none());
+    assert!(export.latest_result.is_some());
     assert!(
         logs.iter()
-            .any(|event| event.message.contains("waiting for aligned perp mark bars")),
+            .any(|event| event.message.contains("paper session updated")),
         "{logs:#?}"
     );
 
