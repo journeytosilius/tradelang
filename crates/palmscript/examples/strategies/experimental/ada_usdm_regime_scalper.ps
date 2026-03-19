@@ -6,10 +6,10 @@ use perp 15m
 use perp 1h
 
 // Experimental 3m ADAUSDT regime-switching scalper for Binance USD-M. It keeps
-// a dedicated no-trade state, trades only during the cleaner 04:00-08:00 UTC
+// explicit trend / range / risk-off regimes, trades only during the cleaner 04:00-08:00 UTC
 // block from the recent screen, and is now tuned to lean on trend-following
 // pullbacks while keeping range mode smaller and more time-boxed so fast failed
-// fades do less damage to six-month expectancy.
+// fades do less damage to six-month expectancy and trend winners get paid more.
 input mean_len = 24 optimize(int, 21, 55, 1)
 input band_dev = 1.6 optimize(float, 1.0, 2.0, 0.1)
 input stretch_len = 54 optimize(int, 34, 89, 1)
@@ -44,21 +44,21 @@ input range_exit_z = 0.25 optimize(float, 0.0, 0.4, 0.05)
 input cooldown_bars = 0 optimize(int, 0, 4, 1)
 input protect_cooldown_bars = 4 optimize(int, 0, 6, 1)
 input range_time_stop = 8 optimize(int, 4, 16, 1)
-input trend_time_stop = 12 optimize(int, 8, 28, 1)
+input trend_time_stop = 15 optimize(int, 8, 28, 1)
 input range_stop_atr = 0.75 optimize(float, 0.45, 1.1, 0.05)
 input trend_stop_atr = 1.25 optimize(float, 0.7, 1.5, 0.05)
 input range_target1_atr = 0.30 optimize(float, 0.3, 0.9, 0.05)
 input range_target2_atr = 1.20 optimize(float, 0.6, 1.5, 0.05)
 input trend_target1_atr = 1.30 optimize(float, 0.5, 1.4, 0.05)
-input trend_target2_atr = 2.1 optimize(float, 1.0, 3.0, 0.1)
+input trend_target2_atr = 2.5 optimize(float, 1.0, 3.0, 0.1)
 input range_lock_atr = 0.00 optimize(float, 0.0, 0.3, 0.05)
 input range_lock2_atr = 0.25 optimize(float, 0.0, 0.4, 0.05)
 input trend_lock_atr = 0.70 optimize(float, 0.0, 0.8, 0.05)
 input trend_lock2_atr = 1 optimize(float, 0.1, 1.4, 0.05)
 input range_target1_size = 0.60 optimize(float, 0.4, 0.9, 0.05)
 input range_target2_size = 0.40 optimize(float, 0.05, 0.4, 0.05)
-input trend_target1_size = 0.40 optimize(float, 0.2, 0.7, 0.05)
-input trend_target2_size = 0.10 optimize(float, 0.1, 0.5, 0.05)
+input trend_target1_size = 0.30 optimize(float, 0.2, 0.7, 0.05)
+input trend_target2_size = 0.20 optimize(float, 0.1, 0.5, 0.05)
 input range_size_fraction = 0.55 optimize(float, 0.4, 1.0, 0.05)
 input trend_size_fraction = 0.75 optimize(float, 0.2, 0.9, 0.05)
 
@@ -126,9 +126,9 @@ let range_center_ready = vwap_gap_abs_bps < center_cap_bps
 let risk_volatility_ready = volatility_z > volatility_z_cap
 let risk_bar_ready = bar_range_atr > huge_bar_atr
 let risk_spread_ready = spread_abs_bps > spread_cap_bps or spread_abs_z > spread_z_cap
-let risk_off = (risk_volatility_ready and risk_bar_ready) or (risk_volatility_ready and risk_spread_ready) or (risk_bar_ready and risk_spread_ready)
-let trend_mode = state(trend_gap_ready and trend_slope_ready and trend_adx_ready and trend_eff_ready and trend_extension_ready and risk_off == false, trend_gap_abs_bps < trend_gap_bps or adx_value < trend_adx_exit or risk_off)
-let range_mode = state(range_adx_ready and range_eff_ready and range_overlap_ready and range_failure_ready and range_center_ready and risk_off == false and trend_mode == false, adx_value > trend_adx_enter or efficiency_ratio > eff_trend_floor or trend_mode or risk_off)
+regime risk_off = (risk_volatility_ready and risk_bar_ready) or (risk_volatility_ready and risk_spread_ready) or (risk_bar_ready and risk_spread_ready)
+regime trend_mode = state(trend_gap_ready and trend_slope_ready and trend_adx_ready and trend_eff_ready and trend_extension_ready and risk_off == false, trend_gap_abs_bps < trend_gap_bps or adx_value < trend_adx_exit or risk_off)
+regime range_mode = state(range_adx_ready and range_eff_ready and range_overlap_ready and range_failure_ready and range_center_ready and risk_off == false and trend_mode == false, adx_value > trend_adx_enter or efficiency_ratio > eff_trend_floor or trend_mode or risk_off)
 let trend_up = trend_gap_bps_now > trend_gap_bps and trend_slope_bps_now > trend_slope_bps and perp.1h.close > trend_slow
 let trend_down = trend_gap_bps_now < -trend_gap_bps and trend_slope_bps_now < -trend_slope_bps and perp.1h.close < trend_slow
 let recent_long_protect_exit = coalesce(last_long_exit.kind == exit_kind.protect and barssince(position_event.long_protect_fill) < protect_cooldown_bars, false)
@@ -215,9 +215,6 @@ protect_after_target2 short = stop_market(
     venue = perp
 )
 
-export trend_mode_state = trend_mode
-export range_mode_state = range_mode
-export risk_off_state = risk_off
 export trend_gap_ready_state = trend_gap_ready
 export trend_slope_ready_state = trend_slope_ready
 export trend_adx_ready_state = trend_adx_ready
