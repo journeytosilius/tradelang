@@ -45,3 +45,21 @@ diagnostics = "summary"
 # Optional:
 # execution_sources = ["exec"]
 # fee_schedules = ["spot:1.0:3.0"]
+
+[[session]]
+enabled = true
+script = "experimental/xrp_usdm_mean_reversion.ps"
+
+# Experimental bundled XRP USD-M paper target:
+# - execution alias: perp
+# - symbol / segment: Binance USD-M XRPUSDT
+# - strategy goal: 5m mean-reversion with 1h regime gating on both sides
+
+initial_capital = 10000.0
+maker_fee_bps = 2.0
+taker_fee_bps = 5.0
+slippage_bps = 1.0
+diagnostics = "summary"
+execution_sources = ["perp"]
+leverage = 2.0
+margin_mode = "isolated"

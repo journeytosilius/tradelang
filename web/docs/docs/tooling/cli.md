@@ -223,9 +223,10 @@ serves a live paper dashboard at `http://localhost:8080/paper` so you can
 pick a strategy from the single collapsible top accordion, switch between that
 strategy's tracked runs, and inspect equity, PnL, trades, drawdown, feed
 health, and logs in one unified detail panel in real time.
-The bundled `paper-sessions.toml` starts both `strategy.ps` and
-`triiger_happy.ps` so the advanced multi-source example and the trigger-happy
-smoke test run together by default.
+The bundled `paper-sessions.toml` starts `strategy.ps`,
+`triiger_happy.ps`, and `experimental/xrp_usdm_mean_reversion.ps` so the
+advanced multi-source example, the trigger-happy smoke test, and the XRP USD-M
+mean-reversion paper session run together by default.
 Failed sessions still surface their manifest failure message and log stream
 even if they never produce a first snapshot.
 

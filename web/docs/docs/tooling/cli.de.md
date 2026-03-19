@@ -230,9 +230,11 @@ eine Strategie ueber das einzelne einklappbare obere Akkordeon auswaehlen,
 zwischen den verfolgten Runs dieser Strategie wechseln und Equity, PnL, Trades,
 Drawdown, Feed-Health und Logs in einem einheitlichen Detailbereich in
 Echtzeit pruefen.
-Die gebuendelte `paper-sessions.toml` startet sowohl `strategy.ps` als auch
-`triiger_happy.ps`, sodass die fortgeschrittene mehrquellige Beispielstrategie
-und der trigger-freudige Smoke-Test standardmaessig parallel laufen.
+Die gebuendelte `paper-sessions.toml` startet `strategy.ps`,
+`triiger_happy.ps` und `experimental/xrp_usdm_mean_reversion.ps`, sodass die
+fortgeschrittene mehrquellige Beispielstrategie, der trigger-freudige
+Smoke-Test und die XRP-USD-M-Mean-Reversion-Paper-Session standardmaessig
+parallel laufen.
 Fehlgeschlagene Sessions zeigen weiterhin ihre
 Manifest-Fehlermeldung und den Log-Stream an, auch wenn nie ein erster
 Snapshot geschrieben wurde.

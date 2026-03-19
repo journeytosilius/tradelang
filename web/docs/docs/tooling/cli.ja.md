@@ -230,9 +230,10 @@ serves a live paper dashboard at `http://localhost:8080/paper` so you can
 上部の単一の折りたたみ accordion から strategy を選択し、その
 strategy に紐づく run を切り替えながら、equity、PnL、trade、drawdown、feed
 health、log を単一の detail panel でリアルタイムに確認できます。
-同梱の `paper-sessions.toml` は `strategy.ps` と `triiger_happy.ps` の
-両方を起動するため、高度な複数 source の example strategy と
-trigger-happy smoke test が既定で同時に動きます。
+同梱の `paper-sessions.toml` は `strategy.ps`、
+`triiger_happy.ps`、`experimental/xrp_usdm_mean_reversion.ps` を起動する
+ため、高度な複数 source の example strategy、trigger-happy smoke test、
+XRP USD-M mean-reversion paper session が既定で同時に動きます。
 failed session でも、
 最初の snapshot がまだ書かれていない場合を含めて、manifest の failure
 message と log stream を確認できます。

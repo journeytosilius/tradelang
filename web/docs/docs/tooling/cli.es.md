@@ -229,9 +229,10 @@ serves a live paper dashboard at `http://localhost:8080/paper` so you can
 elegir una estrategia desde el unico acordeon superior plegable, cambiar entre
 las ejecuciones seguidas de esa estrategia e inspeccionar equity, PnL, trades,
 drawdown, salud de feeds y logs en un panel unificado en tiempo real. Las
-`paper-sessions.toml` incluida inicia tanto `strategy.ps` como
-`triiger_happy.ps`, para que la estrategia avanzada con varias fuentes y la
-prueba de humo trigger-happy se ejecuten juntas por defecto. Las
+`paper-sessions.toml` incluida inicia `strategy.ps`,
+`triiger_happy.ps` y `experimental/xrp_usdm_mean_reversion.ps`, para que la
+estrategia avanzada con varias fuentes, la prueba de humo trigger-happy y la
+sesion paper de mean reversion XRP USD-M se ejecuten juntas por defecto. Las
 sesiones fallidas siguen mostrando el
 mensaje de fallo del manifiesto y el flujo de logs incluso si nunca llegan a
 producir un primer snapshot.
