@@ -1,0 +1,237 @@
+interval 3m
+source perp = binance.usdm("XRPUSDT")
+source spot = binance.spot("XRPUSDT")
+execution perp = binance.usdm("XRPUSDT")
+use perp 15m
+use perp 1h
+
+// Experimental 3m XRPUSDT regime-switching scalper for Binance USD-M. It keeps
+// a dedicated no-trade state, fades balanced tapes, and buys or sells pullback
+// re-acceleration only when the higher-timeframe direction is already active.
+input mean_len = 34 optimize(int, 21, 55, 1)
+input band_dev = 1.4 optimize(float, 1.0, 2.0, 0.1)
+input stretch_len = 55 optimize(int, 34, 89, 1)
+input rsi_len = 6 optimize(int, 4, 10, 1)
+input atr_len = 10 optimize(int, 7, 18, 1)
+input adx_len = 12 optimize(int, 8, 18, 1)
+input trend_fast_len = 8 optimize(int, 5, 13, 1)
+input trend_slow_len = 21 optimize(int, 13, 34, 1)
+input eff_len = 18 optimize(int, 10, 30, 1)
+input trend_gap_bps = 18 optimize(float, 10, 40, 2)
+input trend_slope_bps = 8 optimize(float, 4, 20, 1)
+input trend_adx_enter = 20 optimize(float, 14, 28, 1)
+input trend_adx_exit = 15 optimize(float, 10, 22, 1)
+input range_adx_cap = 16 optimize(float, 10, 24, 1)
+input eff_trend_floor = 0.34 optimize(float, 0.20, 0.60, 0.02)
+input eff_range_cap = 0.22 optimize(float, 0.08, 0.40, 0.02)
+input overlap_floor = 0.30 optimize(float, 0.15, 0.55, 0.05)
+input center_cap_bps = 20 optimize(float, 10, 40, 2)
+input breakout_fail_window = 24 optimize(int, 12, 40, 2)
+input spread_len = 55 optimize(int, 34, 89, 1)
+input spread_cap_bps = 18 optimize(float, 8, 35, 1)
+input spread_z_cap = 2.2 optimize(float, 1.2, 3.0, 0.1)
+input volatility_z_cap = 2.2 optimize(float, 1.2, 3.2, 0.1)
+input huge_bar_atr = 2.6 optimize(float, 1.6, 4.0, 0.1)
+input range_entry_z = 0.95 optimize(float, 0.6, 1.5, 0.05)
+input trend_pullback_z = 0.35 optimize(float, 0.1, 0.8, 0.05)
+input range_long_rsi = 38 optimize(int, 28, 46, 1)
+input range_short_rsi = 62 optimize(int, 54, 72, 1)
+input trend_long_rsi = 49 optimize(int, 42, 58, 1)
+input trend_short_rsi = 51 optimize(int, 42, 58, 1)
+input range_exit_z = 0.10 optimize(float, 0.0, 0.4, 0.05)
+input cooldown_bars = 1 optimize(int, 0, 4, 1)
+input protect_cooldown_bars = 2 optimize(int, 0, 6, 1)
+input range_time_stop = 9 optimize(int, 4, 16, 1)
+input trend_time_stop = 18 optimize(int, 8, 28, 1)
+input range_stop_atr = 0.75 optimize(float, 0.45, 1.1, 0.05)
+input trend_stop_atr = 1.05 optimize(float, 0.7, 1.5, 0.05)
+input range_target1_atr = 0.55 optimize(float, 0.3, 0.9, 0.05)
+input range_target2_atr = 0.95 optimize(float, 0.6, 1.5, 0.05)
+input trend_target1_atr = 0.95 optimize(float, 0.5, 1.4, 0.05)
+input trend_target2_atr = 1.9 optimize(float, 1.0, 3.0, 0.1)
+input range_lock_atr = 0.05 optimize(float, 0.0, 0.3, 0.05)
+input range_lock2_atr = 0.15 optimize(float, 0.0, 0.4, 0.05)
+input trend_lock_atr = 0.25 optimize(float, 0.0, 0.8, 0.05)
+input trend_lock2_atr = 0.65 optimize(float, 0.1, 1.4, 0.05)
+input range_target1_size = 0.70 optimize(float, 0.4, 0.9, 0.05)
+input range_target2_size = 0.20 optimize(float, 0.05, 0.4, 0.05)
+input trend_target1_size = 0.45 optimize(float, 0.2, 0.7, 0.05)
+input trend_target2_size = 0.35 optimize(float, 0.1, 0.5, 0.05)
+input range_size_fraction = 0.95 optimize(float, 0.4, 1.0, 0.05)
+input trend_size_fraction = 0.70 optimize(float, 0.2, 0.9, 0.05)
+
+const ms_per_day = 86400000
+
+let basis = ema(perp.close, mean_len)
+let slow_mean = ema(perp.close, 89)
+let (upper_band, mid_band, lower_band) = bbands(perp.close, mean_len, band_dev, band_dev, ma_type.ema)
+let stretch_value = zscore(perp.close - basis, stretch_len)
+let fast_gap_bps = ((perp.close - basis) / basis) * 10000
+let fast_gap_z = zscore(fast_gap_bps, stretch_len)
+let fast_rsi = rsi(perp.close, rsi_len)
+let atr_base = atr(perp.high, perp.low, perp.close, atr_len)
+let natr_base = natr(perp.high, perp.low, perp.close, atr_len)
+let volatility_z = zscore(natr_base, spread_len)
+let adx_value = adx(perp.high, perp.low, perp.close, adx_len)
+let trend_fast = ema(perp.1h.close, trend_fast_len)
+let trend_slow = ema(perp.1h.close, trend_slow_len)
+let trend_gap_bps_now = ((trend_fast - trend_slow) / trend_slow) * 10000
+let trend_gap_abs_bps = trend_gap_bps_now >= 0 ? trend_gap_bps_now : -trend_gap_bps_now
+let trend_slope_move = change(trend_fast, 3)
+let trend_slope_bps_now = trend_fast > 0 ? (trend_slope_move / trend_fast) * 10000 : 0
+let trend_slope_abs_bps = trend_slope_bps_now >= 0 ? trend_slope_bps_now : -trend_slope_bps_now
+let delta = change(perp.close, 1)
+let abs_delta = delta >= 0 ? delta : -delta
+let net_move = change(perp.close, eff_len)
+let abs_net_move = net_move >= 0 ? net_move : -net_move
+let path_move = sum(abs_delta, eff_len)
+let efficiency_ratio = path_move > 0 ? abs_net_move / path_move : 0
+let day_index = floor(perp.time / ms_per_day)
+let new_day = na(day_index[1]) or day_index != day_index[1]
+let day_vwap = anchored_vwap(new_day, perp.close, perp.volume)
+let vwap_gap_bps = ((perp.close - day_vwap) / day_vwap) * 10000
+let vwap_gap_abs_bps = vwap_gap_bps >= 0 ? vwap_gap_bps : -vwap_gap_bps
+let spread_bps = ((perp.close - spot.close) / spot.close) * 10000
+let spread_abs_bps = spread_bps >= 0 ? spread_bps : -spread_bps
+let spread_z = zscore(spread_bps, spread_len)
+let spread_abs_z = spread_z >= 0 ? spread_z : -spread_z
+let bar_range = perp.high - perp.low
+let bar_range_atr = atr_base > 0 ? bar_range / atr_base : 0
+let candle_top = perp.close > perp.open ? perp.close : perp.open
+let candle_bottom = perp.close < perp.open ? perp.close : perp.open
+let upper_wick = perp.high - candle_top
+let lower_wick = candle_bottom - perp.low
+let overlap_top = perp.high < perp.high[1] ? perp.high : perp.high[1]
+let overlap_bottom = perp.low > perp.low[1] ? perp.low : perp.low[1]
+let overlap_size = overlap_top > overlap_bottom ? overlap_top - overlap_bottom : 0
+let overlap_ratio = bar_range > 0 ? overlap_size / bar_range : 0
+let failed_up_breakout = perp.high > highest(perp.high, 12)[1] and perp.close < highest(perp.high, 12)[1]
+let failed_down_breakout = perp.low < lowest(perp.low, 12)[1] and perp.close > lowest(perp.low, 12)[1]
+let recent_breakout_failure = coalesce(barssince(failed_up_breakout or failed_down_breakout) < breakout_fail_window, false)
+let trend_gap_ready = trend_gap_abs_bps > trend_gap_bps
+let trend_slope_ready = trend_slope_abs_bps > trend_slope_bps
+let trend_adx_ready = adx_value > trend_adx_enter
+let trend_eff_ready = efficiency_ratio > eff_trend_floor
+let trend_extension_ready = vwap_gap_abs_bps > center_cap_bps
+let range_adx_ready = adx_value < range_adx_cap
+let range_eff_ready = efficiency_ratio < eff_range_cap
+let range_overlap_ready = overlap_ratio > overlap_floor
+let range_failure_ready = recent_breakout_failure
+let range_center_ready = vwap_gap_abs_bps < center_cap_bps
+let risk_volatility_ready = volatility_z > volatility_z_cap
+let risk_bar_ready = bar_range_atr > huge_bar_atr
+let risk_spread_ready = spread_abs_bps > spread_cap_bps or spread_abs_z > spread_z_cap
+let risk_off = (risk_volatility_ready and risk_bar_ready) or (risk_volatility_ready and risk_spread_ready) or (risk_bar_ready and risk_spread_ready)
+let trend_mode = state(trend_gap_ready and trend_slope_ready and trend_adx_ready and trend_eff_ready and trend_extension_ready and risk_off == false, trend_gap_abs_bps < trend_gap_bps or adx_value < trend_adx_exit or risk_off)
+let range_mode = state(range_adx_ready and range_eff_ready and range_overlap_ready and range_failure_ready and range_center_ready and risk_off == false and trend_mode == false, adx_value > trend_adx_enter or efficiency_ratio > eff_trend_floor or trend_mode or risk_off)
+let trend_up = trend_gap_bps_now > trend_gap_bps and trend_slope_bps_now > trend_slope_bps and perp.1h.close > trend_slow
+let trend_down = trend_gap_bps_now < -trend_gap_bps and trend_slope_bps_now < -trend_slope_bps and perp.1h.close < trend_slow
+let recent_long_protect_exit = coalesce(last_long_exit.kind == exit_kind.protect and barssince(position_event.long_protect_fill) < protect_cooldown_bars, false)
+let recent_short_protect_exit = coalesce(last_short_exit.kind == exit_kind.protect and barssince(position_event.short_protect_fill) < protect_cooldown_bars, false)
+let range_long_setup = range_mode and trend_down == false and stretch_value < -range_entry_z and perp.close < lower_band and perp.close < day_vwap and fast_rsi < range_long_rsi and lower_wick > upper_wick and recent_long_protect_exit == false
+let range_short_setup = range_mode and trend_up == false and stretch_value > range_entry_z and perp.close > upper_band and perp.close > day_vwap and fast_rsi > range_short_rsi and upper_wick > lower_wick and recent_short_protect_exit == false
+let trend_long_setup = trend_mode and trend_up and fast_gap_z < -trend_pullback_z and perp.low < basis and perp.close > basis and perp.close > perp.open and fast_rsi > trend_long_rsi and bar_range_atr < 1.8 and recent_long_protect_exit == false
+let trend_short_setup = trend_mode and trend_down and fast_gap_z > trend_pullback_z and perp.high > basis and perp.close < basis and perp.close < perp.open and fast_rsi < trend_short_rsi and bar_range_atr < 1.8 and recent_short_protect_exit == false
+let long_trend_trade = coalesce(valuewhen(position_event.long_entry_fill, trend_mode, 0), false)
+let short_trend_trade = coalesce(valuewhen(position_event.short_entry_fill, trend_mode, 0), false)
+let long_age = barssince(position_event.long_entry_fill)
+let short_age = barssince(position_event.short_entry_fill)
+let long_time_stop = long_trend_trade ? long_age > trend_time_stop : long_age > range_time_stop
+let short_time_stop = short_trend_trade ? short_age > trend_time_stop : short_age > range_time_stop
+
+cooldown long = cooldown_bars
+cooldown short = cooldown_bars
+
+entry long = risk_off == false and (range_long_setup or trend_long_setup)
+entry short = risk_off == false and (range_short_setup or trend_short_setup)
+exit long = long_trend_trade ? (perp.close < slow_mean or fast_rsi < 47 or trend_up == false or long_time_stop) : (stretch_value > -range_exit_z or perp.close > mid_band or perp.close > day_vwap or long_time_stop)
+exit short = short_trend_trade ? (perp.close > slow_mean or fast_rsi > 53 or trend_down == false or short_time_stop) : (stretch_value < range_exit_z or perp.close < mid_band or perp.close < day_vwap or short_time_stop)
+
+order entry long = market(venue = perp)
+order exit long = market(venue = perp)
+order entry short = market(venue = perp)
+order exit short = market(venue = perp)
+size entry long = capital_fraction(trend_long_setup ? trend_size_fraction : range_size_fraction)
+size entry short = capital_fraction(trend_short_setup ? trend_size_fraction : range_size_fraction)
+
+protect long = stop_market(
+    trigger_price = position.entry_price - (long_trend_trade ? trend_stop_atr : range_stop_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target1 long = take_profit_market(
+    trigger_price = position.entry_price + (long_trend_trade ? trend_target1_atr : range_target1_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+size target1 long = long_trend_trade ? trend_target1_size : range_target1_size
+protect_after_target1 long = stop_market(
+    trigger_price = position.entry_price + (long_trend_trade ? trend_lock_atr : range_lock_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target2 long = take_profit_market(
+    trigger_price = position.entry_price + (long_trend_trade ? trend_target2_atr : range_target2_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+size target2 long = long_trend_trade ? trend_target2_size : range_target2_size
+protect_after_target2 long = stop_market(
+    trigger_price = position.entry_price + (long_trend_trade ? trend_lock2_atr : range_lock2_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+
+protect short = stop_market(
+    trigger_price = position.entry_price + (short_trend_trade ? trend_stop_atr : range_stop_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target1 short = take_profit_market(
+    trigger_price = position.entry_price - (short_trend_trade ? trend_target1_atr : range_target1_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+size target1 short = short_trend_trade ? trend_target1_size : range_target1_size
+protect_after_target1 short = stop_market(
+    trigger_price = position.entry_price - (short_trend_trade ? trend_lock_atr : range_lock_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target2 short = take_profit_market(
+    trigger_price = position.entry_price - (short_trend_trade ? trend_target2_atr : range_target2_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+size target2 short = short_trend_trade ? trend_target2_size : range_target2_size
+protect_after_target2 short = stop_market(
+    trigger_price = position.entry_price - (short_trend_trade ? trend_lock2_atr : range_lock2_atr) * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+
+export trend_mode_state = trend_mode
+export range_mode_state = range_mode
+export risk_off_state = risk_off
+export trend_gap_ready_state = trend_gap_ready
+export trend_slope_ready_state = trend_slope_ready
+export trend_adx_ready_state = trend_adx_ready
+export trend_eff_ready_state = trend_eff_ready
+export trend_extension_ready_state = trend_extension_ready
+export range_adx_ready_state = range_adx_ready
+export range_eff_ready_state = range_eff_ready
+export range_overlap_ready_state = range_overlap_ready
+export range_failure_ready_state = range_failure_ready
+export range_center_ready_state = range_center_ready
+export stretch_signal = stretch_value
+export fast_gap_signal_z = fast_gap_z
+export adx_signal = adx_value
+export efficiency_signal = efficiency_ratio
+export overlap_signal = overlap_ratio
+export breakout_failure_recent_state = recent_breakout_failure
+export volatility_z_signal = volatility_z
+export spread_signal_bps = spread_bps
+export vwap_gap_signal_bps = vwap_gap_bps
+
+plot(perp.close)
+plot(day_vwap)
