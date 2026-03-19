@@ -1,0 +1,86 @@
+interval 5m
+source perp = binance.usdm("XRPUSDT")
+execution perp = binance.usdm("XRPUSDT")
+use perp 1h
+
+// Experimental 5m XRPUSDT mean-reversion strategy for Binance USD-M. The
+// strategy trades pullbacks in the active 1h regime, keeps both long and short
+// legs enabled, and sizes shorts smaller because the recent screen showed long
+// pullbacks reverted more cleanly than short squeezes.
+input basis_len = 40 optimize(int, 24, 72, 4)
+input band_dev = 2.4 optimize(float, 2.0, 2.6, 0.1)
+input z_len = 52 optimize(int, 24, 96, 4)
+input long_entry_z = 1.3 optimize(float, 1.0, 1.8, 0.1)
+input short_entry_z = 1.3 optimize(float, 1.1, 1.9, 0.1)
+input exit_z = 0.2 optimize(float, 0.0, 0.5, 0.1)
+input rsi_len = 7 optimize(int, 4, 12, 1)
+input long_rsi = 41 optimize(int, 34, 50, 1)
+input short_rsi = 73 optimize(int, 64, 82, 1)
+input atr_len = 9 optimize(int, 7, 18, 1)
+input stop_atr = 1.1 optimize(float, 0.7, 1.4, 0.1)
+input target_atr = 0.6 optimize(float, 0.5, 0.9, 0.05)
+input trend_len = 20 optimize(int, 12, 34, 1)
+input trend_gap_bps = 100 optimize(int, 40, 140, 10)
+input cooldown_bars = 1 optimize(int, 0, 4, 1)
+input max_hold_bars = 7 optimize(int, 4, 12, 1)
+input long_size_fraction = 1.0 optimize(float, 0.5, 1.0, 0.05)
+input short_size_fraction = 0.7 optimize(float, 0.2, 0.8, 0.05)
+
+let basis = ema(perp.close, basis_len)
+let (upper_band, mid_band, lower_band) = bbands(perp.close, basis_len, band_dev, band_dev, ma_type.ema)
+let stretch_value = zscore(perp.close - basis, z_len)
+let fast_rsi = rsi(perp.close, rsi_len)
+let atr_base = atr(perp.high, perp.low, perp.close, atr_len)
+let htf_basis = ema(perp.1h.close, trend_len)
+let htf_gap_bps = ((perp.1h.close - htf_basis) / htf_basis) * 10000
+let trend_too_up = htf_gap_bps > trend_gap_bps
+let trend_too_down = htf_gap_bps < -trend_gap_bps
+let long_regime_ok = perp.1h.close >= htf_basis
+let short_regime_ok = perp.1h.close <= htf_basis
+
+cooldown long = cooldown_bars
+cooldown short = cooldown_bars
+max_bars_in_trade long = max_hold_bars
+max_bars_in_trade short = max_hold_bars
+
+entry long = long_regime_ok and stretch_value < -long_entry_z and perp.close < lower_band and fast_rsi < long_rsi and trend_too_down == false
+entry short = short_regime_ok and stretch_value > short_entry_z and perp.close > upper_band and fast_rsi > short_rsi and trend_too_up == false
+exit long = stretch_value > -exit_z or perp.close > mid_band
+exit short = stretch_value < exit_z or perp.close < mid_band
+
+order entry long = market(venue = perp)
+order exit long = market(venue = perp)
+order entry short = market(venue = perp)
+order exit short = market(venue = perp)
+size entry long = capital_fraction(long_size_fraction)
+size entry short = capital_fraction(short_size_fraction)
+protect long = stop_market(
+    trigger_price = position.entry_price - stop_atr * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+protect short = stop_market(
+    trigger_price = position.entry_price + stop_atr * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target long = take_profit_market(
+    trigger_price = position.entry_price + target_atr * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+target short = take_profit_market(
+    trigger_price = position.entry_price - target_atr * atr_base,
+    trigger_ref = trigger_ref.mark,
+    venue = perp
+)
+
+export stretch_signal = stretch_value
+export fast_rsi_signal = fast_rsi
+export htf_gap_signal_bps = htf_gap_bps
+export long_regime_state = long_regime_ok
+export short_regime_state = short_regime_ok
+export lower_band_gap_bps = ((perp.close - lower_band) / lower_band) * 10000
+export upper_band_gap_bps = ((perp.close - upper_band) / upper_band) * 10000
+
+plot(stretch_value)
