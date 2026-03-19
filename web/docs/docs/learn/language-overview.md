@@ -44,7 +44,7 @@ plot(bn.close - bb.close)
 - optimizer-aware `input` declarations can carry bounded integer, float, or choice search metadata without changing runtime semantics
 - `cooldown` and `max_bars_in_trade` are compile-time bar-count declarations that make re-entry and time-based exits explicit in the script
 - portfolio declarations are compile-time only and become active when backtest-oriented CLI commands receive multiple `--execution-source` aliases
-- order declarations can target a declared execution binding with named arguments such as `venue = exec`
+- order declarations can target a declared execution binding with named arguments such as `venue = exec` or `venue = current_execution()`
 - portfolio mode shares one equity ledger across the selected execution aliases by default and blocks only the new entries that would exceed the configured position-count or exposure caps
 - `--spot-virtual-rebalance` switches multi-venue spot portfolio runs to long/flat per-alias quote-wallet accounting with automatic quote transfers before long entries
 

@@ -251,8 +251,8 @@ execution left = binance.spot(\"BTCUSDT\")
 execution right = gate.spot(\"BTC_USDT\")
 entry long = current_execution() == select_desc(1, left, right)
 exit long = false
-order entry long = market(venue = right)
-order exit long = market(venue = right)
+order entry long = market(venue = current_execution())
+order exit long = market(venue = current_execution())
 plot(left.close)",
     )
     .expect("current_execution should compile");
@@ -563,7 +563,7 @@ plot(left.close)",
 }
 
 #[test]
-fn rejects_non_identifier_execution_binding_in_order_arguments() {
+fn rejects_non_execution_alias_expression_in_order_arguments() {
     let message = compile_err(
         "interval 1m
 source left = binance.spot(\"BTCUSDT\")
@@ -573,7 +573,7 @@ exit long = false
 order entry long = market(venue = left.close)
 plot(left.close)",
     );
-    assert!(message.contains("`venue` must reference an execution alias identifier"));
+    assert!(message.contains("order `venue = ...` requires an execution_alias expression"));
 }
 
 #[test]

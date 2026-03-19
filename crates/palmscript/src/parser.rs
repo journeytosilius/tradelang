@@ -6,10 +6,10 @@
 use crate::ast::{
     ArbOrderSpec, ArbOrderSpecKind, ArbPairConstructor, ArbSignalKind, Ast, BinaryOp, BindingName,
     Block, ExecutionDecl, Expr, ExprKind, FunctionDecl, FunctionParam, InputOptimization,
-    InputOptimizationKind, IntervalDecl, NodeId, OrderSpec, OrderSpecKind, PortfolioControlKind,
-    PortfolioGroupDecl, RiskControlKind, SignalModuleDecl, SignalRole, SourceDecl,
-    SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, TransferAssetKind, TransferSpec,
-    UnaryOp,
+    InputOptimizationKind, IntervalDecl, NodeId, OrderExecutionBinding, OrderSpec, OrderSpecKind,
+    PortfolioControlKind, PortfolioGroupDecl, RiskControlKind, SignalModuleDecl, SignalRole,
+    SourceDecl, SourceIntervalDecl, Stmt, StmtKind, StrategyIntervals, TransferAssetKind,
+    TransferSpec, UnaryOp,
 };
 use crate::diagnostic::{CompileError, Diagnostic, DiagnosticKind};
 use crate::span::Span;
@@ -1436,7 +1436,7 @@ impl<'a> Parser<'a> {
         callee: &str,
         args: &[ParsedOrderArg],
         span: Span,
-    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+    ) -> Option<(Option<OrderExecutionBinding>, OrderSpecKind)> {
         let uses_named = args
             .iter()
             .any(|arg| matches!(arg, ParsedOrderArg::Named { .. }));
@@ -1461,7 +1461,7 @@ impl<'a> Parser<'a> {
         callee: &str,
         args: &[ParsedOrderArg],
         span: Span,
-    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+    ) -> Option<(Option<OrderExecutionBinding>, OrderSpecKind)> {
         let positional: Option<Vec<Expr>> = args
             .iter()
             .map(|arg| match arg {
@@ -1522,7 +1522,7 @@ impl<'a> Parser<'a> {
         callee: &str,
         args: &[ParsedOrderArg],
         span: Span,
-    ) -> Option<(Option<BindingName>, OrderSpecKind)> {
+    ) -> Option<(Option<OrderExecutionBinding>, OrderSpecKind)> {
         let mut fields = std::collections::BTreeMap::<String, (Span, Expr)>::new();
         let mut execution = None;
         for arg in args {
@@ -1535,20 +1535,16 @@ impl<'a> Parser<'a> {
                 continue;
             };
             if name == "venue" {
-                let ExprKind::Ident(alias) = &value.kind else {
-                    self.push_diagnostic(
-                        "`venue` must reference an execution alias identifier",
-                        value.span,
-                    );
-                    return None;
-                };
                 if execution.is_some() {
                     self.push_diagnostic("duplicate `venue` order argument", *name_span);
                     return None;
                 }
-                execution = Some(BindingName {
-                    name: alias.clone(),
-                    span: value.span,
+                execution = Some(match &value.kind {
+                    ExprKind::Ident(alias) => OrderExecutionBinding::Static(BindingName {
+                        name: alias.clone(),
+                        span: value.span,
+                    }),
+                    _ => OrderExecutionBinding::Expr(value.clone()),
                 });
                 continue;
             }

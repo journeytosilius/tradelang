@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use crate::ast::{
     ArbOrderSpec, ArbOrderSpecKind, ArbPairConstructor as AstArbPairConstructor,
     ArbSignalKind as AstArbSignalKind, Ast, BinaryOp, Block, Expr, ExprKind, FunctionDecl,
-    InputOptimizationKind, NodeId, OrderSpec, OrderSpecKind,
+    InputOptimizationKind, NodeId, OrderExecutionBinding, OrderSpec, OrderSpecKind,
     PortfolioControlKind as AstPortfolioControlKind, RiskControlKind as AstRiskControlKind,
     SignalRole as AstSignalRole, Stmt, StmtKind, TransferAssetKind as AstTransferAssetKind,
     TransferSpec, UnaryOp,
@@ -267,6 +267,7 @@ struct Analysis {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ResolvedOrderFieldSlots {
+    execution_slot: Option<u16>,
     price_slot: Option<u16>,
     trigger_price_slot: Option<u16>,
     expire_time_slot: Option<u16>,
@@ -1708,6 +1709,7 @@ impl<'a> Analyzer<'a> {
         let mut order = OrderDecl {
             role,
             execution_alias: None,
+            execution_slot: None,
             kind: OrderKind::Market,
             tif: None,
             post_only: false,
@@ -1721,19 +1723,29 @@ impl<'a> Analyzer<'a> {
         };
 
         if let Some(binding) = &spec.execution {
-            let exists = self
-                .analysis
-                .declared_executions
-                .iter()
-                .any(|execution| execution.alias == binding.name);
-            if !exists {
-                self.diagnostics.push(Diagnostic::new(
-                    DiagnosticKind::Type,
-                    format!("unknown execution alias `{}`", binding.name),
-                    binding.span,
-                ));
-            } else {
-                order.execution_alias = Some(binding.name.clone());
+            match binding {
+                OrderExecutionBinding::Static(binding) => {
+                    let exists = self
+                        .analysis
+                        .declared_executions
+                        .iter()
+                        .any(|execution| execution.alias == binding.name);
+                    if !exists {
+                        self.diagnostics.push(Diagnostic::new(
+                            DiagnosticKind::Type,
+                            format!("unknown execution alias `{}`", binding.name),
+                            binding.span,
+                        ));
+                    } else {
+                        order.execution_alias = Some(binding.name.clone());
+                    }
+                }
+                OrderExecutionBinding::Expr(expr) => {
+                    if let Some(slot) = self.analyze_order_execution_field(expr) {
+                        resolved.execution_slot = Some(slot);
+                        order.execution_slot = Some(slot);
+                    }
+                }
             }
         }
 
@@ -2260,6 +2272,22 @@ impl<'a> Analyzer<'a> {
         self.diagnostics
             .push(Diagnostic::new(DiagnosticKind::Type, message, span));
         false
+    }
+
+    fn analyze_order_execution_field(&mut self, expr: &Expr) -> Option<u16> {
+        let info = self.analyze_expr(expr);
+        if !matches!(
+            info.ty,
+            InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+        ) {
+            self.diagnostics.push(Diagnostic::new(
+                DiagnosticKind::Type,
+                "order `venue = ...` requires an execution_alias expression",
+                expr.span,
+            ));
+            return None;
+        }
+        Some(self.allocate_hidden_series_slot(Type::ExecutionAlias, info.update_mask, 2))
     }
 
     fn analyze_order_size_stmt(
@@ -3750,6 +3778,9 @@ fn collect_order_spec_series_refs(
     spec: &OrderSpec,
     refs: &mut BTreeSet<(String, Option<Interval>, MarketField)>,
 ) {
+    if let Some(OrderExecutionBinding::Expr(expr)) = &spec.execution {
+        collect_source_series_refs(expr, refs);
+    }
     match &spec.kind {
         OrderSpecKind::TemplateRef(_) => {}
         OrderSpecKind::Market => {}
@@ -3941,6 +3972,11 @@ fn order_spec_source_ref_span(
     source: &str,
     target: Option<Interval>,
 ) -> Option<Span> {
+    if let Some(OrderExecutionBinding::Expr(expr)) = &spec.execution {
+        if let Some(span) = expr_source_ref_span(expr, source, target) {
+            return Some(span);
+        }
+    }
     match &spec.kind {
         OrderSpecKind::TemplateRef(_) => None,
         OrderSpecKind::Market => None,
@@ -7007,6 +7043,16 @@ impl<'a> Compiler<'a> {
                 let Some(resolved) = self.resolved_order_field_slots(stmt.id, stmt.span) else {
                     return;
                 };
+                if let (Some(OrderExecutionBinding::Expr(expr)), Some(slot)) =
+                    (&spec.execution, resolved.execution_slot)
+                {
+                    self.emit_expr(expr, expr_info, user_calls);
+                    self.emit(
+                        Instruction::new(OpCode::StoreLocal)
+                            .with_a(slot)
+                            .with_span(stmt.span),
+                    );
+                }
                 match &spec.kind {
                     OrderSpecKind::TemplateRef(_) => {
                         unreachable!("order templates are resolved before emission")

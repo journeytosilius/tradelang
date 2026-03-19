@@ -2041,17 +2041,22 @@ fn resolve_order_spec(
         return;
     }
     if let Some(execution) = &spec.execution {
-        if let Some(definition_index) = scope.get(&execution.name).copied() {
-            let hover = context
-                .definitions
-                .get(definition_index)
-                .map(definition_hover)
-                .unwrap_or_else(|| format!("`{}`", execution.name));
-            context.references.push(Reference {
-                span: execution.span,
-                definition_index: Some(definition_index),
-                hover,
-            });
+        match execution {
+            crate::ast::OrderExecutionBinding::Static(execution) => {
+                if let Some(definition_index) = scope.get(&execution.name).copied() {
+                    let hover = context
+                        .definitions
+                        .get(definition_index)
+                        .map(definition_hover)
+                        .unwrap_or_else(|| format!("`{}`", execution.name));
+                    context.references.push(Reference {
+                        span: execution.span,
+                        definition_index: Some(definition_index),
+                        hover,
+                    });
+                }
+            }
+            crate::ast::OrderExecutionBinding::Expr(expr) => resolve_expr(context, expr, scope),
         }
     }
     match &spec.kind {
@@ -2152,10 +2157,14 @@ fn format_order_spec(spec: &crate::ast::OrderSpec) -> String {
     if let crate::ast::OrderSpecKind::TemplateRef(binding) = &spec.kind {
         return binding.name.clone();
     }
-    let execution_arg = spec
-        .execution
-        .as_ref()
-        .map(|execution| format!("venue = {}", execution.name));
+    let execution_arg = spec.execution.as_ref().map(|execution| match execution {
+        crate::ast::OrderExecutionBinding::Static(execution) => {
+            format!("venue = {}", execution.name)
+        }
+        crate::ast::OrderExecutionBinding::Expr(expr) => {
+            format!("venue = {}", format_expr(expr, 0))
+        }
+    });
     let mut args = match &spec.kind {
         crate::ast::OrderSpecKind::TemplateRef(_) => unreachable!("handled above"),
         crate::ast::OrderSpecKind::Market => Vec::new(),

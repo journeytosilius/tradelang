@@ -73,7 +73,7 @@ Modes:
 
 Trading scripts require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
 
-Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
+Every executable inline order and every `order_template` must declare `venue = <execution_alias_expr>` explicitly, even when the script declares only one execution target.
 
 Fee modeling now requires explicit global maker/taker inputs for execution-oriented runs. Pass `--maker-fee-bps` and `--taker-fee-bps` on every backtest, walk-forward, walk-forward-sweep, optimize, or paper invocation, and repeat `--fee-schedule <alias:maker:taker>` when one selected execution alias should use a different fee tier.
 
@@ -357,12 +357,15 @@ selectionnes via leur close d'execution courant :
 ```palmscript
 entry long = current_execution() == select_desc(1, left, right, hedge)
 exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+order entry long = market(venue = current_execution())
+order exit long = market(venue = current_execution())
 ```
 
 Ce contexte n'existe que pendant l'iteration des aliases d'execution par le
-runtime de backtest. Le routage single-leg reste explicite, donc `venue = ...`
-continue d'exiger un identifiant d'alias `execution` declare plutot qu'une
-expression arbitraire.
+runtime de backtest. Les ordres single-leg peuvent maintenant router
+dynamiquement avec n'importe quelle expression `execution_alias`, y compris
+`current_execution()` et `select_desc(...)`. A chaque barre, l'expression doit
+se resoudre en alias `execution` declare ou en `na`.
 
 ## Rust API
 

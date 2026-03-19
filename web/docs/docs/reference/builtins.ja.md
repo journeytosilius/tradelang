@@ -82,7 +82,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - execution-aware backtest と portfolio mode の内部では、そのバーで現在評価中の execution alias を返します
 - それ以外の runtime context では結果は `na` です
 - 結果型は `execution_alias` です
-- signal / export / helper logic 向けであり、single-leg order constructor の `venue = ...` は引き続き宣言済み execution alias identifier を要求します
+- signal / export / helper logic 向けであり、single-leg order constructor でも `venue = <execution_alias_expr>` を通して利用できます
 
 ### `select_asc(rank, exec_a, exec_b, ...)` と `select_desc(rank, exec_a, exec_b, ...)`
 

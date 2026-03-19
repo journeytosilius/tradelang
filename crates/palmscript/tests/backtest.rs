@@ -337,10 +337,10 @@ source left = binance.spot(\"BTCUSDT\")
 source right = gate.spot(\"BTC_USDT\")
 execution left = binance.spot(\"BTCUSDT\")
 execution right = gate.spot(\"BTC_USDT\")
-entry long = current_execution() == select_desc(1, left, right)
+entry long = true
 exit long = false
-order entry long = market(venue = right)
-order exit long = market(venue = right)
+order entry long = market(venue = select_desc(1, left, right))
+order exit long = market(venue = select_desc(1, left, right))
 plot(left.close)",
     )
     .expect("script should compile");

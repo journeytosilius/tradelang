@@ -73,7 +73,7 @@ execution aliases. `execution` declarations stay separate from `source`
 declarations, so cross-source strategies can still route orders onto one
 venue.
 
-Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
+Every executable inline order and every `order_template` must declare `venue = <execution_alias_expr>` explicitly, even when the script declares only one execution target.
 
 Fee modeling now requires explicit global maker/taker inputs for execution-oriented runs. Pass `--maker-fee-bps` and `--taker-fee-bps` on every backtest, walk-forward, walk-forward-sweep, optimize, or paper invocation, and repeat `--fee-schedule <alias:maker:taker>` when one selected execution alias should use a different fee tier.
 
@@ -365,12 +365,15 @@ execution close:
 ```palmscript
 entry long = current_execution() == select_desc(1, left, right, hedge)
 exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+order entry long = market(venue = current_execution())
+order exit long = market(venue = current_execution())
 ```
 
 That context is only available while the backtest runtime is iterating
-execution aliases. Single-leg order routing is still explicit, so
-`venue = ...` continues to require a declared execution alias identifier
-instead of an arbitrary expression.
+execution aliases. Single-leg orders can route dynamically with any
+`execution_alias` expression, including `current_execution()` and
+`select_desc(...)`. On each bar the expression must resolve to a declared
+execution alias or `na`.
 
 ## Rust API
 

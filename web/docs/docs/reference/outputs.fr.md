@@ -337,6 +337,6 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 
 - `execution` declarations now separate execution routing from market-data `source` bindings.
 - Order constructors accept named arguments in addition to the legacy positional form.
-- `venue = <execution_alias>` binds an `order`, `protect`, or `target` role to a declared execution alias.
+- `venue = <execution_alias_expr>` binds an `order`, `protect`, or `target` role to a declared execution alias.
 - Named order arguments cannot be mixed with positional arguments in the same constructor call.
 - Trading scripts now require at least one declared `execution` target.

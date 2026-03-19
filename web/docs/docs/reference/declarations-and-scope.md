@@ -72,7 +72,7 @@ Rules:
 - the template must resolve to one of the supported exchange-backed templates
 - the symbol argument must be a string literal
 - `execution` declarations do not create market series bindings
-- orders may target a declared execution alias with `venue = <alias>`
+- orders may target a declared execution alias with `venue = <execution_alias_expr>`
 - any script that declares trading signal roles requires at least one declared `execution` target
 - scripts still require at least one declared `source` for market data
 
@@ -224,7 +224,7 @@ Rules:
 - `order entry ...` and `order exit ...` attach an execution template to a matching signal role
 - order constructors accept the legacy positional argument form and a named-argument form
 - named order arguments may appear in any order but may not be mixed with positional arguments in the same constructor call
-- `venue = <execution_alias>` binds an order role to a declared `execution` alias
+- `venue = <execution_alias_expr>` binds an order role to a declared `execution` alias
 - `protect`, `protect_after_target1..3`, and `target1..3` declare staged attached exits that arm only while the matching position is open
 - `size entry1..3 long|short` optionally size a staged entry fill with either `capital_fraction(x)` / legacy bare numeric fraction semantics, or `risk_pct(pct, stop_price)` for risk-based entry sizing
 - `size module <name>` optionally sizes the staged entry fill bound by a matching `module <name> = entry...` declaration using the same entry-sizing semantics

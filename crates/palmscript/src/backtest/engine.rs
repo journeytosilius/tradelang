@@ -871,6 +871,7 @@ pub(crate) fn simulate_backtest(
         return Err(BacktestError::TransferRequiresPortfolioMode);
     }
     let execution_alias = config.execution_source_alias.as_str();
+    let execution_id = execution.execution_id;
     let (base_asset, quote_asset) = ledger_assets_for_symbol(execution.template, &execution.symbol);
     let fee_rates = fee_rates_for_alias(config, execution_alias);
     let slippage_rate = config.slippage_bps / crate::backtest::BPS_SCALE;
@@ -1468,8 +1469,12 @@ pub(crate) fn simulate_backtest(
                             &mut active_orders,
                             position.as_ref(),
                             target_consumption,
-                            &prepared,
-                            execution_alias,
+                            ExecutionRoutingContext {
+                                prepared: &prepared,
+                                stepper: &stepper,
+                                execution_alias,
+                                execution_id,
+                            },
                             &mut orders,
                         );
                         filled_this_bar = true;
@@ -1539,11 +1544,8 @@ pub(crate) fn simulate_backtest(
             position.as_ref(),
             mark_price_for_ledger,
         );
-        let ledger_snapshots = [(execution.execution_id, ledger_snapshot)];
-        let execution_prices = [(
-            execution.execution_id,
-            current_execution.map(|bar| bar.close),
-        )];
+        let ledger_snapshots = [(execution_id, ledger_snapshot)];
+        let execution_prices = [(execution_id, current_execution.map(|bar| bar.close))];
         let overrides = build_runtime_overrides(
             &prepared.position_fields,
             &prepared.position_event_fields,
@@ -1553,7 +1555,7 @@ pub(crate) fn simulate_backtest(
             prepared.current_execution_slot,
             &ledger_snapshots,
             &execution_prices,
-            Some(execution.execution_id),
+            Some(execution_id),
             position.as_ref(),
             open_trade.as_ref(),
             last_exit.as_ref(),
@@ -1681,6 +1683,7 @@ pub(crate) fn simulate_backtest(
                 &output,
                 step_time,
                 &prepared,
+                &stepper,
                 &mut pending_requests,
                 &mut pending_snapshots,
                 &mut pending_signal_names,
@@ -1690,12 +1693,14 @@ pub(crate) fn simulate_backtest(
                 snapshot.as_ref(),
                 step_bar_index,
                 execution_alias,
+                execution_id,
                 decision_trace.as_mut(),
             );
             enqueue_attached_requests(
                 step_time,
                 &output,
                 &prepared,
+                &stepper,
                 position.as_ref(),
                 position.as_ref(),
                 target_consumption,
@@ -1707,6 +1712,7 @@ pub(crate) fn simulate_backtest(
                 snapshot.as_ref(),
                 step_bar_index,
                 execution_alias,
+                execution_id,
                 decision_trace.as_mut(),
             );
             last_snapshot = snapshot;
@@ -3204,8 +3210,12 @@ pub(crate) fn simulate_portfolio_backtest(
                                 &mut state.active_orders,
                                 state.position.as_ref(),
                                 state.target_consumption,
-                                &prepared,
-                                &state.alias,
+                                ExecutionRoutingContext {
+                                    prepared: &prepared,
+                                    stepper: &state.stepper,
+                                    execution_alias: &state.alias,
+                                    execution_id: state.execution_id,
+                                },
                                 &mut orders,
                             );
                             filled_this_bar = true;
@@ -3415,6 +3425,7 @@ pub(crate) fn simulate_portfolio_backtest(
                     &output,
                     step_time,
                     &prepared,
+                    &state.stepper,
                     &mut state.pending_requests,
                     &mut state.pending_snapshots,
                     &mut state.pending_signal_names,
@@ -3424,12 +3435,14 @@ pub(crate) fn simulate_portfolio_backtest(
                     snapshot.as_ref(),
                     step_bar_index,
                     &state.alias,
+                    state.execution_id,
                     decision_trace.as_mut(),
                 );
                 enqueue_attached_requests(
                     step_time,
                     &output,
                     &prepared,
+                    &state.stepper,
                     state.position.as_ref(),
                     state.position.as_ref(),
                     state.target_consumption,
@@ -3441,6 +3454,7 @@ pub(crate) fn simulate_portfolio_backtest(
                     snapshot.as_ref(),
                     step_bar_index,
                     &state.alias,
+                    state.execution_id,
                     decision_trace.as_mut(),
                 );
                 state.last_snapshot = snapshot;
@@ -3967,6 +3981,7 @@ fn enqueue_signal_requests(
     output: &StepOutput,
     signal_time: f64,
     prepared: &PreparedBacktest,
+    stepper: &RuntimeStepper,
     pending_requests: &mut [Option<CapturedOrderRequest>; ROLE_COUNT],
     pending_snapshots: &mut [Option<FeatureSnapshot>; ROLE_COUNT],
     pending_signal_names: &mut [Option<String>; ROLE_COUNT],
@@ -3976,14 +3991,21 @@ fn enqueue_signal_requests(
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
     execution_alias: &str,
+    execution_id: u16,
     decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let mut decision_trace = decision_trace;
+    let routing = ExecutionRoutingContext {
+        prepared,
+        stepper,
+        execution_alias,
+        execution_id,
+    };
     for event in &output.trigger_events {
         let Some(role) = prepared.signal_roles.get(&event.output_id).copied() else {
             continue;
         };
-        let Some(template) = order_template_for_alias(prepared, role, execution_alias) else {
+        let Some(template) = order_template_for_alias(routing, role) else {
             continue;
         };
         let slot = role_index(role);
@@ -4036,6 +4058,7 @@ fn enqueue_attached_requests(
     signal_time: f64,
     output: &StepOutput,
     prepared: &PreparedBacktest,
+    stepper: &RuntimeStepper,
     position_before_step: Option<&PositionState>,
     position_after_step: Option<&PositionState>,
     target_consumption: TargetConsumptionState,
@@ -4047,6 +4070,7 @@ fn enqueue_attached_requests(
     snapshot: Option<&FeatureSnapshot>,
     bar_index: usize,
     execution_alias: &str,
+    execution_id: u16,
     decision_trace: Option<&mut StepDecisionTrace>,
 ) {
     let (Some(before), Some(after)) = (position_before_step, position_after_step) else {
@@ -4057,13 +4081,17 @@ fn enqueue_attached_requests(
         return;
     }
 
+    let routing = ExecutionRoutingContext {
+        prepared,
+        stepper,
+        execution_alias,
+        execution_id,
+    };
     let mut roles = [None, None];
-    roles[0] =
-        resolve_active_protect_role(before.side, target_consumption, prepared, execution_alias);
-    roles[1] =
-        resolve_active_target_role(before.side, target_consumption, prepared, execution_alias);
+    roles[0] = resolve_active_protect_role(before.side, target_consumption, routing);
+    roles[1] = resolve_active_target_role(before.side, target_consumption, routing);
     for role in roles.into_iter().flatten() {
-        let Some(template) = order_template_for_alias(prepared, role, execution_alias) else {
+        let Some(template) = order_template_for_alias(routing, role) else {
             continue;
         };
         let slot = role_index(role);
@@ -4313,11 +4341,18 @@ fn reset_entry_progress(state: &mut EntryProgressState, side: PositionSide) {
     }
 }
 
+#[derive(Clone, Copy)]
+struct ExecutionRoutingContext<'a> {
+    prepared: &'a PreparedBacktest,
+    stepper: &'a RuntimeStepper,
+    execution_alias: &'a str,
+    execution_id: u16,
+}
+
 fn resolve_active_target_role(
     side: PositionSide,
     state: TargetConsumptionState,
-    prepared: &PreparedBacktest,
-    execution_alias: &str,
+    routing: ExecutionRoutingContext<'_>,
 ) -> Option<SignalRole> {
     let next_stage = match side {
         PositionSide::Long => state.long_stage + 1,
@@ -4332,14 +4367,13 @@ fn resolve_active_target_role(
         (PositionSide::Short, 3) => SignalRole::TargetShort3,
         _ => return None,
     };
-    order_template_for_alias(prepared, role, execution_alias).map(|_| role)
+    order_template_for_alias(routing, role).map(|_| role)
 }
 
 fn resolve_active_protect_role(
     side: PositionSide,
     state: TargetConsumptionState,
-    prepared: &PreparedBacktest,
-    execution_alias: &str,
+    routing: ExecutionRoutingContext<'_>,
 ) -> Option<SignalRole> {
     let stage = match side {
         PositionSide::Long => state.long_stage,
@@ -4379,23 +4413,27 @@ fn resolve_active_protect_role(
     roles
         .iter()
         .copied()
-        .find(|role| order_template_for_alias(prepared, *role, execution_alias).is_some())
+        .find(|role| order_template_for_alias(routing, *role).is_some())
 }
 
 fn order_template_for_alias(
-    prepared: &PreparedBacktest,
+    routing: ExecutionRoutingContext<'_>,
     role: SignalRole,
-    execution_alias: &str,
 ) -> Option<OrderDecl> {
-    prepared
+    routing
+        .prepared
         .order_templates
         .get(&role)
         .cloned()
         .filter(|order| {
+            if let Some(slot) = order.execution_slot {
+                return current_execution_alias_local(routing.stepper, slot)
+                    == Some(routing.execution_id);
+            }
             order
                 .execution_alias
                 .as_deref()
-                .map(|alias| alias == execution_alias)
+                .map(|alias| alias == routing.execution_alias)
                 .unwrap_or(true)
         })
 }
@@ -4801,17 +4839,14 @@ fn invalidate_stale_attached_orders(
     active_orders: &mut [Option<ActiveOrder>; ROLE_COUNT],
     position: Option<&PositionState>,
     target_consumption: TargetConsumptionState,
-    prepared: &PreparedBacktest,
-    execution_alias: &str,
+    routing: ExecutionRoutingContext<'_>,
     orders: &mut [OrderRecord],
 ) {
     let Some(position) = position else {
         return;
     };
-    let active_protect =
-        resolve_active_protect_role(position.side, target_consumption, prepared, execution_alias);
-    let active_target =
-        resolve_active_target_role(position.side, target_consumption, prepared, execution_alias);
+    let active_protect = resolve_active_protect_role(position.side, target_consumption, routing);
+    let active_target = resolve_active_target_role(position.side, target_consumption, routing);
 
     for slot in active_orders.iter_mut() {
         let Some(active) = slot.as_ref() else {

@@ -95,7 +95,7 @@ Regras:
 - dentro de backtests orientados a `execution` e no modo portfolio, retorna o alias de execucao que esta sendo avaliado naquela barra
 - fora desse contexto de runtime, o resultado sera `na`
 - o tipo de resultado e `execution_alias`
-- ele foi feito para logica de sinais, exports e helpers; ordens single-leg ainda exigem `venue = <execution_alias_identifier>`
+- ele foi feito para logica de sinais, exports e helpers, e ordens single-leg agora tambem podem usa-lo via `venue = <execution_alias_expr>`
 
 ### `select_asc(rank, exec_a, exec_b, ...)` e `select_desc(rank, exec_a, exec_b, ...)`
 

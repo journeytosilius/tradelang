@@ -215,7 +215,7 @@ The grammar does not by itself make a program valid. The implementation addition
 - `portfolio_group` aliases must refer to declared `source` bindings and group names must be unique
 - matching `source` and `execution` aliases may mirror each other when the template and symbol are the same; other aliases must remain unique
 - order constructors accept either the legacy positional form or the named-argument form, but not both at once
-- `venue = <execution_alias>` requires a declared `execution` alias
+- `venue = <execution_alias_expr>` requires an `execution_alias` expression that resolves to a declared `execution` alias or `na`
 - trading scripts require at least one declared `execution` target
 - `size entry1..3 long|short` and `size target1..3 long|short` are valid staged `size` declarations in v1
 - `size module <name> = <expr>` is also valid when `<name>` resolves to a declared `module` bound to a staged entry role

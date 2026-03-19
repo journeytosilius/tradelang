@@ -402,6 +402,7 @@ pub enum InputOptimizationDeclKind {
 pub struct OrderDecl {
     pub role: SignalRole,
     pub execution_alias: Option<String>,
+    pub execution_slot: Option<u16>,
     pub kind: OrderKind,
     pub tif: Option<TimeInForce>,
     pub post_only: bool,

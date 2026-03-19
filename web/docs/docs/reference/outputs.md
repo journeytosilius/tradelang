@@ -222,7 +222,7 @@ Rules:
 - `execution` declarations are top-level venue bindings that keep execution routing separate from market-data `source` declarations
 - order constructors support the legacy positional form and the named-argument form, and inline constructor calls remain valid anywhere `order_spec` is accepted
 - named order arguments may not be mixed with positional arguments in the same constructor call
-- `venue = <execution_alias>` binds that order role to a declared execution alias
+- `venue = <execution_alias_expr>` binds that order role to a declared execution alias
 - numeric order fields such as `price`, `trigger_price`, and `expire_time_ms` are evaluated by the runtime as hidden internal series
 - `tif.<variant>` and `trigger_ref.<variant>` are typed enum literals checked at compile time
 - venue-specific compatibility checks run when the backtest starts, based on the selected execution target

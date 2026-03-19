@@ -229,6 +229,6 @@ La superficie del parser ahora acepta un sufijo opcional `optimize(...)` en decl
 - `execution` shares the exchange-backed template surface with `source`, but does not create market-series bindings.
 - Matching `source` and `execution` aliases may mirror each other when the template and symbol are the same.
 - Order constructors now accept named arguments in addition to the legacy positional form.
-- `venue = <execution_alias>` binds an order role to a declared execution target.
+- `venue = <execution_alias_expr>` binds an order role to a declared execution target.
 - Positional and named order arguments cannot be mixed in the same constructor call.
 - Trading scripts now require at least one declared `execution` target.

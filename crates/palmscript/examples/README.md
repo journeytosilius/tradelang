@@ -76,7 +76,10 @@ In portfolio mode, use `current_execution()` when a signal needs to know which
 execution alias the backtest is evaluating right now. Pair it with
 `select_asc`, `select_desc`, `in_top_n`, and `in_bottom_n` when you want to
 keep or exclude the currently evaluated alias based on relative
-execution-close ranking across the selected portfolio aliases.
+execution-close ranking across the selected portfolio aliases. Single-leg
+orders can reuse the same context with `venue = current_execution()` or
+another `execution_alias` expression when routing should follow the active
+portfolio alias.
 
 Execution-oriented commands now require at least one declared `execution`
 target in the script. The checked-in backtest and paper examples already

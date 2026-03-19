@@ -327,3 +327,11 @@ PalmScript now exposes richer machine-readable backtest diagnostics in every pub
 - full-trace mode adds one typed per-bar decision trace per execution bar
 - optimize output now includes top-candidate holdout checks plus validation-constraint, validated/feasible/infeasible survivor counts, constraint-failure breakdowns, optional direct-validation survivor replays, holdout-pass-rate, parameter stability, baseline-comparison, overfitting-risk, Sharpe, and time-bucket cohort summaries
 - Trading scripts now require at least one declared `execution` target.
+
+## Latest Execution Additions
+
+- `execution` declarations now separate execution routing from market-data `source` bindings.
+- Order constructors accept named arguments in addition to the legacy positional form.
+- `venue = <execution_alias_expr>` binds an `order`, `protect`, or `target` role to a declared execution alias.
+- Named order arguments cannot be mixed with positional arguments in the same constructor call.
+- Trading scripts now require at least one declared `execution` target.

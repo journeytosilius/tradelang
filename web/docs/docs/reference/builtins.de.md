@@ -98,7 +98,7 @@ Regeln:
 - innerhalb von execution-orientierten Backtests und im Portfolio-Modus liefert es den Execution-Alias, der auf dieser Bar gerade ausgewertet wird
 - ausserhalb dieses Runtime-Kontexts ist das Ergebnis `na`
 - der Ergebnistyp ist `execution_alias`
-- der Helper ist fuer Signal-, Export- und Selektorlogik gedacht; Single-Leg-Orders verlangen weiterhin `venue = <execution_alias_identifier>`
+- der Helper ist fuer Signal-, Export- und Selektorlogik gedacht; Single-Leg-Orders koennen ihn jetzt auch ueber `venue = <execution_alias_expr>` verwenden
 
 ### `select_asc(rank, exec_a, exec_b, ...)` und `select_desc(rank, exec_a, exec_b, ...)`
 

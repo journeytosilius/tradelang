@@ -69,4 +69,4 @@ input fast_len = 21 optimize(int, 8, 34, 1)
 
 - PalmScript now supports separate top-level `execution` declarations for order-routing targets.
 - `source` stays the market-data surface, while `execution` declares where orders are intended to route.
-- Order declarations can target a declared execution alias with named arguments such as `venue = exec`.
+- Order declarations can target a declared execution alias expression with named arguments such as `venue = exec` or `venue = current_execution()`.

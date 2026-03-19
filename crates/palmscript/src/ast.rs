@@ -149,8 +149,14 @@ pub enum SignalRole {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OrderSpec {
     pub span: Span,
-    pub execution: Option<BindingName>,
+    pub execution: Option<OrderExecutionBinding>,
     pub kind: OrderSpecKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum OrderExecutionBinding {
+    Static(BindingName),
+    Expr(Expr),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

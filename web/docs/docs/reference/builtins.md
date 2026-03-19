@@ -82,7 +82,7 @@ Rules:
 - inside execution-aware backtests and portfolio mode, it returns the execution alias currently being evaluated on that bar
 - outside that runtime context, the result is `na`
 - the result type is `execution_alias`
-- it is meant for signal, export, and helper logic; single-leg order constructors still require `venue = <execution_alias_identifier>`
+- it is meant for signal, export, and helper logic, and single-leg order constructors may also use it through `venue = <execution_alias_expr>`
 
 ### `select_asc(rank, exec_a, exec_b, ...)` and `select_desc(rank, exec_a, exec_b, ...)`
 

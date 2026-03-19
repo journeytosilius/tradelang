@@ -71,7 +71,7 @@ Modes:
 
 Trading scripts require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI uses it as the execution target automatically. Otherwise pass `--execution-source <alias>`. Repeat `--execution-source` to activate portfolio mode across multiple execution aliases. `execution` declarations stay separate from `source` declarations, so cross-source strategies can still route orders onto one venue.
 
-Every executable inline order and every `order_template` must declare `venue = <execution_alias>` explicitly, even when the script declares only one execution target.
+Every executable inline order and every `order_template` must declare `venue = <execution_alias_expr>` explicitly, even when the script declares only one execution target.
 
 Fee modeling now requires explicit global maker/taker inputs for execution-oriented runs. Pass `--maker-fee-bps` and `--taker-fee-bps` on every backtest, walk-forward, walk-forward-sweep, optimize, or paper invocation, and repeat `--fee-schedule <alias:maker:taker>` when one selected execution alias should use a different fee tier.
 
@@ -354,12 +354,15 @@ portfolio script は portfolio iteration 中に、現在の execution alias を
 ```palmscript
 entry long = current_execution() == select_desc(1, left, right, hedge)
 exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+order entry long = market(venue = current_execution())
+order exit long = market(venue = current_execution())
 ```
 
 この context は、backtest runtime が execution alias を反復している間だけ
-利用できます。single-leg の order routing は引き続き明示的なので、
-`venue = ...` は任意の式ではなく、宣言済み execution alias identifier を
-要求します。
+利用できます。single-leg order も `current_execution()` や
+`select_desc(...)` を含む任意の `execution_alias` expression で動的に
+routing できます。各バーでその式は宣言済み `execution` alias か `na` に
+評価される必要があります。
 
 ## Rust API
 
