@@ -112,3 +112,213 @@ fn parse_number(raw: &str, field: &str) -> Result<f64, ExecutionError> {
     raw.parse::<f64>()
         .map_err(|err| ExecutionError::Fetch(format!("invalid {field} `{raw}`: {err}")))
 }
+
+#[cfg(test)]
+mod tests {
+    use mockito::{Matcher, Server};
+    use serde_json::json;
+
+    use super::*;
+
+    fn sample_source(template: SourceTemplate, symbol: &str) -> PaperExecutionSource {
+        PaperExecutionSource {
+            alias: "exec".to_string(),
+            template,
+            symbol: symbol.to_string(),
+        }
+    }
+
+    fn sample_declared_source(template: SourceTemplate, symbol: &str) -> DeclaredMarketSource {
+        DeclaredMarketSource {
+            id: 0,
+            alias: "exec".to_string(),
+            template,
+            symbol: symbol.to_string(),
+        }
+    }
+
+    fn endpoints(base_url: String) -> ExchangeEndpoints {
+        ExchangeEndpoints {
+            bybit_base_url: base_url,
+            ..ExchangeEndpoints::default()
+        }
+    }
+
+    #[test]
+    fn validate_rejects_empty_symbol() {
+        let err = validate(&sample_declared_source(SourceTemplate::BybitSpot, ""))
+            .expect_err("empty symbol should be rejected");
+        assert!(matches!(err, ExecutionError::InvalidConfig { .. }));
+        assert!(err.to_string().contains("non-empty symbol"));
+    }
+
+    #[test]
+    fn fetch_quote_feed_spot_uses_spot_category_without_mark_price() {
+        let mut server = Server::new();
+        let _mock = server
+            .mock("GET", "/v5/market/tickers")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "spot".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "retCode": 0,
+                    "retMsg": "OK",
+                    "result": {
+                        "list": [{
+                            "bid1Price": "10.0",
+                            "ask1Price": "12.0",
+                            "lastPrice": "11.5"
+                        }]
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let feed = fetch_quote_feed(
+            &Client::new(),
+            &endpoints(server.url()),
+            &sample_source(SourceTemplate::BybitSpot, "BTCUSDT"),
+            123,
+        )
+        .expect("spot quote feed should parse");
+
+        assert_eq!(
+            feed.top_of_book,
+            Some(TopOfBookSnapshot {
+                time_ms: 123,
+                best_bid: 10.0,
+                best_ask: 12.0,
+                mid_price: 11.0,
+                state: FeedSnapshotState::Live,
+            })
+        );
+        assert_eq!(
+            feed.last_price,
+            Some(PriceSnapshot {
+                time_ms: 123,
+                price: 11.5,
+                state: FeedSnapshotState::Live,
+            })
+        );
+        assert_eq!(feed.mark_price, None);
+    }
+
+    #[test]
+    fn fetch_quote_feed_usdt_perps_uses_linear_category_and_mark_price() {
+        let mut server = Server::new();
+        let _mock = server
+            .mock("GET", "/v5/market/tickers")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "linear".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "retCode": 0,
+                    "retMsg": "OK",
+                    "result": {
+                        "list": [{
+                            "bid1Price": "20.0",
+                            "ask1Price": "22.0",
+                            "lastPrice": "21.5",
+                            "markPrice": "21.0"
+                        }]
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let feed = fetch_quote_feed(
+            &Client::new(),
+            &endpoints(server.url()),
+            &sample_source(SourceTemplate::BybitUsdtPerps, "BTCUSDT"),
+            456,
+        )
+        .expect("perp quote feed should parse");
+
+        assert_eq!(
+            feed.mark_price,
+            Some(PriceSnapshot {
+                time_ms: 456,
+                price: 21.0,
+                state: FeedSnapshotState::Live,
+            })
+        );
+    }
+
+    #[test]
+    fn fetch_quote_feed_reports_api_error_payloads() {
+        let mut server = Server::new();
+        let _mock = server
+            .mock("GET", "/v5/market/tickers")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "linear".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "retCode": 10001,
+                    "retMsg": "bad symbol",
+                    "result": { "list": [] }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let err = fetch_quote_feed(
+            &Client::new(),
+            &endpoints(server.url()),
+            &sample_source(SourceTemplate::BybitUsdtPerps, "BTCUSDT"),
+            789,
+        )
+        .expect_err("api error should bubble up");
+
+        assert!(err
+            .to_string()
+            .contains("bybit tickers returned 10001: bad symbol"));
+    }
+
+    #[test]
+    fn fetch_quote_feed_reports_invalid_numeric_fields() {
+        let mut server = Server::new();
+        let _mock = server
+            .mock("GET", "/v5/market/tickers")
+            .match_query(Matcher::AllOf(vec![
+                Matcher::UrlEncoded("category".into(), "spot".into()),
+                Matcher::UrlEncoded("symbol".into(), "BTCUSDT".into()),
+            ]))
+            .with_status(200)
+            .with_body(
+                json!({
+                    "retCode": 0,
+                    "retMsg": "OK",
+                    "result": {
+                        "list": [{
+                            "bid1Price": "oops",
+                            "ask1Price": "12.0",
+                            "lastPrice": "11.5"
+                        }]
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let err = fetch_quote_feed(
+            &Client::new(),
+            &endpoints(server.url()),
+            &sample_source(SourceTemplate::BybitSpot, "BTCUSDT"),
+            999,
+        )
+        .expect_err("invalid numeric field should fail");
+
+        assert!(err.to_string().contains("invalid bybit best bid `oops`"));
+    }
+}

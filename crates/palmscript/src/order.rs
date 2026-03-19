@@ -118,3 +118,49 @@ impl OrderFieldKind {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn order_kind_strings_match_expected_surface() {
+        assert_eq!(OrderKind::Market.as_str(), "market");
+        assert_eq!(OrderKind::Limit.as_str(), "limit");
+        assert_eq!(OrderKind::StopMarket.as_str(), "stop_market");
+        assert_eq!(OrderKind::StopLimit.as_str(), "stop_limit");
+        assert_eq!(OrderKind::TakeProfitMarket.as_str(), "take_profit_market");
+        assert_eq!(OrderKind::TakeProfitLimit.as_str(), "take_profit_limit");
+    }
+
+    #[test]
+    fn time_in_force_variants_round_trip() {
+        for variant in TimeInForce::ALL {
+            assert_eq!(TimeInForce::from_variant(variant.as_str()), Some(variant));
+        }
+        assert_eq!(TimeInForce::from_variant("day"), None);
+    }
+
+    #[test]
+    fn trigger_reference_variants_round_trip() {
+        for variant in TriggerReference::ALL {
+            assert_eq!(
+                TriggerReference::from_variant(variant.as_str()),
+                Some(variant)
+            );
+        }
+        assert_eq!(TriggerReference::from_variant("close"), None);
+    }
+
+    #[test]
+    fn size_mode_and_order_field_kind_strings_match_expected_surface() {
+        assert_eq!(SizeMode::CapitalFraction.as_str(), "capital_fraction");
+        assert_eq!(SizeMode::RiskPct.as_str(), "risk_pct");
+        assert_eq!(OrderFieldKind::default(), OrderFieldKind::Price);
+        assert_eq!(OrderFieldKind::Price.as_str(), "price");
+        assert_eq!(OrderFieldKind::TriggerPrice.as_str(), "trigger_price");
+        assert_eq!(OrderFieldKind::ExpireTime.as_str(), "expire_time");
+        assert_eq!(OrderFieldKind::SizeFraction.as_str(), "size_fraction");
+        assert_eq!(OrderFieldKind::RiskStopPrice.as_str(), "risk_stop_price");
+    }
+}
