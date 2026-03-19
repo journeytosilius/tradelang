@@ -1,11 +1,11 @@
 interval 3m
-source perp = binance.usdm("XRPUSDT")
-source spot = binance.spot("XRPUSDT")
-execution perp = binance.usdm("XRPUSDT")
+source perp = binance.usdm("ADAUSDT")
+source spot = binance.spot("ADAUSDT")
+execution perp = binance.usdm("ADAUSDT")
 use perp 15m
 use perp 1h
 
-// Experimental 3m XRPUSDT regime-switching scalper for Binance USD-M. It keeps
+// Experimental 3m ADAUSDT regime-switching scalper for Binance USD-M. It keeps
 // a dedicated no-trade state, fades balanced tapes, and buys or sells pullback
 // re-acceleration only when the higher-timeframe direction is already active.
 input mean_len = 34 optimize(int, 21, 55, 1)

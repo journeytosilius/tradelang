@@ -42,7 +42,7 @@ Start here when you want to see the language in action:
 Additional representative files:
 
 - `crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps`: experimental 5m Binance USD-M XRPUSDT mean-reversion strategy with both long and short legs, 1h regime gating, and smaller short sizing
-- `crates/palmscript/examples/strategies/experimental/xrp_usdm_regime_reversion.ps`: experimental 5m Binance USD-M XRPUSDT mean-reversion follow-up with asymmetric long/short sizing, tighter anti-trend gating, and staged ATR exits tuned against a 6-month sample
+- `crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps`: experimental 3m Binance USD-M ADAUSDT regime-switching long/short scalper with explicit range, trend, and risk-off states plus mode-aware ATR exits
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
@@ -108,7 +108,7 @@ Common commands:
 ./palmscript run backtest crates/palmscript/examples/strategies/portfolio_caps_backtest.ps --from 1704067200000 --to 1704153600000 --execution-source left --execution-source right --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/risk_controls_backtest.ps --from 1704067200000 --to 1706745600000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run backtest crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps --from 1771286400000 --to 1773878400000 --maker-fee-bps 2 --taker-fee-bps 5 --slippage-bps 1 --leverage 2
-./palmscript run backtest crates/palmscript/examples/strategies/experimental/xrp_usdm_regime_reversion.ps --from 1758240000000 --to 1773878400000 --maker-fee-bps 2 --taker-fee-bps 5 --slippage-bps 1 --leverage 2
+./palmscript run backtest crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps --from 1771286400000 --to 1773878400000 --maker-fee-bps 2 --taker-fee-bps 5 --slippage-bps 1 --leverage 2
 ./palmscript run backtest crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5
 ./palmscript run walk-forward crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63
 ./palmscript run optimize crates/palmscript/examples/strategies/adaptive_trend_backtest.ps --from 1646611200000 --to 1772841600000 --maker-fee-bps 2 --taker-fee-bps 5 --train-bars 252 --test-bars 63 --step-bars 63 --trials 50 --preset-out best.json
