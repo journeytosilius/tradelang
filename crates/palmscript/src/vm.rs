@@ -593,6 +593,11 @@ impl<'a> VmEngine<'a> {
             BuiltinId::SpreadBps => self.call_spread_bps(arity, args, pc),
             BuiltinId::RankAsc => self.call_venue_rank(false, arity, args, pc),
             BuiltinId::RankDesc => self.call_venue_rank(true, arity, args, pc),
+            BuiltinId::CurrentExecution => Ok(Value::NA),
+            BuiltinId::SelectAsc => self.call_venue_selector_by_rank(false, arity, args, pc),
+            BuiltinId::SelectDesc => self.call_venue_selector_by_rank(true, arity, args, pc),
+            BuiltinId::InTopN => self.call_venue_membership(true, arity, args, pc),
+            BuiltinId::InBottomN => self.call_venue_membership(false, arity, args, pc),
             BuiltinId::HourUtc => self.call_time_transform(BuiltinId::HourUtc, arity, args, pc),
             BuiltinId::WeekdayUtc => {
                 self.call_time_transform(BuiltinId::WeekdayUtc, arity, args, pc)
@@ -822,6 +827,118 @@ impl<'a> VmEngine<'a> {
             return Ok(Value::NA);
         };
         Ok(Value::F64((index + 1) as f64))
+    }
+
+    fn call_venue_selector_by_rank(
+        &self,
+        prefer_highest: bool,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity < 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: if prefer_highest {
+                    "select_desc"
+                } else {
+                    "select_asc"
+                },
+                expected: 3,
+                found: arity,
+            });
+        }
+        let Some(rank) = self.expect_positive_selector_rank(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let mut ranked = self.collect_ranked_execution_prices(args.into_iter().skip(1), pc)?;
+        self.sort_ranked_execution_prices(&mut ranked, prefer_highest);
+        ranked
+            .get(rank - 1)
+            .map(|(_, execution_id, _)| Value::ExecutionAlias(*execution_id))
+            .map(Ok)
+            .unwrap_or(Ok(Value::NA))
+    }
+
+    fn call_venue_membership(
+        &self,
+        prefer_highest: bool,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity < 4 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: if prefer_highest {
+                    "in_top_n"
+                } else {
+                    "in_bottom_n"
+                },
+                expected: 4,
+                found: arity,
+            });
+        }
+        let Some(target_alias) = expect_execution_alias(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let Some(count) = self.expect_positive_selector_rank(args[1].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let mut ranked = self.collect_ranked_execution_prices(args.into_iter().skip(2), pc)?;
+        self.sort_ranked_execution_prices(&mut ranked, prefer_highest);
+        let Some(index) = ranked
+            .iter()
+            .position(|(_, execution_id, _)| *execution_id == target_alias)
+        else {
+            return Ok(Value::NA);
+        };
+        Ok(Value::Bool(index < count))
+    }
+
+    fn expect_positive_selector_rank(
+        &self,
+        value: Value,
+        pc: usize,
+    ) -> Result<Option<usize>, RuntimeError> {
+        let materialized = self.materialize_value(value, pc)?;
+        let Some(rank) = expect_numeric_like(&materialized, pc)? else {
+            return Ok(None);
+        };
+        if !rank.is_finite() || rank < 1.0 || rank.fract() != 0.0 {
+            return Ok(None);
+        }
+        Ok(Some(rank as usize))
+    }
+
+    fn collect_ranked_execution_prices<I>(
+        &self,
+        values: I,
+        pc: usize,
+    ) -> Result<Vec<(usize, u16, f64)>, RuntimeError>
+    where
+        I: IntoIterator<Item = Value>,
+    {
+        let mut ranked = Vec::new();
+        for (candidate_index, value) in values.into_iter().enumerate() {
+            let Some(execution_id) = expect_execution_alias(value, pc)? else {
+                continue;
+            };
+            let Some(price) = self.execution_price(execution_id, pc)? else {
+                continue;
+            };
+            ranked.push((candidate_index, execution_id, price));
+        }
+        Ok(ranked)
+    }
+
+    fn sort_ranked_execution_prices(&self, ranked: &mut [(usize, u16, f64)], prefer_highest: bool) {
+        ranked.sort_by(|left, right| {
+            let price_cmp = if prefer_highest {
+                right.2.total_cmp(&left.2)
+            } else {
+                left.2.total_cmp(&right.2)
+            };
+            price_cmp.then_with(|| left.0.cmp(&right.0))
+        });
     }
 
     fn call_unary_math(

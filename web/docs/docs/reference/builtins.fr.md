@@ -30,7 +30,7 @@ PalmScript expose actuellement ces categories de builtin :
 - helpers de croisement : `cross`, `crossover`, `crossunder`
 - helpers de temps/session : `hour_utc`, `weekday_utc`, `session_utc`
 - helpers de prix de sortie : `trail_stop_long`, `trail_stop_short`, `break_even_long`, `break_even_short`
-- helpers de selection de venue : `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
+- helpers de selection de venue : `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`, `current_execution`, `select_asc`, `select_desc`, `in_top_n`, `in_bottom_n`
 - helpers de null : `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - helpers de serie et de fenetre : `change`, `highest`, `lowest`,
@@ -88,15 +88,59 @@ Regles :
 - si l'alias cible est indisponible sur la barre active ou absent de l'ensemble classe, le resultat est `na`
 - le type de resultat est `float` ou `series<float>` selon l'horloge de mise a jour active
 
+### `current_execution()`
+
+Regles :
+
+- n'accepte aucun argument
+- dans les backtests orientes `execution` et en mode portfolio, il renvoie l'alias d'execution en cours d'evaluation sur cette barre
+- hors de ce contexte runtime, le resultat est `na`
+- le type de resultat est `execution_alias`
+- il est destine a la logique de signaux, d'exports et de helpers ; les ordres single-leg exigent toujours `venue = <execution_alias_identifier>`
+
+### `select_asc(rank, exec_a, exec_b, ...)` et `select_desc(rank, exec_a, exec_b, ...)`
+
+Regles :
+
+- exigent un rang entier positif et au moins deux alias `execution` candidats
+- le premier argument est le rang demande, ou `1` designe le meilleur candidat selon l'ordre choisi
+- chaque argument restant doit etre un `execution_alias` ou `na`
+- ils classent le close d'execution courant parmi les candidats fournis
+- `select_asc(...)` renvoie le rang `1` pour le close courant le plus bas
+- `select_desc(...)` renvoie le rang `1` pour le close courant le plus haut
+- les egalites sont resolues de maniere deterministe par l'ordre des arguments compares
+- les alias sans close d'execution courant sur la barre active sont ignores
+- si le rang demande est invalide ou depasse l'ensemble de candidats disponible, le resultat est `na`
+- le type de resultat est `execution_alias`
+
+### `in_top_n(target_exec, count, exec_a, exec_b, ...)` et `in_bottom_n(target_exec, count, exec_a, exec_b, ...)`
+
+Regles :
+
+- exigent un alias cible, une taille de cohorte entiere positive et au moins deux alias `execution` candidats
+- le premier argument est l'alias dont on teste l'appartenance
+- le deuxieme argument est la taille de la cohorte
+- chaque argument restant doit etre un `execution_alias` ou `na`
+- ils classent le close d'execution courant parmi les candidats fournis avec le meme ordre deterministe que `select_asc(...)` et `select_desc(...)`
+- `in_top_n(...)` teste l'appartenance a la cohorte la mieux classee
+- `in_bottom_n(...)` teste l'appartenance a la cohorte la moins bien classee
+- les alias sans close d'execution courant sur la barre active sont ignores
+- si l'alias cible est indisponible sur la barre active, absent de l'ensemble candidat ou si la taille de cohorte est invalide, le resultat est `na`
+- si la taille de cohorte depasse l'ensemble de candidats disponible, tous les candidats disponibles sont consideres comme faisant partie de la cohorte
+- le type de resultat est `bool` ou `series<bool>` selon l'horloge de mise a jour active
+
 Exemple :
 
 ```palmscript
 execution bn = binance.spot("BTCUSDT")
 execution gt = gate.spot("BTC_USDT")
+execution bb = bybit.spot("BTCUSDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+export best_exec = current_execution() == select_desc(1, bn, gt, bb)
+export gt_in_top_two = in_top_n(gt, 2, bn, gt, bb)
 ```
 
 ## Helpers De Temps Et De Session

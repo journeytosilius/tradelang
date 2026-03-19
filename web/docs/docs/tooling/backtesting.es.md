@@ -348,6 +348,22 @@ Additional rules:
 - invalid runtime portfolio caps (`na`, negative, non-finite, or fractional count values) block new entries on that bar
 - blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
 
+Los scripts de portfolio tambien pueden clasificar directamente el alias de
+ejecucion activo durante la iteracion del portfolio. `current_execution()`
+expone el alias que se esta evaluando, mientras que `select_asc(...)`,
+`select_desc(...)`, `in_top_n(...)` e `in_bottom_n(...)` comparan los aliases
+de ejecucion seleccionados por su cierre de ejecucion actual:
+
+```palmscript
+entry long = current_execution() == select_desc(1, left, right, hedge)
+exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+```
+
+Ese contexto solo existe mientras el runtime del backtest itera aliases de
+ejecucion. El enrutamiento single-leg sigue siendo explicito, por lo que
+`venue = ...` continua requiriendo un identificador de alias `execution`
+declarado en lugar de una expresion arbitraria.
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:

@@ -37,6 +37,7 @@ pub(crate) struct PreparedBacktest {
     pub last_exit_fields: Vec<LastExitFieldDecl>,
     pub ledger_fields: Vec<LedgerFieldDecl>,
     pub execution_price_fields: Vec<ExecutionPriceDecl>,
+    pub current_execution_slot: Option<u16>,
     pub exports: Vec<PreparedExport>,
 }
 
@@ -194,6 +195,7 @@ pub(crate) fn prepare_backtest_for_aliases(
         last_exit_fields: compiled.program.last_exit_fields.clone(),
         ledger_fields: compiled.program.ledger_fields.clone(),
         execution_price_fields: compiled.program.execution_price_fields.clone(),
+        current_execution_slot: compiled.program.current_execution_slot,
         exports: collect_exports(compiled),
     })
 }

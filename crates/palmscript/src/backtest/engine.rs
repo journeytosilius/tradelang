@@ -1550,8 +1550,10 @@ pub(crate) fn simulate_backtest(
             &prepared.last_exit_fields,
             &prepared.ledger_fields,
             &prepared.execution_price_fields,
+            prepared.current_execution_slot,
             &ledger_snapshots,
             &execution_prices,
+            Some(execution.execution_id),
             position.as_ref(),
             open_trade.as_ref(),
             last_exit.as_ref(),
@@ -3293,8 +3295,10 @@ pub(crate) fn simulate_portfolio_backtest(
                 &prepared.last_exit_fields,
                 &prepared.ledger_fields,
                 &prepared.execution_price_fields,
+                prepared.current_execution_slot,
                 &ledger_snapshots,
                 &execution_prices,
+                Some(state.execution_id),
                 state.position.as_ref(),
                 state.open_trade.as_ref(),
                 state.last_exit.as_ref(),
@@ -3695,8 +3699,10 @@ fn build_runtime_overrides(
     last_exit_fields: &[LastExitFieldDecl],
     ledger_fields: &[LedgerFieldDecl],
     execution_price_fields: &[ExecutionPriceDecl],
+    current_execution_slot: Option<u16>,
     ledger_snapshots: &[(u16, LedgerRuntimeSnapshot)],
     execution_prices: &[(u16, Option<f64>)],
+    current_execution_id: Option<u16>,
     position: Option<&PositionState>,
     open_trade: Option<&OpenTrade>,
     last_exit: Option<&LastExitSnapshot>,
@@ -3822,6 +3828,14 @@ fn build_runtime_overrides(
             .unwrap_or(Value::NA);
         (decl.slot, value)
     }));
+    if let Some(slot) = current_execution_slot {
+        overrides.push((
+            slot,
+            current_execution_id
+                .map(Value::ExecutionAlias)
+                .unwrap_or(Value::NA),
+        ));
+    }
     overrides
 }
 

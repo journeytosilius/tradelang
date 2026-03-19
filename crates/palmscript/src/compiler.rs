@@ -253,6 +253,7 @@ struct Analysis {
     last_exit_field_slots: HashMap<(LastExitScope, LastExitField), u16>,
     ledger_fields: Vec<LedgerFieldDecl>,
     ledger_field_slots: HashMap<(u16, LedgerField), u16>,
+    current_execution_slot: Option<u16>,
     arb_signals: Vec<ArbSignalDecl>,
     arb_orders: Vec<ArbOrderDecl>,
     transfers: Vec<TransferDecl>,
@@ -2848,6 +2849,20 @@ impl<'a> Analyzer<'a> {
         slot
     }
 
+    fn current_execution_slot(&mut self) -> u16 {
+        if let Some(slot) = self.analysis.current_execution_slot {
+            return slot;
+        }
+        let slot = self.define_symbol(
+            "__current_execution".to_string(),
+            ExprInfo::scalar(Type::ExecutionAlias),
+            true,
+            None,
+        );
+        self.analysis.current_execution_slot = Some(slot);
+        slot
+    }
+
     fn declared_execution_target(&self, alias: &str) -> Option<&DeclaredExecutionTarget> {
         self.analysis
             .declared_executions
@@ -3139,6 +3154,10 @@ impl<'a> Analyzer<'a> {
                     self.analyze_expr(arg);
                 }
                 ExprInfo::series(0)
+            }
+            BuiltinId::CurrentExecution => {
+                self.current_execution_slot();
+                ExprInfo::scalar(Type::ExecutionAlias)
             }
             _ => {
                 let arg_info: Vec<ExprInfo> =
@@ -3590,6 +3609,10 @@ impl<'a, 'b> FunctionAnalyzer<'a, 'b> {
                     self.analyze_expr(arg);
                 }
                 ExprInfo::series(0)
+            }
+            BuiltinId::CurrentExecution => {
+                self.parent.current_execution_slot();
+                ExprInfo::scalar(Type::ExecutionAlias)
             }
             _ => {
                 let arg_info: Vec<ExprInfo> =
@@ -5628,6 +5651,7 @@ fn analyze_helper_builtin(
                 update_mask: high_info.update_mask | low_info.update_mask | close_info.update_mask,
             }
         }
+        BuiltinKind::CurrentExecutionContext => ExprInfo::scalar(Type::ExecutionAlias),
         BuiltinKind::VenueAliasSelector => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !matches!(
@@ -5673,6 +5697,67 @@ fn analyze_helper_builtin(
                     .iter()
                     .fold(0, |mask, info| mask | info.update_mask),
             }
+        }
+        BuiltinKind::VenueNthSelector => {
+            if !arg_info[0].ty.is_numeric_like() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires a numeric rank as the first argument"),
+                    args[0].span,
+                ));
+            }
+            for (arg, info) in args.iter().skip(1).zip(arg_info.iter().skip(1)) {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!(
+                            "{callee} requires declared execution-alias arguments after the rank"
+                        ),
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::ExecutionAlias),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
+        BuiltinKind::VenueMembership => {
+            if !matches!(
+                arg_info[0].ty,
+                InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+            ) {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires an execution-alias target as the first argument"),
+                    args[0].span,
+                ));
+            }
+            if !arg_info[1].ty.is_numeric_like() {
+                diagnostics.push(Diagnostic::new(
+                    DiagnosticKind::Type,
+                    format!("{callee} requires a numeric cohort size as the second argument"),
+                    args[1].span,
+                ));
+            }
+            for (arg, info) in args.iter().skip(2).zip(arg_info.iter().skip(2)) {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        format!("{callee} requires declared execution-alias arguments after the cohort size"),
+                        arg.span,
+                    ));
+                }
+            }
+            bool_result(arg_info)
         }
         BuiltinKind::VenueSpread => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
@@ -5841,10 +5926,13 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::VolumeIndicator
         | BuiltinKind::AnchoredPriceVolume
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
+        BuiltinKind::CurrentExecutionContext => ExprInfo::scalar(Type::ExecutionAlias),
         BuiltinKind::TimeTransform => numeric_result(arg_info),
         BuiltinKind::TimeSession => bool_result(arg_info),
         BuiltinKind::VenueAliasSelector => ExprInfo::scalar(Type::ExecutionAlias),
         BuiltinKind::VenueRank => ExprInfo::scalar(Type::F64),
+        BuiltinKind::VenueNthSelector => ExprInfo::scalar(Type::ExecutionAlias),
+        BuiltinKind::VenueMembership => bool_result(arg_info),
         BuiltinKind::VenueSpread => ExprInfo::scalar(Type::F64),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
     }
@@ -6764,6 +6852,7 @@ impl<'a> Compiler<'a> {
         self.program.position_event_fields = self.analysis.position_event_fields.clone();
         self.program.last_exit_fields = self.analysis.last_exit_fields.clone();
         self.program.ledger_fields = self.analysis.ledger_fields.clone();
+        self.program.current_execution_slot = self.analysis.current_execution_slot;
         self.program.arb_signals = self.analysis.arb_signals.clone();
         self.program.arb_orders = self.analysis.arb_orders.clone();
         self.program.transfers = self.analysis.transfers.clone();
@@ -7698,11 +7787,30 @@ impl<'a> Compiler<'a> {
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
             }
+            BuiltinId::CurrentExecution => {
+                let Some(slot) = self.analysis.current_execution_slot else {
+                    self.diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Compile,
+                        "missing compiled current-execution slot",
+                        expr.span,
+                    ));
+                    return;
+                };
+                self.emit(
+                    Instruction::new(OpCode::LoadLocal)
+                        .with_a(slot)
+                        .with_span(expr.span),
+                );
+            }
             BuiltinId::Cheapest
             | BuiltinId::Richest
             | BuiltinId::SpreadBps
             | BuiltinId::RankAsc
-            | BuiltinId::RankDesc => {
+            | BuiltinId::RankDesc
+            | BuiltinId::SelectAsc
+            | BuiltinId::SelectDesc
+            | BuiltinId::InTopN
+            | BuiltinId::InBottomN => {
                 self.ensure_execution_price_slots();
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
@@ -8923,6 +9031,8 @@ impl<'a> Compiler<'a> {
             }
             BuiltinKind::VenueAliasSelector
             | BuiltinKind::VenueRank
+            | BuiltinKind::VenueNthSelector
+            | BuiltinKind::VenueMembership
             | BuiltinKind::VenueSpread
             | BuiltinKind::TimeTransform
             | BuiltinKind::TimeSession

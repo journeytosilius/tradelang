@@ -23,7 +23,7 @@ PalmScript currently exposes these builtin categories:
 - crossing helpers: `cross`, `crossover`, `crossunder`
 - time/session helpers: `hour_utc`, `weekday_utc`, `session_utc`
 - exit-price helpers: `trail_stop_long`, `trail_stop_short`, `break_even_long`, `break_even_short`
-- venue-selection helpers: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
+- venue-selection helpers: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`, `current_execution`, `select_asc`, `select_desc`, `in_top_n`, `in_bottom_n`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helpers: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
@@ -74,15 +74,59 @@ Rules:
 - if the target alias is unavailable on the active bar or absent from the ranked set, the result is `na`
 - the result type is `float` or `series<float>` according to the active update clock
 
+### `current_execution()`
+
+Rules:
+
+- it accepts no arguments
+- inside execution-aware backtests and portfolio mode, it returns the execution alias currently being evaluated on that bar
+- outside that runtime context, the result is `na`
+- the result type is `execution_alias`
+- it is meant for signal, export, and helper logic; single-leg order constructors still require `venue = <execution_alias_identifier>`
+
+### `select_asc(rank, exec_a, exec_b, ...)` and `select_desc(rank, exec_a, exec_b, ...)`
+
+Rules:
+
+- they require a positive whole-number rank plus at least two candidate `execution` aliases
+- the first argument is the requested rank, where `1` means best candidate in the chosen ordering
+- every remaining argument must be an `execution_alias` or `na`
+- they rank the current execution close across the provided candidates
+- `select_asc(...)` returns rank `1` for the lowest current close
+- `select_desc(...)` returns rank `1` for the highest current close
+- ties are broken deterministically by comparison-argument order
+- aliases without a current execution close on the active bar are skipped
+- if the requested rank is invalid or larger than the available candidate set, the result is `na`
+- the result type is `execution_alias`
+
+### `in_top_n(target_exec, count, exec_a, exec_b, ...)` and `in_bottom_n(target_exec, count, exec_a, exec_b, ...)`
+
+Rules:
+
+- they require one target alias, a positive whole-number cohort size, and at least two candidate `execution` aliases
+- the first argument is the alias being tested for membership
+- the second argument is the cohort size
+- every remaining argument must be an `execution_alias` or `na`
+- they rank the current execution close across the provided candidates using the same deterministic ordering as `select_asc(...)` and `select_desc(...)`
+- `in_top_n(...)` checks membership in the highest-ranked cohort
+- `in_bottom_n(...)` checks membership in the lowest-ranked cohort
+- aliases without a current execution close on the active bar are skipped
+- if the target alias is unavailable on the active bar, absent from the candidate set, or the cohort size is invalid, the result is `na`
+- if the cohort size is larger than the available candidate set, every available candidate is considered inside the cohort
+- the result type is `bool` or `series<bool>` according to the active update clock
+
 Example:
 
 ```palmscript
 execution bn = binance.spot("BTCUSDT")
 execution gt = gate.spot("BTC_USDT")
+execution bb = bybit.spot("BTCUSDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+export best_exec = current_execution() == select_desc(1, bn, gt, bb)
+export gt_in_top_two = in_top_n(gt, 2, bn, gt, bb)
 ```
 
 ## Time And Session Helpers

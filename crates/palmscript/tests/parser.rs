@@ -234,9 +234,28 @@ export best_is_bn = cheapest(bn, gt) == bn
 export worst_is_gt = richest(bn, gt) == gt
 export spread = spread_bps(bn, gt)
 export bn_rank = rank_desc(bn, bn, gt)
+export selected = select_desc(1, bn, gt) == gt
+export in_bottom = in_bottom_n(bn, 1, bn, gt)
 plot(spot.close)",
     )
     .expect("venue-selection builtins should compile");
+}
+
+#[test]
+fn parses_current_execution_builtin() {
+    compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution left = binance.spot(\"BTCUSDT\")
+execution right = gate.spot(\"BTC_USDT\")
+entry long = current_execution() == select_desc(1, left, right)
+exit long = false
+order entry long = market(venue = right)
+order exit long = market(venue = right)
+plot(left.close)",
+    )
+    .expect("current_execution should compile");
 }
 
 #[test]

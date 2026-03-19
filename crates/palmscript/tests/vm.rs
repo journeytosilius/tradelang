@@ -236,6 +236,7 @@ fn tiny_program_push_add_plot_executes() {
         last_exit_fields: vec![],
         ledger_fields: vec![],
         execution_price_fields: vec![],
+        current_execution_slot: None,
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -276,6 +277,7 @@ fn stack_underflow_is_reported() {
         last_exit_fields: vec![],
         ledger_fields: vec![],
         execution_price_fields: vec![],
+        current_execution_slot: None,
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -316,6 +318,7 @@ fn invalid_jump_is_reported() {
         last_exit_fields: vec![],
         ledger_fields: vec![],
         execution_price_fields: vec![],
+        current_execution_slot: None,
         orders: vec![],
         risk_controls: vec![],
         portfolio_controls: vec![],
@@ -1276,6 +1279,10 @@ export cheapest_is_gt = cheapest(bn, gt) == gt
 export spread = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
 export gt_rank_asc = rank_asc(gt, bn, gt)
+export selected_desc = select_desc(1, bn, gt) == bn
+export selected_asc = select_asc(1, bn, gt) == gt
+export bn_in_top = in_top_n(bn, 1, bn, gt)
+export gt_in_bottom = in_bottom_n(gt, 1, bn, gt)
 plot(spot.close)",
     )
     .expect("script compiles");
@@ -1329,5 +1336,32 @@ plot(spot.close)",
     }
     for point in &outputs.exports[3].points {
         assert_eq!(point.value, palmscript::OutputValue::F64(1.0));
+    }
+    for export in outputs.exports.iter().skip(4) {
+        for point in &export.points {
+            assert_eq!(point.value, palmscript::OutputValue::Bool(true));
+        }
+    }
+}
+
+#[test]
+fn current_execution_is_na_outside_backtests() {
+    let compiled = palmscript::compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution exec = binance.spot(\"BTCUSDT\")
+export missing_context = na(current_execution())
+plot(spot.close)",
+    )
+    .expect("script compiles");
+    let outputs = run(
+        &compiled,
+        &bars_with_spacing(JAN_1_2024_UTC_MS, MINUTE_MS, &[10.0, 11.0]),
+        VmLimits::default(),
+    )
+    .expect("script runs");
+
+    for point in &outputs.exports[0].points {
+        assert_eq!(point.value, palmscript::OutputValue::Bool(true));
     }
 }

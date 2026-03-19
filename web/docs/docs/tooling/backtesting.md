@@ -356,6 +356,22 @@ Additional rules:
 - when a portfolio control evaluates to `na`, a negative value, a non-finite value, or a fractional count cap, PalmScript blocks new entries for that control on that bar
 - blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
 
+Portfolio scripts can also rank the active execution alias directly during the
+portfolio iteration. `current_execution()` exposes the alias currently being
+evaluated, while `select_asc(...)`, `select_desc(...)`, `in_top_n(...)`, and
+`in_bottom_n(...)` compare the selected execution aliases by their current
+execution close:
+
+```palmscript
+entry long = current_execution() == select_desc(1, left, right, hedge)
+exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+```
+
+That context is only available while the backtest runtime is iterating
+execution aliases. Single-leg order routing is still explicit, so
+`venue = ...` continues to require a declared execution alias identifier
+instead of an arbitrary expression.
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:

@@ -84,11 +84,14 @@ pub enum BuiltinKind {
     ParabolicSarExt,
     RollingHighLowCloseBands,
     AdaptiveCycleTuple,
+    CurrentExecutionContext,
     TimeTransform,
     TimeSession,
     ExitPriceHelper,
     VenueAliasSelector,
     VenueRank,
+    VenueNthSelector,
+    VenueMembership,
     VenueSpread,
 }
 
@@ -248,10 +251,15 @@ pub enum BuiltinId {
     TrailStopShort = 150,
     BreakEvenLong = 151,
     BreakEvenShort = 152,
+    CurrentExecution = 153,
+    SelectAsc = 154,
+    SelectDesc = 155,
+    InTopN = 156,
+    InBottomN = 157,
 }
 
 impl BuiltinId {
-    pub const RESERVED: [Self; 153] = [
+    pub const RESERVED: [Self; 158] = [
         Self::Open,
         Self::High,
         Self::Low,
@@ -405,9 +413,14 @@ impl BuiltinId {
         Self::TrailStopShort,
         Self::BreakEvenLong,
         Self::BreakEvenShort,
+        Self::CurrentExecution,
+        Self::SelectAsc,
+        Self::SelectDesc,
+        Self::InTopN,
+        Self::InBottomN,
     ];
 
-    pub const CALLABLE: [Self; 140] = [
+    pub const CALLABLE: [Self; 145] = [
         Self::Sma,
         Self::Ema,
         Self::Rsi,
@@ -548,6 +561,11 @@ impl BuiltinId {
         Self::TrailStopShort,
         Self::BreakEvenLong,
         Self::BreakEvenShort,
+        Self::CurrentExecution,
+        Self::SelectAsc,
+        Self::SelectDesc,
+        Self::InTopN,
+        Self::InBottomN,
     ];
 
     pub fn from_name(name: &str) -> Option<Self> {
@@ -705,6 +723,11 @@ impl BuiltinId {
             "trail_stop_short" => Some(Self::TrailStopShort),
             "break_even_long" => Some(Self::BreakEvenLong),
             "break_even_short" => Some(Self::BreakEvenShort),
+            "current_execution" => Some(Self::CurrentExecution),
+            "select_asc" => Some(Self::SelectAsc),
+            "select_desc" => Some(Self::SelectDesc),
+            "in_top_n" => Some(Self::InTopN),
+            "in_bottom_n" => Some(Self::InBottomN),
             _ => None,
         }
     }
@@ -864,6 +887,11 @@ impl BuiltinId {
             150 => Some(Self::TrailStopShort),
             151 => Some(Self::BreakEvenLong),
             152 => Some(Self::BreakEvenShort),
+            153 => Some(Self::CurrentExecution),
+            154 => Some(Self::SelectAsc),
+            155 => Some(Self::SelectDesc),
+            156 => Some(Self::InTopN),
+            157 => Some(Self::InBottomN),
             _ => None,
         }
     }
@@ -1023,6 +1051,11 @@ impl BuiltinId {
             Self::TrailStopShort => "trail_stop_short",
             Self::BreakEvenLong => "break_even_long",
             Self::BreakEvenShort => "break_even_short",
+            Self::CurrentExecution => "current_execution",
+            Self::SelectAsc => "select_asc",
+            Self::SelectDesc => "select_desc",
+            Self::InTopN => "in_top_n",
+            Self::InBottomN => "in_bottom_n",
         }
     }
 
@@ -1135,6 +1168,7 @@ impl BuiltinId {
             }
             Self::HtPhasor | Self::HtSine => BuiltinKind::RollingSingleInputTuple,
             Self::Mama => BuiltinKind::AdaptiveCycleTuple,
+            Self::CurrentExecution => BuiltinKind::CurrentExecutionContext,
             Self::HourUtc | Self::WeekdayUtc => BuiltinKind::TimeTransform,
             Self::SessionUtc => BuiltinKind::TimeSession,
             Self::TrailStopLong
@@ -1143,6 +1177,8 @@ impl BuiltinId {
             | Self::BreakEvenShort => BuiltinKind::ExitPriceHelper,
             Self::Cheapest | Self::Richest => BuiltinKind::VenueAliasSelector,
             Self::RankAsc | Self::RankDesc => BuiltinKind::VenueRank,
+            Self::SelectAsc | Self::SelectDesc => BuiltinKind::VenueNthSelector,
+            Self::InTopN | Self::InBottomN => BuiltinKind::VenueMembership,
             Self::SpreadBps => BuiltinKind::VenueSpread,
         }
     }
@@ -1294,6 +1330,9 @@ impl BuiltinId {
             | Self::TrailStopShort
             | Self::BreakEvenLong
             | Self::BreakEvenShort => BuiltinArity::Exact(2),
+            Self::CurrentExecution => BuiltinArity::Exact(0),
+            Self::SelectAsc | Self::SelectDesc => BuiltinArity::AtLeast(3),
+            Self::InTopN | Self::InBottomN => BuiltinArity::AtLeast(4),
         }
     }
 
@@ -1397,6 +1436,13 @@ impl BuiltinId {
             Self::TrailStopShort => "trail_stop_short(anchor_price, stop_offset)",
             Self::BreakEvenLong => "break_even_long(entry_price, stop_offset)",
             Self::BreakEvenShort => "break_even_short(entry_price, stop_offset)",
+            Self::CurrentExecution => "current_execution()",
+            Self::SelectAsc => "select_asc(rank, exec0, exec1[, execN...])",
+            Self::SelectDesc => "select_desc(rank, exec0, exec1[, execN...])",
+            Self::InTopN => "in_top_n(target_exec, count, exec0, exec1[, execN...])",
+            Self::InBottomN => {
+                "in_bottom_n(target_exec, count, exec0, exec1[, execN...])"
+            }
             Self::Ma => "ma(series, length, ma_type)",
             Self::Apo => "apo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
             Self::Ppo => "ppo(series[, fast_length=12[, slow_length=26[, ma_type=ma_type.sma]]])",
@@ -1616,6 +1662,11 @@ impl BuiltinId {
             Self::TrailStopShort => "Return `anchor_price + stop_offset` for short stop placement, or `na` when the inputs are unavailable or invalid.",
             Self::BreakEvenLong => "Return `entry_price + stop_offset` for long break-even style stop placement, or `na` when the inputs are unavailable or invalid.",
             Self::BreakEvenShort => "Return `entry_price - stop_offset` for short break-even style stop placement, or `na` when the inputs are unavailable or invalid.",
+            Self::CurrentExecution => "Return the active execution alias while evaluating a backtest execution lane, or `na` when no execution context is active.",
+            Self::SelectAsc => "Return the execution alias at the requested 1-based ascending price rank across the provided aliases.",
+            Self::SelectDesc => "Return the execution alias at the requested 1-based descending price rank across the provided aliases.",
+            Self::InTopN => "True when the target execution alias is within the requested 1-based descending price cohort across the provided aliases.",
+            Self::InBottomN => "True when the target execution alias is within the requested 1-based ascending price cohort across the provided aliases.",
         }
     }
 }

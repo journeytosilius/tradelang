@@ -347,6 +347,22 @@ Additional rules:
 - invalid runtime portfolio caps (`na`, negative, non-finite, or fractional count values) block new entries on that bar
 - blocked portfolio entries are surfaced in summary diagnostics, full-trace decision reasons, and JSON output
 
+Portfolio-Skripte koennen den gerade aktiven Execution-Alias auch direkt
+waehrend der Portfolio-Iteration bewerten. `current_execution()` liefert den
+Alias, der aktuell ausgewertet wird, waehrend `select_asc(...)`,
+`select_desc(...)`, `in_top_n(...)` und `in_bottom_n(...)` die ausgewaehlten
+Execution-Aliasse ueber ihren aktuellen Execution-Close vergleichen:
+
+```palmscript
+entry long = current_execution() == select_desc(1, left, right, hedge)
+exit long = in_bottom_n(current_execution(), 1, left, right, hedge)
+```
+
+Dieser Kontext existiert nur, waehrend der Backtest-Runtime ueber
+Execution-Aliasse iteriert. Single-Leg-Order-Routing bleibt explizit, daher
+verlangt `venue = ...` weiterhin einen deklarierten Execution-Alias-Identifier
+anstelle eines beliebigen Ausdrucks.
+
 ## Rust API
 
 Use `run_backtest_with_sources` from the library crate:

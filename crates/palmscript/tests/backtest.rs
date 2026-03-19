@@ -330,6 +330,37 @@ plot(bin.close)",
 }
 
 #[test]
+fn portfolio_mode_can_select_entries_from_current_execution_rank() {
+    let compiled = compile(
+        "interval 1m
+source left = binance.spot(\"BTCUSDT\")
+source right = gate.spot(\"BTC_USDT\")
+execution left = binance.spot(\"BTCUSDT\")
+execution right = gate.spot(\"BTC_USDT\")
+entry long = current_execution() == select_desc(1, left, right)
+exit long = false
+order entry long = market(venue = right)
+order exit long = market(venue = right)
+plot(left.close)",
+    )
+    .expect("script should compile");
+
+    let left_bars = vec![bar(0, 100.0, 100.0), bar(60_000, 101.0, 101.0)];
+    let right_bars = vec![bar(0, 102.0, 102.0), bar(60_000, 103.0, 103.0)];
+    let runtime =
+        runtime_with_execution_feeds(left_bars.clone(), right_bars.clone(), left_bars, right_bars);
+    let mut portfolio = config("left");
+    portfolio.portfolio_execution_aliases = vec!["left".to_string(), "right".to_string()];
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), portfolio)
+        .expect("backtest should run");
+
+    assert_eq!(result.open_positions.len(), 1);
+    assert_eq!(result.open_positions[0].execution_alias, "right");
+    assert_eq!(result.summary.peak_open_position_count, 1);
+}
+
+#[test]
 fn single_source_backtest_rejects_arb_surface_without_portfolio_mode() {
     let compiled = compile(
         "interval 1m

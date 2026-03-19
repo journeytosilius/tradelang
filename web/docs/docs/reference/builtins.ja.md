@@ -23,7 +23,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - crossing helper: `cross`, `crossover`, `crossunder`
 - time/session helper: `hour_utc`, `weekday_utc`, `session_utc`
 - exit-price helper: `trail_stop_long`, `trail_stop_short`, `break_even_long`, `break_even_short`
-- venue-selection helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
+- venue-selection helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`, `current_execution`, `select_asc`, `select_desc`, `in_top_n`, `in_bottom_n`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helper: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
@@ -74,15 +74,59 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - target alias がアクティブバー上で利用できない、または順位集合に含まれていない場合、結果は `na` です
 - 結果型は、アクティブな更新クロックに従って `float` または `series<float>` です
 
+### `current_execution()`
+
+ルール:
+
+- 引数は取りません
+- execution-aware backtest と portfolio mode の内部では、そのバーで現在評価中の execution alias を返します
+- それ以外の runtime context では結果は `na` です
+- 結果型は `execution_alias` です
+- signal / export / helper logic 向けであり、single-leg order constructor の `venue = ...` は引き続き宣言済み execution alias identifier を要求します
+
+### `select_asc(rank, exec_a, exec_b, ...)` と `select_desc(rank, exec_a, exec_b, ...)`
+
+ルール:
+
+- 正の整数 rank と、少なくとも二つの候補 `execution` alias が必要です
+- 第 1 引数は要求する rank で、`1` はその並び順で最良の候補を意味します
+- 残りの各引数は `execution_alias` または `na` でなければなりません
+- 指定した候補群の現在 execution close を順位付けします
+- `select_asc(...)` は最も低い現在 close を rank `1` として返します
+- `select_desc(...)` は最も高い現在 close を rank `1` として返します
+- 同値は比較引数の順序で決定論的に解決されます
+- アクティブバー上に現在 execution close がない alias はスキップされます
+- 要求した rank が不正、または利用可能な候補数を超える場合、結果は `na` です
+- 結果型は `execution_alias` です
+
+### `in_top_n(target_exec, count, exec_a, exec_b, ...)` と `in_bottom_n(target_exec, count, exec_a, exec_b, ...)`
+
+ルール:
+
+- target alias、一つの正の整数 cohort size、そして少なくとも二つの候補 `execution` alias が必要です
+- 第 1 引数は membership を判定する alias です
+- 第 2 引数は cohort size です
+- 残りの各引数は `execution_alias` または `na` でなければなりません
+- 指定した候補群の現在 execution close を `select_asc(...)` / `select_desc(...)` と同じ決定論的順序で順位付けします
+- `in_top_n(...)` は上位 cohort への membership を判定します
+- `in_bottom_n(...)` は下位 cohort への membership を判定します
+- アクティブバー上に現在 execution close がない alias はスキップされます
+- target alias がアクティブバー上で利用できない、候補集合に存在しない、または cohort size が不正な場合、結果は `na` です
+- cohort size が利用可能な候補数を超える場合、利用可能な候補はすべて cohort に含まれるとみなされます
+- 結果型は、アクティブな更新クロックに従って `bool` または `series<bool>` です
+
 例:
 
 ```palmscript
 execution bn = binance.spot("BTCUSDT")
 execution gt = gate.spot("BTC_USDT")
+execution bb = bybit.spot("BTCUSDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
 export bn_rank_desc = rank_desc(bn, bn, gt)
+export best_exec = current_execution() == select_desc(1, bn, gt, bb)
+export gt_in_top_two = in_top_n(gt, 2, bn, gt, bb)
 ```
 
 ## Time / Session Helpers

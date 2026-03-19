@@ -476,6 +476,7 @@ pub struct Program {
     pub arb_orders: Vec<ArbOrderDecl>,
     pub transfers: Vec<TransferDecl>,
     pub execution_price_fields: Vec<ExecutionPriceDecl>,
+    pub current_execution_slot: Option<u16>,
     pub orders: Vec<OrderDecl>,
     pub risk_controls: Vec<RiskControlDecl>,
     pub portfolio_controls: Vec<PortfolioControlDecl>,

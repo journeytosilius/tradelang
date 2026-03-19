@@ -72,6 +72,12 @@ Use `trail_stop_long`, `trail_stop_short`, `break_even_long`, and
 `break_even_short` to keep common trailing-stop and break-even attached-exit
 price math readable.
 
+In portfolio mode, use `current_execution()` when a signal needs to know which
+execution alias the backtest is evaluating right now. Pair it with
+`select_asc`, `select_desc`, `in_top_n`, and `in_bottom_n` when you want to
+keep or exclude the currently evaluated alias based on relative
+execution-close ranking across the selected portfolio aliases.
+
 Execution-oriented commands now require at least one declared `execution`
 target in the script. The checked-in backtest and paper examples already
 declare those execution aliases explicitly. If a script declares exactly one
