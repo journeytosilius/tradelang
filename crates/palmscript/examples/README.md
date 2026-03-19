@@ -42,7 +42,7 @@ Start here when you want to see the language in action:
 Additional representative files:
 
 - `crates/palmscript/examples/strategies/experimental/xrp_usdm_mean_reversion.ps`: experimental 5m Binance USD-M XRPUSDT mean-reversion strategy with both long and short legs, 1h regime gating, and smaller short sizing
-- `crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps`: experimental 3m Binance USD-M ADAUSDT regime-switching long/short scalper with explicit range, trend, and risk-off states, a 04:00-08:00 UTC session filter, and higher-expectancy defaults that heavily favor trend pullback continuations
+- `crates/palmscript/examples/strategies/experimental/ada_usdm_regime_scalper.ps`: experimental 3m Binance USD-M ADAUSDT regime-switching long/short scalper with explicit range, trend, and risk-off states, a 04:00-08:00 UTC session filter, and higher-expectancy defaults that heavily favor trend pullback continuations while de-risking range fades
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
