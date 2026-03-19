@@ -52,6 +52,7 @@ fn optimize_backtest_config() -> BacktestConfig {
         taker_fee_bps: 0.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
+        max_volume_fill_pct: None,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,

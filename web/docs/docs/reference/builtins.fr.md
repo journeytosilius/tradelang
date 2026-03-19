@@ -28,7 +28,7 @@ PalmScript expose actuellement ces categories de builtin :
   et [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - helpers relationnels : `above`, `below`, `between`, `outside`
 - helpers de croisement : `cross`, `crossover`, `crossunder`
-- helpers de selection de venue : `cheapest`, `richest`, `spread_bps`
+- helpers de selection de venue : `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - helpers de null : `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - helpers de serie et de fenetre : `change`, `highest`, `lowest`,
@@ -53,7 +53,8 @@ Regles :
 - ils comparent le close d'execution courant de chaque alias sur la barre active
 - `cheapest(...)` renvoie l'alias avec le close courant le plus bas
 - `richest(...)` renvoie l'alias avec le close courant le plus haut
-- si un alias reference n'a pas de close d'execution courant sur la barre active, le resultat est `na`
+- les alias sans close d'execution courant sur la barre active sont ignores
+- si tous les alias references sont indisponibles sur la barre active, le resultat est `na`
 - le type de resultat est `execution_alias`
 
 Les resultats de selection sont faits pour une logique ulterieure sur les
@@ -70,6 +71,21 @@ Regles :
 - si l'un des alias references n'a pas de close d'execution courant sur la barre active, le resultat est `na`
 - le type de resultat est `float` ou `series<float>` selon l'horloge de mise a jour active
 
+### `rank_asc(target_exec, exec_a, exec_b, ...)` et `rank_desc(target_exec, exec_a, exec_b, ...)`
+
+Regles :
+
+- elles exigent au moins trois alias `execution` declares au total : un alias cible et au moins deux alias compares
+- le premier argument est l'alias cible ; les arguments restants forment l'ensemble compare
+- chaque argument doit etre un `execution_alias` ou `na`
+- elles classent les closes d'execution courants a l'interieur de l'ensemble compare fourni
+- `rank_asc(...)` attribue le rang `1` au close courant le plus bas
+- `rank_desc(...)` attribue le rang `1` au close courant le plus haut
+- les egalites sont resolues de maniere deterministe par l'ordre des arguments compares
+- les alias sans close d'execution courant sur la barre active sont ignores
+- si l'alias cible est indisponible sur la barre active ou absent de l'ensemble classe, le resultat est `na`
+- le type de resultat est `float` ou `series<float>` selon l'horloge de mise a jour active
+
 Exemple :
 
 ```palmscript
@@ -78,6 +94,7 @@ execution gt = gate.spot("BTC_USDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
 ```
 
 ## Builtins A Valeur Tuple

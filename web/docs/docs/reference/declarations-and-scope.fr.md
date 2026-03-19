@@ -175,7 +175,7 @@ Regles :
 - toutes les formes sont reservees au top-level
 - les noms dupliques dans la meme portee sont rejetes
 - `regime` exige `bool`, `series<bool>` ou `na` et sert aux series persistantes d'etat de marche
-- les noms `regime` deviennent des liaisons apres leur point de declaration et sont enregistres avec les diagnostics exportes ordinaires
+- les noms `regime` deviennent des liaisons apres leur point de declaration et sont enregistres avec les diagnostics exportes ordinaires plus des cohortes dediees de regime actif
 - les noms `trigger` deviennent des liaisons apres leur point de declaration
 - `entry long` et `entry short` sont des alias de compatibilite pour
   `entry1 long` et `entry1 short`

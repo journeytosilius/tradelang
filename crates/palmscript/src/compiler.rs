@@ -1474,7 +1474,7 @@ impl<'a> Analyzer<'a> {
                 self.analysis.resolved_let_slots.insert(stmt.id, slot);
             }
             StmtKind::Export { name, expr, .. } => {
-                self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None);
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None, false);
             }
             StmtKind::Regime { name, expr, .. } => {
                 self.analyze_regime_stmt(stmt, name, expr);
@@ -1490,7 +1490,7 @@ impl<'a> Analyzer<'a> {
                         stmt.span,
                     ));
                 }
-                self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger, None);
+                self.analyze_output_stmt(stmt, name, expr, OutputKind::Trigger, None, false);
             }
             StmtKind::Signal { role, expr } => {
                 self.analyze_signal_stmt(stmt, *role, expr);
@@ -1558,6 +1558,7 @@ impl<'a> Analyzer<'a> {
             expr,
             OutputKind::Trigger,
             Some(compiled_role),
+            false,
         );
     }
 
@@ -1592,7 +1593,7 @@ impl<'a> Analyzer<'a> {
             ));
             return;
         }
-        self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None);
+        self.analyze_output_stmt(stmt, name, expr, OutputKind::ExportSeries, None, true);
     }
 
     fn analyze_output_stmt(
@@ -1602,6 +1603,7 @@ impl<'a> Analyzer<'a> {
         expr: &Expr,
         kind: OutputKind,
         signal_role: Option<CompiledSignalRole>,
+        is_regime: bool,
     ) {
         let expr_info = self.analyze_expr(expr);
         match kind {
@@ -1655,6 +1657,7 @@ impl<'a> Analyzer<'a> {
             name: name.to_string(),
             kind,
             signal_role,
+            is_regime,
             ty,
             slot,
         });
@@ -5680,6 +5683,32 @@ fn analyze_helper_builtin(
                     .fold(0, |mask, info| mask | info.update_mask),
             }
         }
+        BuiltinKind::VenueRank => {
+            for (index, (arg, info)) in args.iter().zip(arg_info.iter()).enumerate() {
+                if !matches!(
+                    info.ty,
+                    InferredType::Concrete(Type::ExecutionAlias) | InferredType::Na
+                ) {
+                    diagnostics.push(Diagnostic::new(
+                        DiagnosticKind::Type,
+                        if index == 0 {
+                            format!(
+                                "{callee} requires an execution-alias target as the first argument"
+                            )
+                        } else {
+                            format!("{callee} requires declared execution-alias arguments")
+                        },
+                        arg.span,
+                    ));
+                }
+            }
+            ExprInfo {
+                ty: InferredType::Concrete(Type::F64),
+                update_mask: arg_info
+                    .iter()
+                    .fold(0, |mask, info| mask | info.update_mask),
+            }
+        }
         BuiltinKind::VenueSpread => {
             for (arg, info) in args.iter().zip(arg_info.iter()) {
                 if !matches!(
@@ -5790,6 +5819,7 @@ fn fallback_expr_info_for_builtin(builtin: BuiltinId, arg_info: &[ExprInfo]) -> 
         | BuiltinKind::AnchoredPriceVolume
         | BuiltinKind::VolatilityIndicator => ExprInfo::series(0),
         BuiltinKind::VenueAliasSelector => ExprInfo::scalar(Type::ExecutionAlias),
+        BuiltinKind::VenueRank => ExprInfo::scalar(Type::F64),
         BuiltinKind::VenueSpread => ExprInfo::scalar(Type::F64),
         BuiltinKind::MarketSeries => ExprInfo::series(0),
     }
@@ -7525,7 +7555,11 @@ impl<'a> Compiler<'a> {
                     builtin, expr, args, expr_info, user_calls, callsite,
                 );
             }
-            BuiltinId::Cheapest | BuiltinId::Richest | BuiltinId::SpreadBps => {
+            BuiltinId::Cheapest
+            | BuiltinId::Richest
+            | BuiltinId::SpreadBps
+            | BuiltinId::RankAsc
+            | BuiltinId::RankDesc => {
                 self.ensure_execution_price_slots();
                 self.emit_runtime_builtin_call(
                     builtin, expr, args, expr_info, user_calls, callsite,
@@ -8744,7 +8778,7 @@ impl<'a> Compiler<'a> {
                         .with_span(expr.span),
                 );
             }
-            BuiltinKind::VenueAliasSelector | BuiltinKind::VenueSpread => {
+            BuiltinKind::VenueAliasSelector | BuiltinKind::VenueRank | BuiltinKind::VenueSpread => {
                 for arg in args {
                     self.emit_expr(arg, expr_info, user_calls);
                 }

@@ -137,6 +137,8 @@ pub struct BacktestRunArgs {
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
+    pub max_volume_fill_pct: Option<f64>,
+    #[arg(long)]
     pub leverage: Option<f64>,
     #[arg(long, value_enum)]
     pub margin_mode: Option<BacktestMarginMode>,
@@ -177,6 +179,8 @@ pub struct WalkForwardRunArgs {
     pub set_overrides: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
+    #[arg(long)]
+    pub max_volume_fill_pct: Option<f64>,
     #[arg(long)]
     pub leverage: Option<f64>,
     #[arg(long, value_enum)]
@@ -227,6 +231,8 @@ pub struct WalkForwardSweepRunArgs {
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
     #[arg(long)]
+    pub max_volume_fill_pct: Option<f64>,
+    #[arg(long)]
     pub leverage: Option<f64>,
     #[arg(long, value_enum)]
     pub margin_mode: Option<BacktestMarginMode>,
@@ -273,6 +279,8 @@ pub struct OptimizeRunArgs {
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
+    #[arg(long)]
+    pub max_volume_fill_pct: Option<f64>,
     #[arg(long)]
     pub leverage: Option<f64>,
     #[arg(long, value_enum)]
@@ -350,6 +358,8 @@ pub struct PaperRunArgs {
     pub fee_schedule: Vec<String>,
     #[arg(long, default_value_t = 2.0)]
     pub slippage_bps: f64,
+    #[arg(long)]
+    pub max_volume_fill_pct: Option<f64>,
     #[arg(long)]
     pub leverage: Option<f64>,
     #[arg(long, value_enum)]

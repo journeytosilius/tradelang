@@ -172,7 +172,7 @@ Reglas:
 - todas las formas son solo de nivel superior
 - los nombres duplicados en el mismo scope se rechazan
 - `regime` requiere `bool`, `series<bool>` o `na` y esta pensado para series persistentes de estado de mercado
-- los nombres `regime` pasan a ser bindings despues del punto de declaracion y se registran con diagnosticos exportados ordinarios
+- los nombres `regime` pasan a ser bindings despues del punto de declaracion y se registran con diagnosticos exportados ordinarios mas cohortes dedicadas de regime activo
 - los nombres `trigger` pasan a ser bindings despues del punto de declaracion
 - `entry long` y `entry short` son aliases de compatibilidad para
   `entry1 long` y `entry1 short`

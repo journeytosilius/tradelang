@@ -1109,6 +1109,38 @@ pub(crate) fn simulate_backtest(
                         } else {
                             execution.price
                         };
+                        if fill_exceeds_volume_cap(
+                            config,
+                            projected_close_quantity(
+                                position.as_ref(),
+                                role,
+                                if matches!(
+                                    active.request.size_mode,
+                                    Some(crate::order::SizeMode::RiskPct)
+                                ) {
+                                    None
+                                } else {
+                                    active.request.size_value
+                                },
+                            ),
+                            bar.volume,
+                        ) {
+                            update_order_record(
+                                &mut orders[active.record_index],
+                                OrderRecordUpdate {
+                                    trigger_time: execution.trigger_time,
+                                    fill_bar_index: None,
+                                    fill_time: None,
+                                    raw_price: None,
+                                    fill_price: None,
+                                    effective_risk_per_unit: None,
+                                    capital_limited: None,
+                                    status: OrderStatus::Cancelled,
+                                    end_reason: Some(OrderEndReason::VolumeParticipationExceeded),
+                                },
+                            );
+                            continue;
+                        }
 
                         let close_outcome = maybe_close_position_for_role(
                             execution_alias,
@@ -1207,6 +1239,25 @@ pub(crate) fn simulate_backtest(
                                     continue;
                                 }
                             };
+                            if fill_exceeds_volume_cap(config, Some(sizing.quantity), bar.volume) {
+                                update_order_record(
+                                    &mut orders[active.record_index],
+                                    OrderRecordUpdate {
+                                        trigger_time: execution.trigger_time,
+                                        fill_bar_index: None,
+                                        fill_time: None,
+                                        raw_price: None,
+                                        fill_price: None,
+                                        effective_risk_per_unit: None,
+                                        capital_limited: None,
+                                        status: OrderStatus::Cancelled,
+                                        end_reason: Some(
+                                            OrderEndReason::VolumeParticipationExceeded,
+                                        ),
+                                    },
+                                );
+                                continue;
+                            }
                             if sizing.quantity <= crate::backtest::EPSILON {
                                 update_order_record(
                                     &mut orders[active.record_index],
@@ -2703,6 +2754,40 @@ pub(crate) fn simulate_portfolio_backtest(
                                 } else {
                                     execution.price
                                 };
+                            if fill_exceeds_volume_cap(
+                                config,
+                                projected_close_quantity(
+                                    state.position.as_ref(),
+                                    role,
+                                    if matches!(
+                                        active.request.size_mode,
+                                        Some(crate::order::SizeMode::RiskPct)
+                                    ) {
+                                        None
+                                    } else {
+                                        active.request.size_value
+                                    },
+                                ),
+                                bar.volume,
+                            ) {
+                                update_order_record(
+                                    &mut orders[active.record_index],
+                                    OrderRecordUpdate {
+                                        trigger_time: execution.trigger_time,
+                                        fill_bar_index: None,
+                                        fill_time: None,
+                                        raw_price: None,
+                                        fill_price: None,
+                                        effective_risk_per_unit: None,
+                                        capital_limited: None,
+                                        status: OrderStatus::Cancelled,
+                                        end_reason: Some(
+                                            OrderEndReason::VolumeParticipationExceeded,
+                                        ),
+                                    },
+                                );
+                                continue;
+                            }
 
                             let close_outcome = maybe_close_position_for_role(
                                 &state.alias,
@@ -2877,6 +2962,29 @@ pub(crate) fn simulate_portfolio_backtest(
                                             status: OrderStatus::Cancelled,
                                             end_reason: Some(
                                                 OrderEndReason::InsufficientCollateral,
+                                            ),
+                                        },
+                                    );
+                                    continue;
+                                }
+                                if fill_exceeds_volume_cap(
+                                    config,
+                                    Some(preview_sizing.quantity),
+                                    bar.volume,
+                                ) {
+                                    update_order_record(
+                                        &mut orders[active.record_index],
+                                        OrderRecordUpdate {
+                                            trigger_time: execution.trigger_time,
+                                            fill_bar_index: None,
+                                            fill_time: None,
+                                            raw_price: None,
+                                            fill_price: None,
+                                            effective_risk_per_unit: None,
+                                            capital_limited: None,
+                                            status: OrderStatus::Cancelled,
+                                            end_reason: Some(
+                                                OrderEndReason::VolumeParticipationExceeded,
                                             ),
                                         },
                                     );
@@ -4819,7 +4927,9 @@ fn decision_reason_for_order_end(reason: OrderEndReason) -> DecisionReason {
         | OrderEndReason::InvalidRiskPct
         | OrderEndReason::InvalidRiskDistance => DecisionReason::MissingOrderField,
         OrderEndReason::InsufficientCollateral => DecisionReason::InsufficientCollateral,
-        OrderEndReason::PortfolioControlRejected => DecisionReason::VenueRuleRejected,
+        OrderEndReason::VolumeParticipationExceeded | OrderEndReason::PortfolioControlRejected => {
+            DecisionReason::VenueRuleRejected
+        }
         OrderEndReason::IocUnfilled | OrderEndReason::FokUnfilled => DecisionReason::TifExpired,
         OrderEndReason::PostOnlyWouldCross => DecisionReason::PostOnlyWouldCross,
         OrderEndReason::Replaced
@@ -4827,6 +4937,57 @@ fn decision_reason_for_order_end(reason: OrderEndReason) -> DecisionReason {
         | OrderEndReason::OcoCancelled
         | OrderEndReason::PositionClosed => DecisionReason::VenueRuleRejected,
     }
+}
+
+fn projected_close_quantity(
+    position: Option<&PositionState>,
+    role: SignalRole,
+    size_fraction: Option<f64>,
+) -> Option<f64> {
+    let state = position?;
+    let should_close = matches!(
+        state.side,
+        PositionSide::Long
+            if matches!(role, SignalRole::LongExit)
+                || (role.is_protect() && role.is_long())
+                || (role.is_target() && role.is_long())
+                || (role.is_entry() && role.is_short())
+    ) || matches!(
+        state.side,
+        PositionSide::Short
+            if matches!(role, SignalRole::ShortExit)
+                || (role.is_protect() && role.is_short())
+                || (role.is_target() && role.is_short())
+                || (role.is_entry() && role.is_long())
+    );
+    if !should_close {
+        return None;
+    }
+    let full_close =
+        !role.is_target() || size_fraction.unwrap_or(1.0) >= 1.0 - crate::backtest::EPSILON;
+    Some(if full_close {
+        state.quantity.abs()
+    } else {
+        state.quantity.abs() * size_fraction.unwrap_or(1.0)
+    })
+}
+
+fn fill_exceeds_volume_cap(
+    config: &BacktestConfig,
+    requested_quantity: Option<f64>,
+    bar_volume: f64,
+) -> bool {
+    let Some(max_fill_pct) = config.max_volume_fill_pct else {
+        return false;
+    };
+    let Some(quantity) = requested_quantity else {
+        return false;
+    };
+    if !quantity.is_finite() || quantity <= crate::backtest::EPSILON {
+        return false;
+    }
+    let max_quantity = bar_volume.max(0.0) * max_fill_pct;
+    quantity > max_quantity + crate::backtest::EPSILON
 }
 
 fn classify_exit(role: SignalRole) -> TradeExitClassification {

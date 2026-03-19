@@ -300,7 +300,7 @@ Paper mode reuses the same:
 
 Backtest, walk-forward, and optimize results now expose richer machine-readable diagnostics on top of the existing order/trade summaries:
 
-- cohort summaries by side, exit classification, weekday/hour UTC, fixed 4-hour UTC time buckets, holding-time bucket, and active exported bool state
+- cohort summaries by side, exit classification, weekday/hour UTC, fixed 4-hour UTC time buckets, holding-time bucket, active regime state, and active exported bool state
 - drawdown duration and stagnation diagnostics
 - baseline comparisons against flat cash and execution-asset buy-and-hold, plus bounded date-perturbation reruns on top-level backtests
 - source alignment diagnostics that show degraded bars and synthetic supplemental updates
@@ -385,6 +385,7 @@ let result = run_backtest_with_sources(
         taker_fee_bps: 5.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 2.0,
+        max_volume_fill_pct: Some(0.10),
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
@@ -427,6 +428,7 @@ let result = run_walk_forward_with_sources(
             taker_fee_bps: 5.0,
             execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
+        max_volume_fill_pct: Some(0.10),
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
@@ -477,6 +479,7 @@ let result = run_walk_forward_sweep_with_source(
                 taker_fee_bps: 5.0,
                 execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
+        max_volume_fill_pct: Some(0.10),
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
@@ -540,6 +543,7 @@ let result = run_optimize_with_source(
             taker_fee_bps: 5.0,
             execution_fee_schedules: std::collections::BTreeMap::new(),
             slippage_bps: 2.0,
+        max_volume_fill_pct: Some(0.10),
             diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
             perp: None,
             perp_context: None,
@@ -555,6 +559,7 @@ let result = run_optimize_with_source(
                 taker_fee_bps: 5.0,
                 execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 2.0,
+        max_volume_fill_pct: Some(0.10),
                 diagnostics_detail: palmscript::DiagnosticsDetailMode::SummaryOnly,
                 perp: None,
                 perp_context: None,
@@ -620,7 +625,8 @@ iteration. It currently includes:
 - per-trade diagnostics with entry and exit snapshots, MAE, MFE, holding time, and exit classification
 - aggregate summaries such as order fill rate, average bars to fill, average bars held, average MAE/MFE, and counts of signal, protect, target, reversal, and liquidation exits
 - capture summaries that compare strategy return with execution-asset return, time spent flat or in market, and opportunity cost while flat
-- export summaries for every named `export`, including numeric distribution stats and bool regime/setup activation counts
+- export summaries for every named `export` or `regime`, including numeric distribution stats, bool activation counts, and an explicit regime marker for named regime declarations
+- dedicated active-regime cohorts built from named `regime` declarations alongside the broader active exported bool cohorts
 - bounded opportunity events for bool-export activations and backtest-consumed signal decisions, each with forward-return context over `1`, `6`, and `24` execution bars
 
 To make regime and setup context available to diagnostics, export those fields
@@ -775,6 +781,7 @@ Enum namespaces:
 Deterministic fill rules:
 
 - `market(venue = exec)`: fills on the next eligible execution-bar open; buy-side fills use `open * (1 + slippage_bps / 10_000)`, sell-side fills use `open * (1 - slippage_bps / 10_000)`, and fees use the taker rate from the resolved fee schedule
+- when `max_volume_fill_pct` is set, any would-be fill whose quantity exceeds `bar.volume * max_volume_fill_pct` is cancelled with `VolumeParticipationExceeded` instead of being partially filled
 - `limit(...)`: fills on the first eligible bar whose range crosses the limit; the fill price is the better of `open` and `limit`, and resting fills use the maker rate
 - `stop_market(...)`: triggers on the first eligible bar whose range crosses the stop; the fill price is the worse of `open` and `trigger_price`, and fills use the taker rate
 - `take_profit_market(...)`: triggers on the first eligible bar whose range crosses the trigger; the fill price is the better of `open` and `trigger_price`, and fills use the taker rate

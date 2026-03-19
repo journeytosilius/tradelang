@@ -91,6 +91,8 @@ Use `summary` for normal iterative tuning. Use `full-trace` when you want one ty
 
 The same backtest-oriented commands also require at least one declared `execution` alias. When the script declares exactly one `execution` alias, the CLI selects it automatically. Repeated `--execution-source` flags still activate portfolio mode, which evaluates the compiled strategy logic for each selected execution alias under one shared equity ledger by default. Pass `--spot-virtual-rebalance` on multi-venue spot runs when you want PalmScript to split quote capital evenly across the selected aliases and transfer quote between them automatically before long entries. That mode is spot-only and long/flat-only in v1.
 
+Use `--max-volume-fill-pct 0.10` when you want to reject simulated fills above 10% of an execution bar volume instead of assuming full liquidity; PalmScript cancels those fills deterministically rather than modeling partial fills.
+
 Portfolio scripts can declare compile-time caps directly in the source:
 
 ```palmscript

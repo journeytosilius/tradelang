@@ -96,6 +96,7 @@ fn config(alias: &str) -> BacktestConfig {
         taker_fee_bps: 0.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
+        max_volume_fill_pct: None,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: None,
         perp_context: None,
@@ -509,6 +510,128 @@ plot(spot.close)",
 }
 
 #[test]
+fn backtest_marks_regime_exports_and_active_regime_cohorts() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+regime strong = state(spot.close > spot.close[1], spot.close < spot.close[1])
+entry long = strong
+entry short = false
+exit long = !strong
+exit short = true
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let bars = vec![
+        bar(0, 100.0, 100.0),
+        bar(60_000, 100.0, 105.0),
+        bar(120_000, 105.0, 106.0),
+        bar(180_000, 106.0, 104.0),
+        bar(240_000, 104.0, 103.0),
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), config("spot"))
+        .expect("backtest should run");
+
+    let regime_summary = result
+        .diagnostics
+        .export_summaries
+        .iter()
+        .find_map(|summary| match summary {
+            palmscript::ExportDiagnosticSummary::Bool(summary) if summary.name == "strong" => {
+                Some(summary)
+            }
+            _ => None,
+        })
+        .expect("regime summary should exist");
+    assert!(regime_summary.is_regime);
+    assert_eq!(result.diagnostics.cohorts.by_active_regime.len(), 1);
+    assert_eq!(
+        result.diagnostics.cohorts.by_active_regime[0].name,
+        "strong"
+    );
+    assert_eq!(
+        result.diagnostics.cohorts.by_active_regime[0].active_trade_count,
+        1
+    );
+}
+
+#[test]
+fn backtest_cancels_fills_that_exceed_volume_participation_cap() {
+    let compiled = compile(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution spot = binance.spot(\"BTCUSDT\")
+entry long = spot.close > spot.close[1]
+entry short = false
+exit long = false
+exit short = true
+order entry long = market(venue = spot)
+order entry short = market(venue = spot)
+order exit long = market(venue = spot)
+order exit short = market(venue = spot)
+plot(spot.close)",
+    )
+    .expect("script should compile");
+    let mut entry_fill_bar = bar(120_000, 110.0, 111.0);
+    entry_fill_bar.volume = 1.0;
+    let bars = vec![
+        bar(0, 100.0, 100.0),
+        bar(60_000, 100.0, 110.0),
+        entry_fill_bar,
+    ];
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: bars.clone(),
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars,
+            },
+        ],
+    };
+    let mut cfg = config("spot");
+    cfg.max_volume_fill_pct = Some(0.5);
+
+    let result = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), cfg)
+        .expect("backtest should run");
+
+    assert!(result.fills.is_empty());
+    assert!(result.trades.is_empty());
+    assert_eq!(result.orders.len(), 1);
+    assert_eq!(result.orders[0].status, OrderStatus::Cancelled);
+    assert_eq!(
+        result.orders[0].end_reason,
+        Some(OrderEndReason::VolumeParticipationExceeded)
+    );
+}
+
+#[test]
 fn backtest_reports_time_bucket_cohorts() {
     let compiled = compile(
         "interval 1m
@@ -567,6 +690,7 @@ fn binance_perp_config(alias: &str, leverage: f64, mark_bars: Vec<Bar>) -> Backt
         taker_fee_bps: 0.0,
         execution_fee_schedules: std::collections::BTreeMap::new(),
         slippage_bps: 0.0,
+        max_volume_fill_pct: None,
         diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
         perp: Some(PerpBacktestConfig {
             leverage,
@@ -653,6 +777,27 @@ fn rejects_invalid_backtest_config() {
     let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), invalid)
         .expect_err("expected invalid slippage");
     assert!(matches!(err, BacktestError::InvalidSlippageBps { .. }));
+
+    let runtime = SourceRuntimeConfig {
+        base_interval: Interval::Min1,
+        feeds: vec![
+            SourceFeed {
+                source_id: 0,
+                interval: Interval::Min1,
+                bars: vec![bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0)],
+            },
+            SourceFeed {
+                source_id: 1,
+                interval: Interval::Min1,
+                bars: vec![bar(support::JAN_1_2024_UTC_MS, 10.0, 10.0)],
+            },
+        ],
+    };
+    let mut invalid = config("spot");
+    invalid.max_volume_fill_pct = Some(0.0);
+    let err = run_backtest_with_sources(&compiled, runtime, VmLimits::default(), invalid)
+        .expect_err("expected invalid volume fill cap");
+    assert!(matches!(err, BacktestError::InvalidMaxVolumeFillPct { .. }));
 }
 
 #[test]

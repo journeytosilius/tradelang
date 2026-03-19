@@ -201,7 +201,7 @@ Rules:
 - all forms are top-level only
 - duplicate names in the same scope are rejected
 - `regime` requires `bool`, `series<bool>`, or `na` and is intended for persistent market-state series
-- `regime` names become bindings after the declaration point and are recorded with ordinary exported diagnostics
+- `regime` names become bindings after the declaration point and are recorded with ordinary exported diagnostics plus dedicated active-regime cohorts
 - `trigger` names become bindings after the declaration point
 - `entry long` and `entry short` are compatibility aliases for `entry1 long` and `entry1 short`
 - `entry1`, `entry2`, and `entry3` are staged backtest entry signal declarations

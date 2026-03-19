@@ -26,7 +26,16 @@ pub(crate) fn build_cohort_diagnostics(
         by_hour_utc: build_hour_summaries(trade_diagnostics),
         by_time_bucket_utc: build_time_bucket_summaries(trade_diagnostics),
         by_holding_time: build_holding_time_summaries(trade_diagnostics),
-        by_active_export: build_active_export_summaries(trade_diagnostics, export_summaries),
+        by_active_regime: build_active_export_summaries(
+            trade_diagnostics,
+            export_summaries,
+            |summary| summary.is_regime,
+        ),
+        by_active_export: build_active_export_summaries(
+            trade_diagnostics,
+            export_summaries,
+            |_| true,
+        ),
         by_entry_module: build_entry_module_summaries(trade_diagnostics),
     }
 }
@@ -445,6 +454,13 @@ pub(crate) fn build_backtest_hints(
             value: Some(diagnostics_summary.average_mfe_pct - diagnostics_summary.average_mae_pct),
         });
     }
+    if let Some((name, active_share, edge_gap)) = dominant_regime_concentration(cohorts) {
+        hints.push(ImprovementHint {
+            kind: ImprovementHintKind::EdgeConcentrated,
+            metric: Some(format!("regime:{name}:active_trade_share")),
+            value: Some(active_share.max(edge_gap)),
+        });
+    }
     hints
 }
 
@@ -655,12 +671,16 @@ fn build_holding_time_summaries(
 fn build_active_export_summaries(
     trade_diagnostics: &[TradeDiagnostic],
     export_summaries: &[ExportDiagnosticSummary],
+    include: impl Fn(&crate::backtest::BoolExportDiagnosticSummary) -> bool,
 ) -> Vec<BoolExportActiveTradeSummary> {
     let mut summaries = Vec::new();
     for summary in export_summaries {
         let ExportDiagnosticSummary::Bool(bool_summary) = summary else {
             continue;
         };
+        if !include(bool_summary) {
+            continue;
+        }
         let mut active_trade_count = 0usize;
         let mut inactive_trade_count = 0usize;
         let mut active_wins = 0usize;
@@ -701,6 +721,26 @@ fn build_active_export_summaries(
         });
     }
     summaries
+}
+
+fn dominant_regime_concentration(cohorts: &CohortDiagnostics) -> Option<(String, f64, f64)> {
+    cohorts
+        .by_active_regime
+        .iter()
+        .filter_map(|summary| {
+            let total = summary.active_trade_count + summary.inactive_trade_count;
+            if total < 5 || summary.active_trade_count < 3 {
+                return None;
+            }
+            let active_share = summary.active_trade_count as f64 / total as f64;
+            let edge_gap = summary.active_win_rate - summary.inactive_win_rate;
+            if active_share >= 0.75 && edge_gap >= 0.20 {
+                Some((summary.name.clone(), active_share, edge_gap))
+            } else {
+                None
+            }
+        })
+        .max_by(|left, right| left.1.total_cmp(&right.1))
 }
 
 fn build_entry_module_summaries(

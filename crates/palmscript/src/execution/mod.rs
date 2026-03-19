@@ -92,6 +92,8 @@ pub struct PaperSessionConfig {
     #[serde(default)]
     pub execution_fee_schedules: std::collections::BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,
+    #[serde(default)]
+    pub max_volume_fill_pct: Option<f64>,
     pub diagnostics_detail: DiagnosticsDetailMode,
     pub leverage: Option<f64>,
     pub margin_mode: Option<PerpMarginMode>,

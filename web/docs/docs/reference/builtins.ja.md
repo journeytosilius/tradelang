@@ -21,7 +21,7 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - インジケーター: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helper: `above`, `below`, `between`, `outside`
 - crossing helper: `cross`, `crossover`, `crossunder`
-- venue-selection helper: `cheapest`, `richest`, `spread_bps`
+- venue-selection helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - null helper: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series / window helper: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helper: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
@@ -40,7 +40,8 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - アクティブバー上で各 alias の現在の execution close を比較します
 - `cheapest(...)` は現在 close が最も低い alias を返します
 - `richest(...)` は現在 close が最も高い alias を返します
-- 参照された alias のいずれかにアクティブバー上の現在 execution close がなければ結果は `na` です
+- アクティブバー上に現在 execution close がない alias はスキップされます
+- 参照された alias がすべてアクティブバー上で利用できない場合、結果は `na` です
 - 結果型は `execution_alias` です
 
 これらの selector 結果は、alias との等価比較や spread helper のような
@@ -56,6 +57,21 @@ PalmScript は現在、次の builtin カテゴリを公開します。
 - 参照された alias のどちらかにアクティブバー上の現在 execution close がなければ結果は `na` です
 - 結果型は、アクティブな更新クロックに従って `float` または `series<float>` です
 
+### `rank_asc(target_exec, exec_a, exec_b, ...)` と `rank_desc(target_exec, exec_a, exec_b, ...)`
+
+ルール:
+
+- 合計で少なくとも 3 つの宣言済み `execution` alias が必要です。内訳は target alias 1 つと比較対象 alias 2 つ以上です
+- 第 1 引数が target alias で、残りの引数が比較集合になります
+- 各引数は `execution_alias` または `na` でなければなりません
+- 指定した比較集合の現在 execution close を順位付けします
+- `rank_asc(...)` は最も低い現在 close に rank `1` を割り当てます
+- `rank_desc(...)` は最も高い現在 close に rank `1` を割り当てます
+- 同値は比較引数の順序で決定論的に解決されます
+- アクティブバー上に現在 execution close がない alias はスキップされます
+- target alias がアクティブバー上で利用できない、または順位集合に含まれていない場合、結果は `na` です
+- 結果型は、アクティブな更新クロックに従って `float` または `series<float>` です
+
 例:
 
 ```palmscript
@@ -64,6 +80,7 @@ execution gt = gate.spot("BTC_USDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
 ```
 
 ## タプル値 Builtins

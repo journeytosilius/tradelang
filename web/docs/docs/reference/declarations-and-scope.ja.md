@@ -158,7 +158,7 @@ size target1 long = 0.5
 - すべての形式はトップレベル専用
 - 同一スコープでの重複名は拒否される
 - `regime` は `bool`、`series<bool>`、または `na` を要求し、持続的な市場状態シリーズ向けである
-- `regime` 名は宣言以降の束縛になり、通常の export 診断とともに記録される
+- `regime` 名は宣言以降の束縛になり、通常の export 診断に加えて専用の active-regime cohort とともに記録される
 - `trigger` 名は宣言以降の束縛になる
 - `entry long` と `entry short` は `entry1 long` と `entry1 short` の互換エイリアス
 - `entry1`、`entry2`、`entry3` は段階的なバックテスト entry シグナル宣言

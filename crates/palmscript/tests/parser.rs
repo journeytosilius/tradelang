@@ -207,6 +207,7 @@ execution gt = gate.spot(\"BTC_USDT\")
 export best_is_bn = cheapest(bn, gt) == bn
 export worst_is_gt = richest(bn, gt) == gt
 export spread = spread_bps(bn, gt)
+export bn_rank = rank_desc(bn, bn, gt)
 plot(spot.close)",
     )
     .expect("venue-selection builtins should compile");
@@ -283,6 +284,18 @@ execution gt = gate.spot(\"BTC_USDT\")
 plot(cheapest(spot.close, bn))",
     );
     assert!(message.contains("cheapest requires declared execution-alias arguments"));
+}
+
+#[test]
+fn rejects_non_execution_alias_rank_target() {
+    let message = compile_err(
+        "interval 1m
+source spot = binance.spot(\"BTCUSDT\")
+execution bn = binance.spot(\"BTCUSDT\")
+execution gt = gate.spot(\"BTC_USDT\")
+plot(rank_desc(spot.close, bn, gt))",
+    );
+    assert!(message.contains("rank_desc requires an execution-alias target as the first argument"));
 }
 
 #[test]

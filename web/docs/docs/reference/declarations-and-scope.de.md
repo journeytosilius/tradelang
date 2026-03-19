@@ -171,7 +171,7 @@ Regeln:
 - alle Formen sind nur auf Top-Level erlaubt
 - doppelte Namen im selben Scope werden abgelehnt
 - `regime` erfordert `bool`, `series<bool>` oder `na` und ist fuer persistente Marktzustands-Serien gedacht
-- `regime`-Namen werden nach ihrem Deklarationspunkt zu Bindungen und mit gewoehnlichen exportierten Diagnosen erfasst
+- `regime`-Namen werden nach ihrem Deklarationspunkt zu Bindungen und mit gewoehnlichen exportierten Diagnosen plus eigenen Active-Regime-Kohorten erfasst
 - `trigger`-Namen werden nach ihrem Deklarationspunkt zu Bindungen
 - `entry long` und `entry short` sind Kompatibilitaets-Aliase fuer
   `entry1 long` und `entry1 short`

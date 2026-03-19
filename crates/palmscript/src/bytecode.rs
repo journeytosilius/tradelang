@@ -261,6 +261,8 @@ pub struct OutputDecl {
     pub name: String,
     pub kind: OutputKind,
     pub signal_role: Option<SignalRole>,
+    #[serde(default)]
+    pub is_regime: bool,
     pub ty: Type,
     pub slot: u16,
 }

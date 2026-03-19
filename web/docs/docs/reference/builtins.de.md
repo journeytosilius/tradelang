@@ -30,7 +30,7 @@ PalmScript exponiert derzeit diese Builtin-Kategorien:
   und [Mathematik, Preis und Statistik](indicators-math-price-statistics.md)
 - relationale Helper: `above`, `below`, `between`, `outside`
 - Kreuzungs-Helper: `cross`, `crossover`, `crossunder`
-- Venue-Selection-Helper: `cheapest`, `richest`, `spread_bps`
+- Venue-Selection-Helper: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - Null-Helper: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - Serien- und Fenster-Helper: `change`, `highest`, `lowest`, `highestbars`,
@@ -55,7 +55,8 @@ Regeln:
 - sie vergleichen den aktuellen Execution-Close jedes Alias auf der aktiven Bar
 - `cheapest(...)` liefert den Alias mit dem niedrigsten aktuellen Close
 - `richest(...)` liefert den Alias mit dem hoechsten aktuellen Close
-- wenn ein referenzierter Alias auf der aktiven Bar keinen aktuellen Execution-Close hat, ist das Ergebnis `na`
+- Aliasse ohne aktuellen Execution-Close auf der aktiven Bar werden uebersprungen
+- wenn jeder referenzierte Alias auf der aktiven Bar fehlt, ist das Ergebnis `na`
 - der Ergebnistyp ist `execution_alias`
 
 Die Selektor-Ergebnisse sind fuer weitere Execution-Alias-Logik wie
@@ -72,6 +73,21 @@ Regeln:
 - wenn einer der referenzierten Aliasse auf der aktiven Bar keinen aktuellen Execution-Close hat, ist das Ergebnis `na`
 - der Ergebnistyp ist `float` oder `series<float>` gemaess dem aktiven Aktualisierungstakt
 
+### `rank_asc(target_exec, exec_a, exec_b, ...)` und `rank_desc(target_exec, exec_a, exec_b, ...)`
+
+Regeln:
+
+- sie benoetigen insgesamt mindestens drei deklarierte `execution`-Aliasse: einen Zielalias und mindestens zwei Vergleichs-Aliasse
+- das erste Argument ist der Zielalias; alle weiteren Argumente bilden die Vergleichsmenge
+- jedes Argument muss ein `execution_alias` oder `na` sein
+- sie ordnen die aktuellen Execution-Closes innerhalb der angegebenen Vergleichsmenge
+- `rank_asc(...)` vergibt Rang `1` an den niedrigsten aktuellen Close
+- `rank_desc(...)` vergibt Rang `1` an den hoechsten aktuellen Close
+- Gleichstaende werden deterministisch ueber die Reihenfolge der Vergleichsargumente aufgeloest
+- Aliasse ohne aktuellen Execution-Close auf der aktiven Bar werden uebersprungen
+- wenn der Zielalias auf der aktiven Bar fehlt oder nicht Teil der Rangmenge ist, ist das Ergebnis `na`
+- der Ergebnistyp ist `float` oder `series<float>` gemaess dem aktiven Aktualisierungstakt
+
 Beispiel:
 
 ```palmscript
@@ -80,6 +96,7 @@ execution gt = gate.spot("BTC_USDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
 ```
 
 ## Tupelwertige Builtins

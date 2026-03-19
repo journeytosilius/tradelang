@@ -19,6 +19,7 @@ use crate::types::Type;
 pub(crate) struct PreparedExport {
     pub output_id: usize,
     pub name: String,
+    pub is_regime: bool,
     pub value_type: crate::backtest::ExportValueType,
 }
 
@@ -390,6 +391,7 @@ fn collect_exports(compiled: &CompiledProgram) -> Vec<PreparedExport> {
             Some(PreparedExport {
                 output_id,
                 name: decl.name.clone(),
+                is_regime: decl.is_regime,
                 value_type,
             })
         })

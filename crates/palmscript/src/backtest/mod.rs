@@ -48,6 +48,8 @@ pub struct BacktestConfig {
     pub execution_fee_schedules: BTreeMap<String, FeeSchedule>,
     pub slippage_bps: f64,
     #[serde(default)]
+    pub max_volume_fill_pct: Option<f64>,
+    #[serde(default)]
     pub diagnostics_detail: DiagnosticsDetailMode,
     pub perp: Option<PerpBacktestConfig>,
     pub perp_context: Option<PerpBacktestContext>,
@@ -218,6 +220,7 @@ pub enum OrderEndReason {
     InvalidRiskPct,
     InvalidRiskDistance,
     InsufficientCollateral,
+    VolumeParticipationExceeded,
     PortfolioControlRejected,
     IocUnfilled,
     FokUnfilled,
@@ -484,6 +487,8 @@ pub struct NumericExportDiagnosticSummary {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BoolExportDiagnosticSummary {
     pub name: String,
+    #[serde(default)]
+    pub is_regime: bool,
     pub sample_count: usize,
     pub na_count: usize,
     pub true_count: usize,
@@ -820,6 +825,9 @@ pub struct CohortDiagnostics {
     #[serde(default)]
     pub by_time_bucket_utc: Vec<TimeBucketUtcDiagnosticSummary>,
     pub by_holding_time: Vec<HoldingTimeBucketSummary>,
+    #[serde(default)]
+    pub by_active_regime: Vec<BoolExportActiveTradeSummary>,
+    #[serde(default)]
     pub by_active_export: Vec<BoolExportActiveTradeSummary>,
     #[serde(default)]
     pub by_entry_module: Vec<EntryModuleDiagnosticSummary>,
@@ -1018,6 +1026,8 @@ pub enum BacktestError {
     },
     #[error("backtest slippage_bps must be finite and >= 0, found {value}")]
     InvalidSlippageBps { value: f64 },
+    #[error("backtest max_volume_fill_pct must be finite and > 0 and <= 1, found {value}")]
+    InvalidMaxVolumeFillPct { value: f64 },
     #[error("backtest leverage must be finite and >= 1.0, found {value}")]
     InvalidLeverage { value: f64 },
     #[error("backtest only supports isolated perp margin mode, found {mode:?}")]
@@ -1397,6 +1407,11 @@ fn validate_config(config: &BacktestConfig) -> Result<(), BacktestError> {
         return Err(BacktestError::InvalidSlippageBps {
             value: config.slippage_bps,
         });
+    }
+    if let Some(value) = config.max_volume_fill_pct {
+        if !value.is_finite() || value <= 0.0 || value > 1.0 {
+            return Err(BacktestError::InvalidMaxVolumeFillPct { value });
+        }
     }
     if let Some(perp) = &config.perp {
         if !perp.leverage.is_finite() || perp.leverage < 1.0 {

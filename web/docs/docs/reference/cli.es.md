@@ -98,6 +98,7 @@ palmscript run backtest <script.ps> --from <unix_ms> --to <unix_ms> \
   [--fee-schedule <alias:maker:taker>]... \
   [--set name=value]... \
   [--slippage-bps <N>] \
+  [--max-volume-fill-pct <0..1>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
@@ -111,6 +112,7 @@ Additional diagnostics flag:
 - repeat `--execution-source <alias>` to activate portfolio mode across the selected execution aliases
 - `--spot-virtual-rebalance`: optional multi-venue spot-only portfolio mode that transfers quote between the selected venue ledgers automatically before long entries
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
+- `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
 
 ## `palmscript run walk-forward`
 
@@ -126,6 +128,7 @@ palmscript run walk-forward <script.ps> --from <unix_ms> --to <unix_ms> \
   [--fee-schedule <alias:maker:taker>]... \
   [--set name=value]... \
   [--slippage-bps <N>] \
+  [--max-volume-fill-pct <0..1>] \
   [--diagnostics summary|full-trace] \
   [--format json|text]
 ```
@@ -142,6 +145,7 @@ Additional diagnostics flag:
 - repeat `--execution-source <alias>` to activate portfolio mode across the selected execution aliases
 - `--spot-virtual-rebalance`: optional multi-venue spot-only portfolio mode that transfers quote between the selected venue ledgers automatically before long entries
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
+- `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
 
 ## `palmscript run optimize`
 
@@ -194,6 +198,7 @@ Arguments and flags:
 - `--taker-fee-bps <N>`: required global taker fee in basis points for execution-oriented runs
 - `--fee-schedule <alias:maker:taker>`: optional execution-alias-specific maker/taker fee override; repeat per alias
 - `--slippage-bps <N>`: slippage model in basis points; default `2`
+- `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - `--train-bars <N>`: in-sample bars per walk-forward segment
@@ -231,6 +236,7 @@ Default safety behavior:
 - repeated `--execution-source` flags activate portfolio mode, which seeds one explicit ledger per selected execution alias from `initial_capital`
 - `--spot-virtual-rebalance` switches multi-venue spot backtests and optimize runs to long/flat quote-wallet accounting with automatic quote transfers between aliases
 - execution-oriented runs require explicit `--maker-fee-bps` and `--taker-fee-bps`; repeat `--fee-schedule <alias:maker:taker>` to override one selected alias
+- `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
 - trading scripts require at least one declared `execution` target in the script
 - trading scripts also require matching explicit `order ...` templates for every declared `entry` / `exit` signal role
 - portfolio scripts can declare `max_positions`, `max_long_positions`, `max_short_positions`, `max_gross_exposure_pct`, `max_net_exposure_pct`, and `portfolio_group` to block entries that would exceed shared caps
@@ -245,6 +251,7 @@ palmscript run paper <script.ps> \
   --maker-fee-bps <N> --taker-fee-bps <N> \
   [--fee-schedule <alias:maker:taker>]... \
   [--slippage-bps <N>] \
+  [--max-volume-fill-pct <0..1>] \
   [--leverage <N>] \
   [--margin-mode isolated] \
   [--diagnostics summary|full-trace] \
@@ -261,6 +268,7 @@ Arguments and flags:
 - `--taker-fee-bps <N>`: required global taker fee in basis points for execution-oriented runs
 - `--fee-schedule <alias:maker:taker>`: optional execution-alias-specific maker/taker fee override; repeat per alias
 - `--slippage-bps <N>`: slippage model in basis points; default `2`
+- `--max-volume-fill-pct <0..1>`: optional hard cap on any simulated fill as a fraction of execution-bar volume; fills above the cap are cancelled instead of partially filled
 - `--leverage <N>`: optional isolated leverage for perp execution aliases
 - `--margin-mode isolated`: perp margin mode; only `isolated` is currently supported
 - `--diagnostics summary|full-trace`: diagnostics detail mode; default `summary`

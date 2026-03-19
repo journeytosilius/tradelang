@@ -590,6 +590,8 @@ impl<'a> VmEngine<'a> {
             BuiltinId::Cheapest => self.call_venue_selector(false, arity, args, pc),
             BuiltinId::Richest => self.call_venue_selector(true, arity, args, pc),
             BuiltinId::SpreadBps => self.call_spread_bps(arity, args, pc),
+            BuiltinId::RankAsc => self.call_venue_rank(false, arity, args, pc),
+            BuiltinId::RankDesc => self.call_venue_rank(true, arity, args, pc),
             _ => Err(RuntimeError::UnknownBuiltin { builtin_id }),
         }
     }
@@ -668,6 +670,55 @@ impl<'a> VmEngine<'a> {
         Ok(Value::F64(
             ((sell_price - buy_price) / buy_price) * 10_000.0,
         ))
+    }
+
+    fn call_venue_rank(
+        &self,
+        prefer_highest: bool,
+        arity: usize,
+        args: Vec<Value>,
+        pc: usize,
+    ) -> Result<Value, RuntimeError> {
+        if arity < 3 {
+            return Err(RuntimeError::ArityMismatch {
+                builtin: if prefer_highest {
+                    "rank_desc"
+                } else {
+                    "rank_asc"
+                },
+                expected: 3,
+                found: arity,
+            });
+        }
+        let Some(target_alias) = expect_execution_alias(args[0].clone(), pc)? else {
+            return Ok(Value::NA);
+        };
+        let mut ranked = Vec::with_capacity(arity.saturating_sub(1));
+        for (candidate_index, value) in args.into_iter().skip(1).enumerate() {
+            let Some(execution_id) = expect_execution_alias(value, pc)? else {
+                continue;
+            };
+            let Some(price) = self.execution_price(execution_id, pc)? else {
+                continue;
+            };
+            ranked.push((candidate_index, execution_id, price));
+        }
+        ranked.sort_by(|left, right| {
+            let price_cmp = if prefer_highest {
+                right.2.total_cmp(&left.2)
+            } else {
+                left.2.total_cmp(&right.2)
+            };
+            price_cmp.then_with(|| left.0.cmp(&right.0))
+        });
+        let Some((index, _)) = ranked
+            .iter()
+            .enumerate()
+            .find(|(_, (_, execution_id, _))| *execution_id == target_alias)
+        else {
+            return Ok(Value::NA);
+        };
+        Ok(Value::F64((index + 1) as f64))
     }
 
     fn call_unary_math(

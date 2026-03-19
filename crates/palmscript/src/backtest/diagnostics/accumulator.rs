@@ -162,6 +162,7 @@ enum ExportAccumulatorState {
 #[derive(Clone, Debug)]
 struct RegisteredExportState {
     name: String,
+    is_regime: bool,
     state: ExportAccumulatorState,
 }
 
@@ -192,6 +193,7 @@ impl DiagnosticsAccumulator {
             export_name_to_index.insert(export.name.clone(), index);
             registered.push(RegisteredExportState {
                 name: export.name.clone(),
+                is_regime: export.is_regime,
                 state: match export.value_type {
                     ExportValueType::Numeric => {
                         ExportAccumulatorState::Numeric(NumericExportState::default())
@@ -484,6 +486,7 @@ impl DiagnosticsAccumulator {
                 ExportAccumulatorState::Bool(state) => {
                     ExportDiagnosticSummary::Bool(crate::backtest::BoolExportDiagnosticSummary {
                         name: export.name.clone(),
+                        is_regime: export.is_regime,
                         sample_count: state.sample_count,
                         na_count: state.na_count,
                         true_count: state.true_count,

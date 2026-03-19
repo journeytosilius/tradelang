@@ -28,7 +28,7 @@ PalmScript expone actualmente estas categorias builtin:
   [Matematicas, Precio y Estadistica](indicators-math-price-statistics.md)
 - helpers relacionales: `above`, `below`, `between`, `outside`
 - helpers de cruce: `cross`, `crossover`, `crossunder`
-- helpers de seleccion de venue: `cheapest`, `richest`, `spread_bps`
+- helpers de seleccion de venue: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - helpers de nulos: `na(value)`, `nz(value[, fallback])`,
   `coalesce(value, fallback)`
 - helpers de series y ventanas: `change`, `highest`, `lowest`, `highestbars`,
@@ -53,7 +53,8 @@ Reglas:
 - comparan el cierre de ejecucion actual de cada alias en la barra activa
 - `cheapest(...)` devuelve el alias con el cierre actual mas bajo
 - `richest(...)` devuelve el alias con el cierre actual mas alto
-- si algun alias referenciado no tiene cierre de ejecucion actual en la barra activa, el resultado es `na`
+- los aliases sin cierre de ejecucion actual en la barra activa se omiten
+- si todos los aliases referenciados faltan en la barra activa, el resultado es `na`
 - el tipo de resultado es `execution_alias`
 
 Los resultados de seleccion se usan para logica posterior con aliases de
@@ -70,6 +71,21 @@ Reglas:
 - si alguno de los aliases referenciados no tiene cierre de ejecucion actual en la barra activa, el resultado es `na`
 - el tipo de resultado es `float` o `series<float>` segun el reloj de actualizacion activo
 
+### `rank_asc(target_exec, exec_a, exec_b, ...)` y `rank_desc(target_exec, exec_a, exec_b, ...)`
+
+Reglas:
+
+- requieren al menos tres aliases `execution` declarados en total: un alias objetivo y al menos dos aliases comparados
+- el primer argumento es el alias objetivo; los argumentos restantes forman el conjunto comparado
+- cada argumento debe ser un `execution_alias` o `na`
+- ordenan los cierres de ejecucion actuales dentro del conjunto comparado proporcionado
+- `rank_asc(...)` asigna el rango `1` al cierre actual mas bajo
+- `rank_desc(...)` asigna el rango `1` al cierre actual mas alto
+- los empates se resuelven de forma determinista por el orden de los argumentos comparados
+- los aliases sin cierre de ejecucion actual en la barra activa se omiten
+- si el alias objetivo no esta disponible en la barra activa o no forma parte del conjunto ordenado, el resultado es `na`
+- el tipo de resultado es `float` o `series<float>` segun el reloj de actualizacion activo
+
 Ejemplo:
 
 ```palmscript
@@ -78,6 +94,7 @@ execution gt = gate.spot("BTC_USDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
 ```
 
 ## Builtins Que Devuelven Tuplas

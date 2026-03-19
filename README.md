@@ -143,7 +143,8 @@ target/debug/palmscript run backtest \
   crates/palmscript/examples/strategies/portfolio_caps_backtest.ps \
   --from 1704067200000 --to 1704153600000 \
   --execution-source left --execution-source right \
-  --maker-fee-bps 2 --taker-fee-bps 5
+  --maker-fee-bps 2 --taker-fee-bps 5 \
+  --max-volume-fill-pct 0.10
 
 # Optimize a staged strategy with inline input metadata
 target/debug/palmscript run optimize \

@@ -21,7 +21,7 @@ PalmScript currently exposes these builtin categories:
 - indicators: [Trend and Overlap](indicators-trend-and-overlap.md), [Momentum, Volume, and Volatility](indicators-momentum-volume-volatility.md), and [Math, Price, and Statistics](indicators-math-price-statistics.md)
 - relational helpers: `above`, `below`, `between`, `outside`
 - crossing helpers: `cross`, `crossover`, `crossunder`
-- venue-selection helpers: `cheapest`, `richest`, `spread_bps`
+- venue-selection helpers: `cheapest`, `richest`, `spread_bps`, `rank_asc`, `rank_desc`
 - null helpers: `na(value)`, `nz(value[, fallback])`, `coalesce(value, fallback)`
 - series and window helpers: `change`, `highest`, `lowest`, `highestbars`, `lowestbars`, `rising`, `falling`, `cum`
 - event-memory helpers: `state`, `activated`, `deactivated`, `barssince`, `valuewhen`, `highest_since`, `lowest_since`, `highestbars_since`, `lowestbars_since`, `valuewhen_since`, `count_since`
@@ -40,7 +40,8 @@ Rules:
 - they compare the current execution close for each alias on the active bar
 - `cheapest(...)` returns the alias with the lowest current close
 - `richest(...)` returns the alias with the highest current close
-- if any referenced alias has no current execution close on the active bar, the result is `na`
+- aliases without a current execution close on the active bar are skipped
+- if every referenced alias is unavailable on the active bar, the result is `na`
 - the result type is `execution_alias`
 
 Selector results are meant for further execution-alias logic such as equality
@@ -56,6 +57,21 @@ Rules:
 - if either referenced alias has no current execution close on the active bar, the result is `na`
 - the result type is `float` or `series<float>` according to the active update clock
 
+### `rank_asc(target_exec, exec_a, exec_b, ...)` and `rank_desc(target_exec, exec_a, exec_b, ...)`
+
+Rules:
+
+- they require at least three declared `execution` aliases total: one target and at least two ranked candidates
+- the first argument is the target alias; every remaining argument is part of the comparison set
+- every argument must be an `execution_alias` or `na`
+- they rank the current execution close across the provided comparison set
+- `rank_asc(...)` assigns rank `1` to the lowest current close
+- `rank_desc(...)` assigns rank `1` to the highest current close
+- ties are broken deterministically by comparison-argument order
+- aliases without a current execution close on the active bar are skipped
+- if the target alias is unavailable on the active bar or absent from the ranked set, the result is `na`
+- the result type is `float` or `series<float>` according to the active update clock
+
 Example:
 
 ```palmscript
@@ -64,6 +80,7 @@ execution gt = gate.spot("BTC_USDT")
 
 export buy_gate = cheapest(bn, gt) == gt
 export venue_spread_bps = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
 ```
 
 ## Tuple-Valued Builtins

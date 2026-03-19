@@ -170,7 +170,7 @@ Regras:
 - todas as formas sao apenas de nivel superior
 - nomes duplicados no mesmo escopo sao rejeitados
 - `regime` exige `bool`, `series<bool>` ou `na` e se destina a series persistentes de estado de mercado
-- nomes `regime` viram bindings depois do ponto de declaracao e sao registrados com diagnosticos exportados comuns
+- nomes `regime` viram bindings depois do ponto de declaracao e sao registrados com diagnosticos exportados comuns mais cohortes dedicadas de regime ativo
 - nomes `trigger` viram bindings depois do ponto de declaracao
 - `entry long` e `entry short` sao aliases de compatibilidade para
   `entry1 long` e `entry1 short`

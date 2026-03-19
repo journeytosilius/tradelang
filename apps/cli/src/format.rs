@@ -603,8 +603,9 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
                 ExportDiagnosticSummary::Bool(summary) => {
                     let _ = writeln!(
                         out,
-                        "name={} kind=bool rising_edge_count={} true_count={} true_while_flat_count={} trade_count={} win_rate_pct={:.2}",
+                        "name={} kind={} rising_edge_count={} true_count={} true_while_flat_count={} trade_count={} win_rate_pct={:.2}",
                         summary.name,
+                        if summary.is_regime { "regime_bool" } else { "bool" },
                         summary.rising_edge_count,
                         summary.true_count,
                         summary.true_while_flat_count,
@@ -664,6 +665,21 @@ pub fn render_backtest_text(result: &BacktestResult) -> String {
                 summary.trade_count,
                 summary.win_rate * 100.0,
                 summary.average_realized_pnl
+            );
+        }
+    }
+
+    if !result.diagnostics.cohorts.by_active_regime.is_empty() {
+        out.push_str("Active Regime Cohorts\n");
+        for summary in result.diagnostics.cohorts.by_active_regime.iter().take(5) {
+            let _ = writeln!(
+                out,
+                "name={} active_trade_count={} inactive_trade_count={} active_win_rate_pct={:.2} inactive_win_rate_pct={:.2}",
+                summary.name,
+                summary.active_trade_count,
+                summary.inactive_trade_count,
+                summary.active_win_rate * 100.0,
+                summary.inactive_win_rate * 100.0
             );
         }
     }
@@ -813,6 +829,11 @@ pub fn render_paper_manifest_text(manifest: &PaperSessionManifest) -> String {
         );
     }
     let _ = writeln!(out, "slippage_bps={:.2}", manifest.config.slippage_bps);
+    let _ = writeln!(
+        out,
+        "max_volume_fill_pct={}",
+        fmt_opt_f64(manifest.config.max_volume_fill_pct)
+    );
     let _ = writeln!(out, "stop_requested={}", manifest.stop_requested);
     let _ = writeln!(out, "feed_count={}", manifest.feed_summary.total_feeds);
     let _ = writeln!(
@@ -2055,6 +2076,7 @@ mod tests {
                 name: "trend".to_string(),
                 kind: OutputKind::ExportSeries,
                 signal_role: None,
+                is_regime: false,
                 ty: Type::SeriesBool,
                 slot: 1,
             }],
@@ -2221,6 +2243,7 @@ mod tests {
                 export_summaries: vec![ExportDiagnosticSummary::Bool(
                     palmscript::BoolExportDiagnosticSummary {
                         name: "trend_state".to_string(),
+                        is_regime: true,
                         sample_count: 3,
                         na_count: 0,
                         true_count: 2,
@@ -2259,6 +2282,13 @@ mod tests {
                 }],
                 per_bar_trace: vec![],
                 cohorts: palmscript::CohortDiagnostics {
+                    by_active_regime: vec![palmscript::BoolExportActiveTradeSummary {
+                        name: "trend_state".to_string(),
+                        active_trade_count: 1,
+                        inactive_trade_count: 0,
+                        active_win_rate: 1.0,
+                        inactive_win_rate: 0.0,
+                    }],
                     by_time_bucket_utc: vec![palmscript::TimeBucketUtcDiagnosticSummary {
                         start_hour_utc: 0,
                         end_hour_utc: 4,
@@ -2344,9 +2374,11 @@ mod tests {
         assert!(rendered.contains("Date Perturbation"));
         assert!(rendered.contains("positive_scenario_count=1"));
         assert!(rendered.contains("Top Export States"));
+        assert!(rendered.contains("kind=regime_bool"));
         assert!(rendered.contains("Recent Opportunity Events"));
         assert!(rendered.contains("Recent Orders"));
         assert!(rendered.contains("role=long_entry"));
+        assert!(rendered.contains("Active Regime Cohorts"));
         assert!(rendered.contains("Entry Module Attribution"));
         assert!(rendered.contains("Time Bucket Cohorts"));
         assert!(rendered.contains("start_hour_utc=0 end_hour_utc=4"));
@@ -2408,6 +2440,7 @@ mod tests {
                     taker_fee_bps: 0.0,
                     execution_fee_schedules: std::collections::BTreeMap::new(),
                     slippage_bps: 0.0,
+                    max_volume_fill_pct: None,
                     diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                     perp: None,
                     perp_context: None,
@@ -2506,6 +2539,7 @@ mod tests {
                 taker_fee_bps: 0.0,
                 execution_fee_schedules: std::collections::BTreeMap::new(),
                 slippage_bps: 0.0,
+                max_volume_fill_pct: None,
                 diagnostics_detail: DiagnosticsDetailMode::SummaryOnly,
                 leverage: None,
                 margin_mode: None,

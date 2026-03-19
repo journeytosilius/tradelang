@@ -1174,6 +1174,8 @@ execution bn = binance.spot(\"BTCUSDT\")
 execution gt = gate.spot(\"BTC_USDT\")
 export cheapest_is_gt = cheapest(bn, gt) == gt
 export spread = spread_bps(cheapest(bn, gt), richest(bn, gt))
+export bn_rank_desc = rank_desc(bn, bn, gt)
+export gt_rank_asc = rank_asc(gt, bn, gt)
 plot(spot.close)",
     )
     .expect("script compiles");
@@ -1221,4 +1223,11 @@ plot(spot.close)",
     };
     assert!((first_spread - 100.0).abs() < 1e-12);
     assert!((second_spread - ((103.0 - 102.0) / 102.0) * 10_000.0).abs() < 1e-12);
+
+    for point in &outputs.exports[2].points {
+        assert_eq!(point.value, palmscript::OutputValue::F64(1.0));
+    }
+    for point in &outputs.exports[3].points {
+        assert_eq!(point.value, palmscript::OutputValue::F64(1.0));
+    }
 }
