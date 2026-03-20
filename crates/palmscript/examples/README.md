@@ -33,6 +33,7 @@ Start here when you want to see the language in action:
 - `crates/palmscript/examples/strategies/cross_source_spread.ps`: best first stop for source-aware research, spread math, and explicit alias-qualified market fields
 - `crates/palmscript/examples/strategies/indicator_showcase.ps`: compact tour of the richer indicator surface, including `supertrend`, `anchored_vwap`, `donchian`, `percentile`, `zscore`, and `ulcer_index`
 - `crates/palmscript/examples/strategies/weekly_bias.ps`: simple supplemental-interval example showing `use <alias> <interval>` without execution logic
+- `crates/palmscript/examples/strategies/binance_spot_btcusdt_weekly_trend.ps`: Binance USD-M BTCUSDT daily long/short trend follower that flips on confirmed daily uptrends and downtrends
 - `crates/palmscript/examples/strategies/venue_orders_backtest.ps`: cleanest backtest example for explicit `execution`, named-argument order constructors, and attached exit flow
 - `crates/palmscript/examples/strategies/portfolio_caps_backtest.ps`: best portfolio-mode example for repeated `--execution-source`, `portfolio_group`, and exposure/position caps
 - `crates/palmscript/examples/strategies/adaptive_trend_backtest.ps`: strongest optimization example with inline `input ... optimize(...)` metadata, staged entries, staged targets, and stop ratchets
@@ -47,6 +48,7 @@ Additional representative files:
 - `crates/palmscript/examples/strategies/risk_controls_backtest.ps`: staged spot backtest example using declarative `cooldown` and `max_bars_in_trade` controls to gate same-side re-entry and time-box open trades
 - `crates/palmscript/examples/strategies/risk_sized_entry_backtest.ps`: staged spot backtest example using `size entry long = risk_pct(...)` to size from stop distance instead of capital fraction
 - `crates/palmscript/examples/strategies/usdm_long_short_backtest.ps`: Binance USD-M BTCUSDT long-biased perp strategy with staged long entries, staged mark-triggered targets, and a post-target mark-triggered stop ratchet
+- `crates/palmscript/examples/strategies/strategy_runner.ps`: runner-oriented variant of `strategy.ps` that keeps the same entry logic but leaves a larger residual runner and trails post-target profits more loosely
 - `crates/palmscript/examples/strategies/bybit_spot.ps`: Bybit spot market-mode example with a supplemental `1h` feed
 - `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`: Bybit USDT perpetual backtest example with a higher-interval trend filter
 - `crates/palmscript/examples/strategies/gate_spot.ps`: Gate spot market-mode example with a supplemental `4h` feed

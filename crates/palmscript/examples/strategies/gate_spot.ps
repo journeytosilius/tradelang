@@ -1,7 +1,0 @@
-interval 1m
-
-source gt = gate.spot("BTC_USDT")
-use gt 4h
-
-plot(gt.close)
-plot(ema(gt.4h.close, 5))

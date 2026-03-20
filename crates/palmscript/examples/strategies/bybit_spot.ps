@@ -1,7 +1,0 @@
-interval 1m
-
-source bb = bybit.spot("BTCUSDT")
-use bb 1h
-
-plot(bb.close)
-plot(sma(bb.1h.close, 3))

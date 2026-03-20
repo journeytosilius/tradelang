@@ -23,6 +23,7 @@ PalmScript tambien soporta templates de fuente para Bybit y Gate:
 
 Ejemplos representativos incluidos en el repositorio:
 
+- `crates/palmscript/examples/strategies/binance_spot_btcusdt_weekly_trend.ps`
 - `crates/palmscript/examples/strategies/binance_usdm_auxiliary_fields.ps`
 - `crates/palmscript/examples/strategies/bybit_spot.ps`
 - `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`

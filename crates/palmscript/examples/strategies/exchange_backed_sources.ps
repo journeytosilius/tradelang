@@ -1,8 +1,0 @@
-interval 1m
-
-source bn = binance.spot("BTCUSDT")
-source bb = bybit.usdt_perps("BTCUSDT")
-use bb 1h
-
-plot(bn.close - bb.close)
-plot(bb.1h.close)

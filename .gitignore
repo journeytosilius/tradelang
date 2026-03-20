@@ -29,3 +29,7 @@ target-coverage
 .rustup-home
 .cargo-home
 .cargo-install-target
+.historical-cache
+
+/crates/palmscript/examples/strategies/*
+!/crates/palmscript/examples/strategies/trigger_happy.ps

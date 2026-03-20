@@ -1,6 +1,0 @@
-interval 1m
-
-source spot = binance.spot("BTCUSDT")
-source perp = binance.usdm("BTCUSDT")
-
-plot(spot.close - perp.close)

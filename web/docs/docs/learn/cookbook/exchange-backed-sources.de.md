@@ -23,6 +23,7 @@ PalmScript unterstuetzt ausserdem Bybit- und Gate-Quell-Templates:
 
 Relevante mit eingecheckte Beispiele:
 
+- `crates/palmscript/examples/strategies/binance_spot_btcusdt_weekly_trend.ps`
 - `crates/palmscript/examples/strategies/binance_usdm_auxiliary_fields.ps`
 - `crates/palmscript/examples/strategies/bybit_spot.ps`
 - `crates/palmscript/examples/strategies/bybit_usdt_perps_backtest.ps`
