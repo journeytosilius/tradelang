@@ -86,6 +86,7 @@ Historical cache:
 - exchange-backed historical downloads are cached on disk and overlapping windows are reused across `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
 - the cache only marks contiguous bars it actually received as covered, so incomplete live-edge windows are retried automatically on later runs
 - set `PALMSCRIPT_HISTORICAL_FETCH_WORKERS` to tune bounded historical fetch parallelism; the default stays conservatively capped at `4` to avoid hammering venue rate limits
+- set `PALMSCRIPT_BACKTEST_ANALYSIS_WORKERS` to tune bounded CPU parallelism for independent date-perturbation reruns and walk-forward segments; leave it unset to use all available logical CPUs
 - set `PALMSCRIPT_HISTORICAL_CACHE_DIR` to override the cache root; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`
 
 ## `palmscript run backtest`

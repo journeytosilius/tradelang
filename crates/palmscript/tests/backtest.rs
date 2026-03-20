@@ -213,6 +213,20 @@ plot(spot.close)",
     );
     assert_eq!(result.diagnostics.date_perturbation.offset_bars, 1);
     assert_eq!(result.diagnostics.date_perturbation.scenarios.len(), 3);
+    assert_eq!(
+        result
+            .diagnostics
+            .date_perturbation
+            .scenarios
+            .iter()
+            .map(|scenario| scenario.kind)
+            .collect::<Vec<_>>(),
+        vec![
+            palmscript::DatePerturbationKind::LateStart,
+            palmscript::DatePerturbationKind::EarlyEnd,
+            palmscript::DatePerturbationKind::TrimmedBoth,
+        ]
+    );
     assert!(result
         .diagnostics
         .date_perturbation

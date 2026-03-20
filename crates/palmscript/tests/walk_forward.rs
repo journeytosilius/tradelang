@@ -68,6 +68,14 @@ plot(spot.close)";
     .expect("walk-forward should succeed");
 
     assert_eq!(result.segments.len(), 3);
+    assert_eq!(
+        result
+            .segments
+            .iter()
+            .map(|segment| segment.segment_index)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
     assert_eq!(result.stitched_summary.segment_count, 3);
     assert_eq!(result.segments[0].train_from, JAN_1_2024_UTC_MS);
     assert_eq!(

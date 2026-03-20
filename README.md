@@ -21,7 +21,7 @@ The runtime is batteries included:
 - declare exchange-backed `source` feeds directly in the script and let the runtime fetch the data for you
 - run the same strategy in market replay, backtest, walk-forward, optimization, and local paper-trading modes
 - reuse exchange-backed historical downloads from a persistent local cache instead of refetching overlapping windows on every run, while automatically retrying live-edge gaps that were not fully returned yet
-- use all available logical CPUs for optimize runs by default when `--workers` is omitted, with `PALMSCRIPT_OPTIMIZE_DEFAULT_WORKERS` and `PALMSCRIPT_HISTORICAL_FETCH_WORKERS` available to tune optimization workers and bounded historical fetch parallelism
+- use all available logical CPUs for optimize runs by default when `--workers` is omitted, with `PALMSCRIPT_OPTIMIZE_DEFAULT_WORKERS`, `PALMSCRIPT_HISTORICAL_FETCH_WORKERS`, and `PALMSCRIPT_BACKTEST_ANALYSIS_WORKERS` available to tune optimization workers, bounded historical fetch parallelism, and independent backtest analysis reruns
 - inspect typed diagnostics, trades, fills, orders, equity curves, and session state without building extra plumbing around the VM
 
 It is also designed to reduce false confidence:

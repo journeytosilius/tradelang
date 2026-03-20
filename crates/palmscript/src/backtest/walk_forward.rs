@@ -1,6 +1,8 @@
+use std::thread;
+
 use serde::{Deserialize, Serialize};
 
-use crate::backtest::bridge::PreparedExport;
+use crate::backtest::bridge::{PreparedBacktest, PreparedExport};
 use crate::backtest::diagnostics::{
     aggregate_arbitrage_diagnostics, aggregate_transfer_diagnostics, build_arbitrage_diagnostics,
     build_backtest_hints, build_baseline_comparison, build_cohort_diagnostics,
@@ -177,74 +179,54 @@ pub fn run_walk_forward_with_sources(
         config.test_bars,
         config.step_bars,
     );
-    let mut segments = Vec::with_capacity(segment_ranges.len());
+    let evaluation = WalkForwardEvaluationContext {
+        compiled,
+        runtime: &runtime,
+        vm_limits,
+        config: &config,
+        prepared: &prepared,
+        full_execution_bars: &full_execution_bars,
+    };
+    let worker_count = super::backtest_analysis_workers(segment_ranges.len());
+    let mut segment_runs = Vec::with_capacity(segment_ranges.len());
+    for chunk in segment_ranges.chunks(worker_count.max(1)) {
+        let chunk_results = thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for (segment_index, segment) in chunk.iter().copied().enumerate() {
+                let segment_index = segment_runs.len() + segment_index;
+                handles.push(scope.spawn(move || {
+                    evaluate_walk_forward_segment(evaluation, segment_index, segment)
+                }));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for handle in handles {
+                results.push(handle.join().expect("walk-forward worker panicked")?);
+            }
+            Ok::<_, BacktestError>(results)
+        })?;
+        segment_runs.extend(chunk_results);
+    }
+    segment_runs.sort_by_key(|segment_run| segment_run.segment.segment_index);
+
+    let mut segments = Vec::with_capacity(segment_runs.len());
     let mut stitched_equity_curve = Vec::new();
     let mut segment_starting_equity = config.backtest.initial_capital;
 
-    for (segment_index, segment) in segment_ranges.iter().enumerate() {
-        let train_from = full_execution_bars[segment.start_index].time as i64;
-        let train_to = full_execution_bars[segment.train_end_index].time as i64;
-        let test_from = train_to;
-        let test_to = exclusive_end_time(&full_execution_bars, segment.end_index);
-        let runtime_slice = slice_runtime_window(&runtime, train_from, test_to);
-        let mut backtest = config.backtest.clone();
-        backtest.diagnostics_detail = config.diagnostics_detail;
-        let result = run_backtest_with_sources_internal(
-            compiled,
-            runtime_slice,
-            vm_limits,
-            backtest,
-            false,
-        )?;
-
-        let in_sample = summarize_window(
-            &result.equity_curve,
-            &result.trades,
-            &result.diagnostics,
-            0,
-            config.train_bars,
-            config.backtest.initial_capital,
-        );
-        let out_of_sample = summarize_window(
-            &result.equity_curve,
-            &result.trades,
-            &result.diagnostics,
-            config.train_bars,
-            config.train_bars + config.test_bars,
-            in_sample.ending_equity,
-        );
-        let out_of_sample_total_return = out_of_sample.total_return;
+    for segment_run in segment_runs {
         stitch_window(
             &mut stitched_equity_curve,
-            &result.equity_curve,
+            &segment_run.equity_curve,
             config.train_bars,
             config.train_bars + config.test_bars,
-            segment_index,
+            segment_run.segment.segment_index,
             segment_starting_equity,
-            out_of_sample.starting_equity,
+            segment_run.segment.out_of_sample.starting_equity,
         );
         segment_starting_equity = stitched_equity_curve
             .last()
             .map(|point| point.equity)
             .unwrap_or(segment_starting_equity);
-
-        segments.push(WalkForwardSegmentResult {
-            segment_index,
-            train_from,
-            train_to,
-            test_from,
-            test_to,
-            in_sample,
-            out_of_sample,
-            out_of_sample_diagnostics: summarize_segment_diagnostics(
-                &prepared.exports,
-                &result,
-                &full_execution_bars[segment.train_end_index..segment.end_index],
-                config.train_bars,
-                config.train_bars + config.test_bars,
-                out_of_sample_total_return,
-            ),
-        });
+        segments.push(segment_run.segment);
     }
 
     let stitched_summary = summarize_stitched_curve(
@@ -267,11 +249,85 @@ pub fn run_walk_forward_with_sources(
     })
 }
 
+fn evaluate_walk_forward_segment(
+    evaluation: WalkForwardEvaluationContext<'_>,
+    segment_index: usize,
+    segment: SegmentRange,
+) -> Result<WalkForwardSegmentRun, BacktestError> {
+    let train_from = evaluation.full_execution_bars[segment.start_index].time as i64;
+    let train_to = evaluation.full_execution_bars[segment.train_end_index].time as i64;
+    let test_from = train_to;
+    let test_to = exclusive_end_time(evaluation.full_execution_bars, segment.end_index);
+    let runtime_slice = slice_runtime_window(evaluation.runtime, train_from, test_to);
+    let mut backtest = evaluation.config.backtest.clone();
+    backtest.diagnostics_detail = evaluation.config.diagnostics_detail;
+    let result = run_backtest_with_sources_internal(
+        evaluation.compiled,
+        runtime_slice,
+        evaluation.vm_limits,
+        backtest,
+        false,
+    )?;
+
+    let in_sample = summarize_window(
+        &result.equity_curve,
+        &result.trades,
+        &result.diagnostics,
+        0,
+        evaluation.config.train_bars,
+        evaluation.config.backtest.initial_capital,
+    );
+    let out_of_sample = summarize_window(
+        &result.equity_curve,
+        &result.trades,
+        &result.diagnostics,
+        evaluation.config.train_bars,
+        evaluation.config.train_bars + evaluation.config.test_bars,
+        in_sample.ending_equity,
+    );
+    let out_of_sample_total_return = out_of_sample.total_return;
+    Ok(WalkForwardSegmentRun {
+        segment: WalkForwardSegmentResult {
+            segment_index,
+            train_from,
+            train_to,
+            test_from,
+            test_to,
+            in_sample,
+            out_of_sample,
+            out_of_sample_diagnostics: summarize_segment_diagnostics(
+                &evaluation.prepared.exports,
+                &result,
+                &evaluation.full_execution_bars[segment.train_end_index..segment.end_index],
+                evaluation.config.train_bars,
+                evaluation.config.train_bars + evaluation.config.test_bars,
+                out_of_sample_total_return,
+            ),
+        },
+        equity_curve: result.equity_curve,
+    })
+}
+
 #[derive(Clone, Copy)]
 struct SegmentRange {
     start_index: usize,
     train_end_index: usize,
     end_index: usize,
+}
+
+struct WalkForwardSegmentRun {
+    segment: WalkForwardSegmentResult,
+    equity_curve: Vec<crate::backtest::EquityPoint>,
+}
+
+#[derive(Clone, Copy)]
+struct WalkForwardEvaluationContext<'a> {
+    compiled: &'a CompiledProgram,
+    runtime: &'a SourceRuntimeConfig,
+    vm_limits: VmLimits,
+    config: &'a WalkForwardConfig,
+    prepared: &'a PreparedBacktest,
+    full_execution_bars: &'a [crate::runtime::Bar],
 }
 
 fn validate_walk_forward_config(config: &WalkForwardConfig) -> Result<(), BacktestError> {

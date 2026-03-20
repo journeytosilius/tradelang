@@ -15,6 +15,8 @@ mod walk_forward;
 mod walk_forward_sweep;
 
 use std::collections::BTreeMap;
+use std::env;
+use std::thread;
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -31,6 +33,7 @@ use crate::runtime::{slice_runtime_window, Bar, RuntimeStepper, SourceRuntimeCon
 
 const BPS_SCALE: f64 = 10_000.0;
 const EPSILON: f64 = 1e-9;
+const BACKTEST_ANALYSIS_WORKERS_ENV_VAR: &str = "PALMSCRIPT_BACKTEST_ANALYSIS_WORKERS";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BacktestConfig {
@@ -1296,34 +1299,58 @@ fn build_date_perturbation_diagnostics(
     ];
 
     let mut summaries = Vec::new();
-    for (kind, start_index, end_index) in scenarios {
-        if end_index <= start_index + 1 {
-            continue;
-        }
-        let from = execution_bars[start_index].time as i64;
-        let to = perturbation_end_time(execution_bars, end_index);
-        let sliced_runtime = slice_runtime_window(runtime, from, to);
-        let result = run_backtest_with_sources_internal(
-            compiled,
-            sliced_runtime,
-            vm_limits,
-            config.clone(),
-            false,
-        )?;
-        let excess_return_vs_execution_asset =
-            result.summary.total_return - result.diagnostics.capture_summary.execution_asset_return;
-        summaries.push(DatePerturbationScenarioSummary {
-            kind,
-            from,
-            to,
-            total_return: result.summary.total_return,
-            execution_asset_return: result.diagnostics.capture_summary.execution_asset_return,
-            excess_return_vs_execution_asset,
-            trade_count: result.summary.trade_count,
-            max_drawdown: result.summary.max_drawdown,
-        });
+    let scenario_specs = scenarios
+        .into_iter()
+        .enumerate()
+        .filter(|(_, (_, start_index, end_index))| *end_index > *start_index + 1)
+        .collect::<Vec<_>>();
+    let worker_count = backtest_analysis_workers(scenario_specs.len());
+    let mut scenario_results = Vec::with_capacity(scenario_specs.len());
+    for chunk in scenario_specs.chunks(worker_count.max(1)) {
+        let chunk_results = thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for (scenario_index, (kind, start_index, end_index)) in chunk.iter().copied() {
+                handles.push(scope.spawn(move || {
+                    let from = execution_bars[start_index].time as i64;
+                    let to = perturbation_end_time(execution_bars, end_index);
+                    let sliced_runtime = slice_runtime_window(runtime, from, to);
+                    let result = run_backtest_with_sources_internal(
+                        compiled,
+                        sliced_runtime,
+                        vm_limits,
+                        config.clone(),
+                        false,
+                    )?;
+                    let excess_return_vs_execution_asset = result.summary.total_return
+                        - result.diagnostics.capture_summary.execution_asset_return;
+                    Ok::<_, BacktestError>((
+                        scenario_index,
+                        DatePerturbationScenarioSummary {
+                            kind,
+                            from,
+                            to,
+                            total_return: result.summary.total_return,
+                            execution_asset_return: result
+                                .diagnostics
+                                .capture_summary
+                                .execution_asset_return,
+                            excess_return_vs_execution_asset,
+                            trade_count: result.summary.trade_count,
+                            max_drawdown: result.summary.max_drawdown,
+                        },
+                    ))
+                }));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for handle in handles {
+                results.push(handle.join().expect("date perturbation worker panicked")?);
+            }
+            Ok::<_, BacktestError>(results)
+        })?;
+        scenario_results.extend(chunk_results);
     }
-
+    scenario_results.sort_by_key(|(scenario_index, _)| *scenario_index);
+    summaries.extend(scenario_results.into_iter().map(|(_, summary)| summary));
     if summaries.is_empty() {
         return Ok(DatePerturbationDiagnostics::default());
     }
@@ -1364,6 +1391,33 @@ fn build_date_perturbation_diagnostics(
             .count(),
         scenarios: summaries,
     })
+}
+
+pub(crate) fn backtest_analysis_workers(task_count: usize) -> usize {
+    configured_backtest_analysis_workers(
+        task_count,
+        thread::available_parallelism()
+            .map(|parallelism| parallelism.get())
+            .unwrap_or(1),
+        env::var(BACKTEST_ANALYSIS_WORKERS_ENV_VAR)
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .filter(|value| *value > 0),
+    )
+}
+
+fn configured_backtest_analysis_workers(
+    task_count: usize,
+    available_parallelism: usize,
+    configured: Option<usize>,
+) -> usize {
+    if task_count == 0 {
+        return 1;
+    }
+    configured
+        .unwrap_or_else(|| available_parallelism.max(1))
+        .max(1)
+        .min(task_count)
 }
 
 fn perturbation_end_time(execution_bars: &[Bar], end_index: usize) -> i64 {
@@ -1484,5 +1538,22 @@ pub(crate) fn ratio(numerator: usize, denominator: usize) -> f64 {
         0.0
     } else {
         numerator as f64 / denominator as f64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::configured_backtest_analysis_workers;
+
+    #[test]
+    fn configured_backtest_analysis_workers_uses_all_available_parallelism_by_default() {
+        assert_eq!(configured_backtest_analysis_workers(6, 47, None), 6);
+        assert_eq!(configured_backtest_analysis_workers(64, 47, None), 47);
+    }
+
+    #[test]
+    fn configured_backtest_analysis_workers_honors_override() {
+        assert_eq!(configured_backtest_analysis_workers(8, 47, Some(12)), 8);
+        assert_eq!(configured_backtest_analysis_workers(8, 47, Some(3)), 3);
     }
 }
