@@ -63,8 +63,14 @@ impl DmState {
         self.last_high_version = high.version();
         self.last_low_version = low.version();
 
-        let high = expect_buffer_f64(high, 0, pc)?;
-        let low = expect_buffer_f64(low, 0, pc)?;
+        let Some(high) = expect_buffer_f64(high, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+        let Some(low) = expect_buffer_f64(low, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
         let (Some(previous_high), Some(previous_low)) = (self.previous_high, self.previous_low)
         else {
             self.previous_high = Some(high);
@@ -158,9 +164,18 @@ impl DirectionalState {
         }
         self.last_versions = versions;
 
-        let high = expect_buffer_f64(high, 0, pc)?;
-        let low = expect_buffer_f64(low, 0, pc)?;
-        let close = expect_buffer_f64(close, 0, pc)?;
+        let Some(high) = expect_buffer_f64(high, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+        let Some(low) = expect_buffer_f64(low, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
+        let Some(close) = expect_buffer_f64(close, 0, pc)? else {
+            self.cached_output = Value::NA;
+            return Ok(Value::NA);
+        };
         let (Some(previous_high), Some(previous_low), Some(previous_close)) =
             (self.previous_high, self.previous_low, self.previous_close)
         else {
@@ -364,14 +379,14 @@ fn dx_value(tr: f64, plus_dm: f64, minus_dm: f64) -> f64 {
     }
 }
 
-fn expect_buffer_f64(buffer: &SeriesBuffer, offset: usize, pc: usize) -> Result<f64, RuntimeError> {
+fn expect_buffer_f64(
+    buffer: &SeriesBuffer,
+    offset: usize,
+    pc: usize,
+) -> Result<Option<f64>, RuntimeError> {
     match buffer.get(offset) {
-        Value::F64(value) => Ok(value),
-        Value::NA => Err(RuntimeError::TypeMismatch {
-            pc,
-            expected: "f64",
-            found: "na",
-        }),
+        Value::F64(value) => Ok(Some(value)),
+        Value::NA => Ok(None),
         other => Err(RuntimeError::TypeMismatch {
             pc,
             expected: "f64",
@@ -423,5 +438,61 @@ mod tests {
             state.update(&high, &low, &close, 0).unwrap(),
             Value::F64(_)
         ));
+    }
+
+    #[test]
+    fn directional_states_return_na_for_na_bar_and_resume() {
+        let mut dm_state = DmState::new(3, DmKind::Plus);
+        let mut atr_state = DirectionalState::new(3, DirectionalKind::Atr);
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+
+        high.push(Value::F64(10.0));
+        low.push(Value::F64(9.0));
+        close.push(Value::F64(9.5));
+        assert_eq!(dm_state.update(&high, &low, 0).unwrap(), Value::NA);
+        assert_eq!(atr_state.update(&high, &low, &close, 0).unwrap(), Value::NA);
+
+        high.push(Value::NA);
+        low.push(Value::F64(9.5));
+        close.push(Value::F64(9.7));
+        assert_eq!(dm_state.update(&high, &low, 0).unwrap(), Value::NA);
+        assert_eq!(atr_state.update(&high, &low, &close, 0).unwrap(), Value::NA);
+
+        for (h, l, c) in [(12.0, 10.0, 11.0), (13.0, 11.0, 12.0), (15.0, 12.0, 14.0)] {
+            high.push(Value::F64(h));
+            low.push(Value::F64(l));
+            close.push(Value::F64(c));
+            let _ = dm_state.update(&high, &low, 0).unwrap();
+            let _ = atr_state.update(&high, &low, &close, 0).unwrap();
+        }
+
+        assert!(matches!(
+            dm_state.update(&high, &low, 0).unwrap(),
+            Value::F64(_)
+        ));
+        assert!(matches!(
+            atr_state.update(&high, &low, &close, 0).unwrap(),
+            Value::F64(_)
+        ));
+    }
+
+    #[test]
+    fn natr_returns_na_instead_of_error_for_na_bar() {
+        let mut state = DirectionalState::new(3, DirectionalKind::Natr);
+        let mut high = SeriesBuffer::new(8);
+        let mut low = SeriesBuffer::new(8);
+        let mut close = SeriesBuffer::new(8);
+
+        high.push(Value::F64(10.0));
+        low.push(Value::F64(9.0));
+        close.push(Value::F64(9.5));
+        assert_eq!(state.update(&high, &low, &close, 0).unwrap(), Value::NA);
+
+        high.push(Value::F64(12.0));
+        low.push(Value::F64(10.0));
+        close.push(Value::NA);
+        assert_eq!(state.update(&high, &low, &close, 0).unwrap(), Value::NA);
     }
 }

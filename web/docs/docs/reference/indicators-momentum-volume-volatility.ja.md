@@ -73,6 +73,7 @@
 - `dx` は絶対 directional spread を 100 倍した値を返す
 - `adx` は `dx` の Wilder average を返す
 - `adxr` は現在 `adx` と遅延 `adx` の平均を返す
+- アクティブバーで必要な価格入力のいずれかが `na` の場合、そのバーの結果は `na`
 - 結果型は `series<float>`
 
 ## `atr(high, low, close[, length=14])` と `natr(high, low, close[, length=14])`
@@ -84,6 +85,7 @@
 - 指定する場合、`length` は正の整数リテラル
 - `atr` は最初の average true range から seed され、その後 Wilder smoothing を適用する
 - `natr` は `(atr / close) * 100` を返す
+- アクティブバーで必要な価格入力のいずれかが `na` の場合、そのバーの結果は `na`
 - 結果型は `series<float>`
 
 ## `willr(high, low, close[, length=14])`

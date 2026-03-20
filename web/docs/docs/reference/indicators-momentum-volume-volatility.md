@@ -73,6 +73,7 @@ Rules:
 - `dx` returns the absolute directional spread scaled by 100
 - `adx` returns the Wilder average of `dx`
 - `adxr` returns the average of the current `adx` and the lagged `adx`
+- if any required price input on the active bar is `na`, the result is `na` for that bar
 - the result type is `series<float>`
 
 ## `atr(high, low, close[, length=14])` and `natr(high, low, close[, length=14])`
@@ -84,6 +85,7 @@ Rules:
 - if provided, `length` must be a positive integer literal
 - `atr` seeds from the initial average true range and then applies Wilder smoothing
 - `natr` returns `(atr / close) * 100`
+- if any required price input on the active bar is `na`, the result is `na` for that bar
 - the result type is `series<float>`
 
 ## `willr(high, low, close[, length=14])`

@@ -85,6 +85,7 @@ Regeln:
 - `dx` liefert den absoluten Richtungsabstand skaliert mit 100
 - `adx` liefert den Wilder-Durchschnitt von `dx`
 - `adxr` liefert den Mittelwert aus aktuellem `adx` und verzögertem `adx`
+- ist auf dem aktiven Balken ein erforderliches Preisargument `na`, ist das Ergebnis fuer diesen Balken `na`
 - der Ergebnistyp ist `series<float>`
 
 ## `atr(high, low, close[, length=14])` und `natr(high, low, close[, length=14])`
@@ -97,6 +98,7 @@ Regeln:
 - `atr` wird aus dem initialen Average True Range geseedet und anschliessend
   mit Wilder-Smoothing fortgefuehrt
 - `natr` liefert `(atr / close) * 100`
+- ist auf dem aktiven Balken ein erforderliches Preisargument `na`, ist das Ergebnis fuer diesen Balken `na`
 - der Ergebnistyp ist `series<float>`
 
 ## `willr(high, low, close[, length=14])`

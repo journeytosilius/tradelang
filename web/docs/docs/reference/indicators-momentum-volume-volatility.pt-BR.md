@@ -77,6 +77,7 @@ Regras:
 - `dx` retorna o spread direcional absoluto multiplicado por 100
 - `adx` retorna a media Wilder de `dx`
 - `adxr` retorna a media entre o `adx` atual e o `adx` defasado
+- se qualquer preco exigido na barra ativa for `na`, o resultado dessa barra sera `na`
 - o tipo de resultado e `series<float>`
 
 ## `atr(high, low, close[, length=14])` e `natr(high, low, close[, length=14])`
@@ -89,6 +90,7 @@ Regras:
 - `atr` e inicializado a partir do average true range inicial e depois aplica
   a suavizacao de Wilder
 - `natr` retorna `(atr / close) * 100`
+- se qualquer preco exigido na barra ativa for `na`, o resultado dessa barra sera `na`
 - o tipo de resultado e `series<float>`
 
 ## `willr(high, low, close[, length=14])`

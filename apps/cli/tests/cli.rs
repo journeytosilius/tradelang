@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use assert_cmd::prelude::*;
 use mockito::{Matcher, Server};
@@ -36,7 +37,18 @@ fn write_file(dir: &Path, name: &str, contents: &str) -> PathBuf {
 }
 
 fn palmscript_cmd() -> std::process::Command {
-    std::process::Command::new(assert_cmd::cargo::cargo_bin!("palmscript"))
+    static CACHE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    let cache_dir = std::env::temp_dir().join(format!(
+        "palmscript-cli-test-cache-{}-{}",
+        std::process::id(),
+        CACHE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    fs::create_dir_all(&cache_dir).expect("creates isolated historical cache dir");
+
+    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin!("palmscript"));
+    cmd.env("PALMSCRIPT_HISTORICAL_CACHE_DIR", cache_dir);
+    cmd
 }
 
 fn repo_path(relative: &str) -> PathBuf {

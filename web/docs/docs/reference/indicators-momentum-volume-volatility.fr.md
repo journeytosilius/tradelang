@@ -86,6 +86,7 @@ Regles :
 - `dx` renvoie l'ecart directionnel absolu multiplie par 100
 - `adx` renvoie la moyenne Wilder de `dx`
 - `adxr` renvoie la moyenne entre l'`adx` courant et l'`adx` retarde
+- si un prix requis sur la barre active est `na`, le resultat pour cette barre est `na`
 - le type de resultat est `series<float>`
 
 ## `atr(high, low, close[, length=14])` et `natr(high, low, close[, length=14])`
@@ -98,6 +99,7 @@ Regles :
 - `atr` s'initialise a partir de l'average true range initial puis applique le
   lissage Wilder
 - `natr` renvoie `(atr / close) * 100`
+- si un prix requis sur la barre active est `na`, le resultat pour cette barre est `na`
 - le type de resultat est `series<float>`
 
 ## `willr(high, low, close[, length=14])`
