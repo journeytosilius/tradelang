@@ -8,6 +8,7 @@ pub mod gate;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
+use std::thread;
 
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
@@ -34,6 +35,7 @@ const BYBIT_SPOT_WS_URL: &str = "wss://stream.bybit.com/v5/public/spot";
 const BYBIT_USDM_WS_URL: &str = "wss://stream.bybit.com/v5/public/linear";
 const GATE_SPOT_WS_URL: &str = "wss://api.gateio.ws/ws/v4/";
 const GATE_USDM_WS_URL: &str = "wss://fx-ws.gateio.ws/v4/ws/usdt";
+const HISTORICAL_FETCH_WORKERS_ENV_VAR: &str = "PALMSCRIPT_HISTORICAL_FETCH_WORKERS";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MarkPriceBasis {
@@ -188,6 +190,50 @@ struct HistoricalRequestWindow {
     to_ms: i64,
 }
 
+#[derive(Clone, Debug)]
+struct HistoricalFeedFetchSpec {
+    index: usize,
+    source: DeclaredMarketSource,
+    interval: Interval,
+    fields: BTreeSet<MarketField>,
+}
+
+#[derive(Debug)]
+struct HistoricalFeedFetchResult {
+    index: usize,
+    source_id: u16,
+    interval: Interval,
+    bars: Vec<Bar>,
+}
+
+pub fn historical_fetch_workers(task_count: usize) -> usize {
+    configured_historical_fetch_workers(
+        task_count,
+        thread::available_parallelism()
+            .map(|parallelism| parallelism.get())
+            .unwrap_or(1),
+        env::var(HISTORICAL_FETCH_WORKERS_ENV_VAR)
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .filter(|value| *value > 0),
+    )
+}
+
+fn configured_historical_fetch_workers(
+    task_count: usize,
+    available_parallelism: usize,
+    configured: Option<usize>,
+) -> usize {
+    if task_count == 0 {
+        return 1;
+    }
+    let conservative_default = available_parallelism.clamp(1, 4);
+    configured
+        .unwrap_or(conservative_default)
+        .max(1)
+        .min(task_count)
+}
+
 pub fn fetch_source_runtime_config(
     compiled: &CompiledProgram,
     from_ms: i64,
@@ -228,9 +274,8 @@ fn fetch_source_runtime_config_with_cache(
         })?;
 
     let required = collect_required_source_fields(compiled, base_interval);
-
-    let mut feeds = Vec::new();
-    for (requirement, fields) in required {
+    let mut fetch_specs = Vec::with_capacity(required.len());
+    for (index, (requirement, fields)) in required.into_iter().enumerate() {
         let source = compiled
             .program
             .declared_sources
@@ -245,21 +290,79 @@ fn fetch_source_runtime_config_with_cache(
                 interval: requirement.interval.as_str(),
             });
         }
-        let bars = fetch_source_feed_with_cache(
-            &client,
-            source,
-            requirement.interval,
-            window,
-            endpoints,
-            cache,
-            &fields,
-        )?;
-        feeds.push(SourceFeed {
-            source_id: source.id,
+        fetch_specs.push(HistoricalFeedFetchSpec {
+            index,
+            source: source.clone(),
             interval: requirement.interval,
-            bars,
+            fields,
         });
     }
+
+    let worker_count = historical_fetch_workers(fetch_specs.len());
+    let mut feed_results = Vec::with_capacity(fetch_specs.len());
+    for chunk in fetch_specs.chunks(worker_count.max(1)) {
+        let chunk_results = thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for spec in chunk {
+                let client = client.clone();
+                let endpoints = endpoints.clone();
+                let cache = cache.cloned();
+                let alias = spec.source.alias.clone();
+                let template = spec.source.template.as_str();
+                let symbol = spec.source.symbol.clone();
+                let interval = spec.interval.as_str();
+                let spec = spec.clone();
+                handles.push((
+                    alias,
+                    template,
+                    symbol,
+                    interval,
+                    scope.spawn(move || {
+                        fetch_source_feed_with_cache(
+                            &client,
+                            &spec.source,
+                            spec.interval,
+                            window,
+                            &endpoints,
+                            cache.as_ref(),
+                            &spec.fields,
+                        )
+                        .map(|bars| HistoricalFeedFetchResult {
+                            index: spec.index,
+                            source_id: spec.source.id,
+                            interval: spec.interval,
+                            bars,
+                        })
+                    }),
+                ));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for (alias, template, symbol, interval, handle) in handles {
+                let result = handle
+                    .join()
+                    .map_err(|_| ExchangeFetchError::RequestFailed {
+                        alias,
+                        template,
+                        symbol,
+                        interval,
+                        message: "historical feed fetch worker panicked".to_string(),
+                    })??;
+                results.push(result);
+            }
+            Ok::<_, ExchangeFetchError>(results)
+        })?;
+        feed_results.extend(chunk_results);
+    }
+    feed_results.sort_by_key(|result| result.index);
+
+    let feeds = feed_results
+        .into_iter()
+        .map(|result| SourceFeed {
+            source_id: result.source_id,
+            interval: result.interval,
+            bars: result.bars,
+        })
+        .collect();
 
     Ok(SourceRuntimeConfig {
         base_interval,
@@ -904,6 +1007,23 @@ mod tests {
     fn binance_usdm_env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[test]
+    fn configured_historical_fetch_workers_defaults_to_bounded_parallelism() {
+        assert_eq!(super::configured_historical_fetch_workers(8, 47, None), 4);
+    }
+
+    #[test]
+    fn configured_historical_fetch_workers_honors_configured_override() {
+        assert_eq!(
+            super::configured_historical_fetch_workers(8, 47, Some(12)),
+            8
+        );
+        assert_eq!(
+            super::configured_historical_fetch_workers(8, 47, Some(3)),
+            3
+        );
     }
 
     #[test]

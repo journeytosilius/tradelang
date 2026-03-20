@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::thread;
 
 use crate::backtest::{PerpBacktestConfig, PerpBacktestContext, PerpMarginMode};
 use crate::compiler::CompiledProgram;
@@ -32,7 +33,8 @@ pub(crate) fn resolve_perp_contexts(
     let mut shared_perp = None;
     let mut single_context = None;
     let mut portfolio_contexts = BTreeMap::new();
-    for alias in execution_aliases {
+    let mut perp_specs = Vec::new();
+    for (index, alias) in execution_aliases.iter().enumerate() {
         let source = compiled
             .program
             .declared_executions
@@ -55,33 +57,70 @@ pub(crate) fn resolve_perp_contexts(
             SourceTemplate::BinanceUsdm
             | SourceTemplate::BybitUsdtPerps
             | SourceTemplate::GateUsdtPerps => {
-                let perp = PerpBacktestConfig {
-                    leverage: options.leverage.unwrap_or(1.0),
-                    margin_mode: options.margin_mode,
-                };
-                let context = fetch_perp_backtest_context(
-                    source,
-                    options.base_interval,
-                    options.from_ms,
-                    options.to_ms,
-                    endpoints,
-                )
-                .map_err(|err| ExecutionError::Fetch(err.to_string()))?
-                .ok_or_else(|| {
-                    ExecutionError::Fetch(format!(
-                        "missing perp backtest context for execution alias `{}`",
-                        source.alias
-                    ))
-                })?;
-                if shared_perp.is_none() {
-                    shared_perp = Some(perp.clone());
-                }
-                if execution_aliases.len() == 1 {
-                    single_context = Some(context.clone());
-                }
-                portfolio_contexts.insert(alias.clone(), context);
+                perp_specs.push((index, alias.clone(), source.clone()));
             }
         }
+    }
+
+    let worker_count = crate::exchange::historical_fetch_workers(perp_specs.len());
+    let mut perp_results = Vec::with_capacity(perp_specs.len());
+    for chunk in perp_specs.chunks(worker_count.max(1)) {
+        let chunk_results = thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for (index, alias, source) in chunk {
+                let alias = alias.clone();
+                let source = source.clone();
+                let endpoints = endpoints.clone();
+                handles.push((
+                    alias.clone(),
+                    source.template.as_str(),
+                    source.symbol.clone(),
+                    scope.spawn(move || {
+                        let perp = PerpBacktestConfig {
+                            leverage: options.leverage.unwrap_or(1.0),
+                            margin_mode: options.margin_mode,
+                        };
+                        let context = fetch_perp_backtest_context(
+                            &source,
+                            options.base_interval,
+                            options.from_ms,
+                            options.to_ms,
+                            &endpoints,
+                        )
+                        .map_err(|err| ExecutionError::Fetch(err.to_string()))?
+                        .ok_or_else(|| {
+                            ExecutionError::Fetch(format!(
+                                "missing perp backtest context for execution alias `{}`",
+                                source.alias
+                            ))
+                        })?;
+                        Ok::<_, ExecutionError>((*index, alias, perp, context))
+                    }),
+                ));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for (alias, template, symbol, handle) in handles {
+                let result = handle.join().map_err(|_| {
+                    ExecutionError::Runtime(format!(
+                        "perp context worker panicked for `{alias}` ({template}) `{symbol}`"
+                    ))
+                })??;
+                results.push(result);
+            }
+            Ok::<_, ExecutionError>(results)
+        })?;
+        perp_results.extend(chunk_results);
+    }
+    perp_results.sort_by_key(|(index, _, _, _)| *index);
+
+    for (_, alias, perp, context) in perp_results {
+        if shared_perp.is_none() {
+            shared_perp = Some(perp.clone());
+        }
+        if execution_aliases.len() == 1 {
+            single_context = Some(context.clone());
+        }
+        portfolio_contexts.insert(alias, context);
     }
     Ok((shared_perp, single_context, portfolio_contexts))
 }

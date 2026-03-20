@@ -47,6 +47,8 @@ type ResolvedPerpContexts = (
     BTreeMap<String, palmscript::PerpBacktestContext>,
 );
 
+const OPTIMIZE_DEFAULT_WORKERS_ENV_VAR: &str = "PALMSCRIPT_OPTIMIZE_DEFAULT_WORKERS";
+
 pub fn run(cli: Cli) -> Result<(), String> {
     match cli.command {
         Command::Docs(args) => print_docs(args),
@@ -900,19 +902,80 @@ fn resolve_backtest_perp_contexts(
     let mut shared_perp = None;
     let mut single_context = None;
     let mut portfolio_perp_contexts = BTreeMap::new();
+    let mut perp_specs = Vec::new();
 
-    for alias in execution_source_aliases {
+    for (index, alias) in execution_source_aliases.iter().enumerate() {
         let source = compiled
             .program
             .find_execution_target(alias)
             .ok_or_else(|| format!("unknown execution source `{alias}`"))?;
-        let (perp, context) = resolve_perp_context(
-            source.template,
-            source,
-            compiled.program.base_interval,
-            options,
-            endpoints,
-        )?;
+        match source.template {
+            SourceTemplate::BinanceSpot | SourceTemplate::BybitSpot | SourceTemplate::GateSpot => {
+                let (perp, context) = resolve_perp_context(
+                    source.template,
+                    source,
+                    compiled.program.base_interval,
+                    options,
+                    endpoints,
+                )?;
+                if shared_perp.is_none() {
+                    shared_perp = perp.clone();
+                }
+                if let Some(context) = context {
+                    if execution_source_aliases.len() == 1 {
+                        single_context = Some(context.clone());
+                    }
+                    portfolio_perp_contexts.insert(alias.clone(), context);
+                }
+            }
+            SourceTemplate::BinanceUsdm
+            | SourceTemplate::BybitUsdtPerps
+            | SourceTemplate::GateUsdtPerps => {
+                perp_specs.push((index, alias.clone(), source.clone()));
+            }
+        }
+    }
+
+    let worker_count = palmscript::exchange::historical_fetch_workers(perp_specs.len());
+    let mut perp_results = Vec::with_capacity(perp_specs.len());
+    for chunk in perp_specs.chunks(worker_count.max(1)) {
+        let chunk_results = thread::scope(|scope| {
+            let mut handles = Vec::with_capacity(chunk.len());
+            for (index, alias, source) in chunk {
+                let alias = alias.clone();
+                let source = source.clone();
+                let endpoints = endpoints.clone();
+                let base_interval = compiled.program.base_interval;
+                handles.push((
+                    alias.clone(),
+                    source.template.as_str(),
+                    source.symbol.clone(),
+                    scope.spawn(move || {
+                        resolve_perp_context(
+                            source.template,
+                            &source,
+                            base_interval,
+                            options,
+                            &endpoints,
+                        )
+                        .map(|(perp, context)| (*index, alias, perp, context))
+                    }),
+                ));
+            }
+            let mut results = Vec::with_capacity(handles.len());
+            for (alias, template, symbol, handle) in handles {
+                let result = handle.join().map_err(|_| {
+                    format!("perp context worker panicked for `{alias}` ({template}) `{symbol}`")
+                })??;
+                results.push(result);
+            }
+            Ok::<_, String>(results)
+        })?;
+        perp_results.extend(chunk_results);
+    }
+    perp_results.sort_by_key(|(index, _, _, _)| *index);
+
+    for (_, alias, perp, context) in perp_results {
         if shared_perp.is_none() {
             shared_perp = perp.clone();
         }
@@ -920,7 +983,7 @@ fn resolve_backtest_perp_contexts(
             if execution_source_aliases.len() == 1 {
                 single_context = Some(context.clone());
             }
-            portfolio_perp_contexts.insert(alias.clone(), context);
+            portfolio_perp_contexts.insert(alias, context);
         }
     }
 
@@ -1311,9 +1374,24 @@ fn current_unix_ms() -> i64 {
 }
 
 pub(crate) fn default_parallel_workers() -> usize {
-    thread::available_parallelism()
-        .map(|parallelism| parallelism.get().min(4))
-        .unwrap_or(1)
+    configured_default_parallel_workers(
+        thread::available_parallelism()
+            .map(|parallelism| parallelism.get())
+            .unwrap_or(1),
+        std::env::var(OPTIMIZE_DEFAULT_WORKERS_ENV_VAR)
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+            .filter(|value| *value > 0),
+    )
+}
+
+fn configured_default_parallel_workers(
+    available_parallelism: usize,
+    configured: Option<usize>,
+) -> usize {
+    configured
+        .unwrap_or_else(|| available_parallelism.max(1))
+        .max(1)
 }
 
 pub(crate) fn default_startup_trials(trials: usize) -> usize {
@@ -1416,8 +1494,8 @@ fn _runtime_error(_err: RuntimeError) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        global_fee_schedule, parse_execution_fee_schedules, parse_input_override_assignments,
-        resolve_preset_input_overrides,
+        configured_default_parallel_workers, global_fee_schedule, parse_execution_fee_schedules,
+        parse_input_override_assignments, resolve_preset_input_overrides,
     };
     use palmscript::{
         FeeSchedule, OptimizeCandidateSummary, OptimizeEvaluationSummary, OptimizeObjective,
@@ -1479,6 +1557,16 @@ mod tests {
         ])
         .expect_err("duplicate names should fail");
         assert!(err.contains("duplicate `--set` override"));
+    }
+
+    #[test]
+    fn configured_default_parallel_workers_prefers_configured_value() {
+        assert_eq!(configured_default_parallel_workers(47, Some(12)), 12);
+    }
+
+    #[test]
+    fn configured_default_parallel_workers_uses_all_available_parallelism_by_default() {
+        assert_eq!(configured_default_parallel_workers(47, None), 47);
     }
 
     #[test]

@@ -90,6 +90,7 @@ Historical cache:
 
 - exchange-backed historical downloads are cached on disk and overlapping windows are reused across `run market`, `run backtest`, `run walk-forward`, `run walk-forward-sweep`, and `run optimize`
 - the cache only marks contiguous bars it actually received as covered, so incomplete live-edge windows are retried automatically on later runs
+- set `PALMSCRIPT_HISTORICAL_FETCH_WORKERS` to tune bounded historical fetch parallelism; the default stays conservatively capped at `4` to avoid hammering venue rate limits
 - set `PALMSCRIPT_HISTORICAL_CACHE_DIR` to override the cache root; otherwise PalmScript uses `$XDG_CACHE_HOME/palmscript/historical` or `$HOME/.cache/palmscript/historical`
 
 ## `palmscript run backtest`
@@ -226,7 +227,7 @@ Arguments and flags:
 - `--trials <N>`: total bounded trial budget
 - `--startup-trials <N>`: initial random trial count before the TPE search phase
 - `--seed <N>`: deterministic optimizer seed
-- `--workers <N>`: bounded parallel worker count
+- `--workers <N>`: bounded parallel worker count; defaults to all available logical CPUs when omitted, or `PALMSCRIPT_OPTIMIZE_DEFAULT_WORKERS` when that env var is set
 - `--top <N>`: number of top candidates to retain
 - `--direct-validate-top <N>`: rerun that many top feasible validated survivors as full-window direct backtests and include stitched-vs-direct drift summaries in the optimize result
 - `--preset-out <path>`: write the best preset and top candidates to disk
